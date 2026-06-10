@@ -1,0 +1,18 @@
+DROP TABLE IF EXISTS audit_log            CASCADE;
+DROP TABLE IF EXISTS sync_queue           CASCADE;
+DROP TABLE IF EXISTS notification_log     CASCADE;
+DROP TABLE IF EXISTS reports              CASCADE;
+DROP TABLE IF EXISTS milestones           CASCADE;
+DROP TABLE IF EXISTS activity_links       CASCADE;
+DROP TABLE IF EXISTS activities           CASCADE;
+DROP TABLE IF EXISTS plan_viewers         CASCADE;
+DROP TABLE IF EXISTS plans                CASCADE;
+DROP TABLE IF EXISTS invitations          CASCADE;
+DROP TABLE IF EXISTS password_reset_tokens CASCADE;
+DROP TABLE IF EXISTS refresh_tokens       CASCADE;
+DROP TABLE IF EXISTS sso_configs          CASCADE;
+DROP TABLE IF EXISTS users                CASCADE;
+DROP TABLE IF EXISTS organisations        CASCADE;
+DROP FUNCTION IF EXISTS set_updated_at   CASCADE;
+DROP EXTENSION IF EXISTS pgcrypto;
+DROP EXTENSION IF EXISTS "uuid-ossp";

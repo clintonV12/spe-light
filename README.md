@@ -198,11 +198,13 @@ make web-build        Build frontend for production
 ## Project structure
 
 ```
-stratplan/
+spe-light/
 ├── cmd/
 │   └── server/
 │       └── main.go              Entry point
 ├── internal/
+|   ├── response/
+│   |   └── response.go
 │   ├── ai/
 │   │   └── ollama.go            Ollama API client
 │   ├── auth/
