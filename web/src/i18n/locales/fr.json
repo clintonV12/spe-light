@@ -1,0 +1,51 @@
+{
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "create": "Créer",
+    "loading": "Chargement…",
+    "error": "Une erreur est survenue",
+    "offline": "Vous êtes hors ligne",
+    "sync": "Synchroniser",
+    "pending": "{{count}} en attente"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "plans": "Plans",
+    "progress": "Avancement",
+    "reports": "Rapports",
+    "admin": "Administration"
+  },
+  "plan": {
+    "status": {
+      "draft": "Brouillon",
+      "active": "Actif",
+      "review": "En révision",
+      "completed": "Terminé",
+      "archived": "Archivé"
+    },
+    "phases": {
+      "P1": "Analyse",
+      "P2": "Stratégie",
+      "P3": "Opérations"
+    }
+  },
+  "activity": {
+    "status": {
+      "not_started": "Non démarré",
+      "in_progress": "En cours",
+      "under_review": "En révision",
+      "complete": "Terminé"
+    }
+  },
+  "ai": {
+    "generate": "Générer avec l'IA",
+    "generating": "Génération…",
+    "accept": "Accepter le brouillon",
+    "retry": "Réessayer",
+    "discard": "Ignorer",
+    "offline": "IA indisponible hors ligne"
+  }
+}

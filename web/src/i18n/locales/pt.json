@@ -1,0 +1,51 @@
+{
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Criar",
+    "loading": "A carregar…",
+    "error": "Ocorreu um erro",
+    "offline": "Está offline",
+    "sync": "Sincronizar",
+    "pending": "{{count}} pendentes"
+  },
+  "nav": {
+    "dashboard": "Painel",
+    "plans": "Planos",
+    "progress": "Progresso",
+    "reports": "Relatórios",
+    "admin": "Administração"
+  },
+  "plan": {
+    "status": {
+      "draft": "Rascunho",
+      "active": "Ativo",
+      "review": "Em revisão",
+      "completed": "Concluído",
+      "archived": "Arquivado"
+    },
+    "phases": {
+      "P1": "Análise",
+      "P2": "Estratégia",
+      "P3": "Operações"
+    }
+  },
+  "activity": {
+    "status": {
+      "not_started": "Não iniciado",
+      "in_progress": "Em curso",
+      "under_review": "Em revisão",
+      "complete": "Concluído"
+    }
+  },
+  "ai": {
+    "generate": "Gerar com IA",
+    "generating": "A gerar…",
+    "accept": "Aceitar rascunho",
+    "retry": "Tentar novamente",
+    "discard": "Descartar",
+    "offline": "IA indisponível offline"
+  }
+}

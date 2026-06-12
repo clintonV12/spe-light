@@ -1,0 +1,51 @@
+{
+  "common": {
+    "save": "Save changes",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "loading": "Loading…",
+    "error": "Something went wrong",
+    "offline": "You're offline",
+    "sync": "Sync now",
+    "pending": "{{count}} pending"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "plans": "Plans",
+    "progress": "Progress",
+    "reports": "Reports",
+    "admin": "Admin"
+  },
+  "plan": {
+    "status": {
+      "draft": "Draft",
+      "active": "Active",
+      "review": "Under review",
+      "completed": "Completed",
+      "archived": "Archived"
+    },
+    "phases": {
+      "P1": "Analysis",
+      "P2": "Strategy",
+      "P3": "Operations"
+    }
+  },
+  "activity": {
+    "status": {
+      "not_started": "Not started",
+      "in_progress": "In progress",
+      "under_review": "Under review",
+      "complete": "Complete"
+    }
+  },
+  "ai": {
+    "generate": "Generate with AI",
+    "generating": "Generating…",
+    "accept": "Accept draft",
+    "retry": "Retry",
+    "discard": "Discard",
+    "offline": "AI unavailable offline"
+  }
+}
