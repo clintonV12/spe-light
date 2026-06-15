@@ -1,12 +1,195 @@
-import React from 'react'
+import { useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react'
+import { authApi } from '../api/endpoints'
+import { useAuthStore } from '../store/auth'
 
-const LoginPage: React.FC = () => {
+export default function LoginPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const setAuth = useAuthStore((s) => s.setAuth)
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/dashboard'
+
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email || !password) return
+    setLoading(true)
+    setError('')
+    try {
+      if (import.meta.env.VITE_MOCK === 'true') {
+        // ── Mock mode: never touch Axios / the proxy ─────────────────────
+        const { mockAuth } = await import('../mocks/handlers')
+        const tokens = await mockAuth.login(email, password)
+        const user   = await mockAuth.me()
+        const org    = await mockAuth.org()
+        setAuth(user, org, tokens.access_token, tokens.refresh_token)
+      } else {
+        // ── Real mode ─────────────────────────────────────────────────────
+        const tokens = await authApi.login({ email, password })
+        const apiClient = (await import('../api/client')).default
+        const { data: user } = await apiClient.get('/org/me', {
+          headers: { Authorization: `Bearer ${tokens.access_token}` },
+        })
+        const { data: org } = await apiClient.get('/org', {
+          headers: { Authorization: `Bearer ${tokens.access_token}` },
+        })
+        setAuth(user, org, tokens.access_token, tokens.refresh_token)
+      }
+      navigate(from, { replace: true })
+    } catch {
+      setError('Incorrect email or password. Check your details and try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="p-6">
-      <h1 className="font-display text-2xl font-bold text-ink-900">Login</h1>
-      <p className="mt-2 text-ink-500">This page is under construction.</p>
+    <div className="min-h-screen bg-ink-900 flex">
+      {/* Left panel — branding */}
+      <div className="hidden lg:flex flex-col justify-between w-[480px] shrink-0 bg-ink-900 border-r border-ink-700 p-12">
+        {/* Logo */}
+        <div className="flex items-center gap-3">
+          <div className="size-9 rounded-xl bg-accent flex items-center justify-center">
+            <span className="font-display font-bold text-white text-sm tracking-tight">SP</span>
+          </div>
+          <span className="font-display font-bold text-white text-lg tracking-tight">StratPlan</span>
+        </div>
+
+        {/* Headline */}
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <p className="text-xs font-semibold tracking-widest text-accent-400 uppercase">
+              Strategic planning &amp; execution
+            </p>
+            <h1 className="font-display text-4xl font-bold text-white leading-[1.15]">
+              From analysis<br />to action,<br />in one place.
+            </h1>
+            <p className="text-ink-400 text-base leading-relaxed max-w-xs">
+              P1 · P2 · P3 phases. AI-assisted drafts. Progress tracking built for teams that ship strategy, not just slide decks.
+            </p>
+          </div>
+
+          {/* Phase pills */}
+          <div className="flex flex-col gap-3">
+            {[
+              { phase: 'P1', label: 'Analysis', desc: 'SWOT · PESTLE · Risk Register', color: 'bg-p1-light text-p1-dark' },
+              { phase: 'P2', label: 'Strategy', desc: 'Vision · OKRs · KPI Framework', color: 'bg-p2-light text-p2-dark' },
+              { phase: 'P3', label: 'Operations', desc: 'Roadmap · Budget · Action Items', color: 'bg-p3-light text-p3-dark' },
+            ].map(({ phase, label, desc, color }) => (
+              <div key={phase} className="flex items-center gap-3">
+                <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold shrink-0 ${color}`}>
+                  {phase}
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-white">{label}</p>
+                  <p className="text-xs text-ink-400">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <p className="text-xs text-ink-600">
+          Self-hosted · AI runs on your server · No data leaves your infrastructure
+        </p>
+      </div>
+
+      {/* Right panel — form */}
+      <div className="flex-1 flex items-center justify-center p-6 bg-ink-50">
+        <div className="w-full max-w-sm">
+          {/* Mobile logo */}
+          <div className="flex items-center gap-2 mb-10 lg:hidden">
+            <div className="size-8 rounded-lg bg-accent flex items-center justify-center">
+              <span className="font-display font-bold text-white text-xs">SP</span>
+            </div>
+            <span className="font-display font-bold text-ink-900 text-base">StratPlan</span>
+          </div>
+
+          <div className="mb-8">
+            <h2 className="font-display text-2xl font-bold text-ink-900">Sign in</h2>
+            <p className="text-ink-500 text-sm mt-1">Enter your work email and password.</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Email */}
+            <div className="space-y-1.5">
+              <label htmlFor="email" className="block text-sm font-medium text-ink-700">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                autoFocus
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@organisation.com"
+                className="w-full rounded-xl border border-ink-200 bg-white px-4 py-3 text-sm text-ink-900 placeholder:text-ink-400 outline-none transition-all focus:ring-2 focus:ring-accent-400 focus:border-transparent"
+              />
+            </div>
+
+            {/* Password */}
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="block text-sm font-medium text-ink-700">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPw ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full rounded-xl border border-ink-200 bg-white px-4 py-3 pr-11 text-sm text-ink-900 placeholder:text-ink-400 outline-none transition-all focus:ring-2 focus:ring-accent-400 focus:border-transparent"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700 transition-colors"
+                  aria-label={showPw ? 'Hide password' : 'Show password'}
+                >
+                  {showPw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Error */}
+            {error && (
+              <div className="flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
+                <AlertCircle className="size-4 text-red-500 shrink-0 mt-0.5" />
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            )}
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading || !email || !password}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              ) : (
+                <>Sign in <ArrowRight className="size-4" /></>
+              )}
+            </button>
+          </form>
+
+          <p className="mt-8 text-center text-xs text-ink-400">
+            Don't have an account?{' '}
+            <span className="text-ink-600 font-medium">
+              Ask your organisation admin to send an invite.
+            </span>
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
-
-export default LoginPage

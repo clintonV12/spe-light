@@ -4,8 +4,17 @@ import App from './App'
 import './index.css'
 import './i18n'
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
+async function bootstrap() {
+  if (import.meta.env.VITE_MOCK === 'true') {
+    const { installMocks } = await import('./mocks')
+    await installMocks()
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  )
+}
+
+bootstrap()
