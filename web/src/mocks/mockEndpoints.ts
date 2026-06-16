@@ -9,7 +9,7 @@ import {
   mockReports, mockAi,
 } from './handlers'
 import type {
-  LoginPayload, Plan, Activity, UserRole,
+  LoginPayload, Plan, Activity, ActivityLink, UserRole,
   ReportType, ReportFormat,
   AiDraftRequest, AiSummaryRequest,
 } from '../types'
@@ -36,8 +36,9 @@ export const activitiesApi = {
   create: (planId: string, p: Partial<Activity>)   => mockActivities.create(planId, p),
   update: (id: string, p: Partial<Activity>)       => mockActivities.update(id, p),
   delete: (id: string)                             => mockActivities.delete(id),
-  createLink: async () => {},
-  deleteLink: async () => {},
+  createLink: (id: string, p: Partial<ActivityLink>) => mockActivities.createLink(id, p),
+  deleteLink: (activityId: string, linkId: string)   => mockActivities.deleteLink(activityId, linkId),
+  listLinks:  (planId: string)                       => mockActivities.listLinks(planId),
 }
 
 export const reportsApi = {

@@ -1,3 +1,5 @@
+# SPE-Light — Frontend (React)
+
 React + TypeScript frontend for the StratPlan Strategic Planning & Execution Platform.
 Built with Vite, Tailwind CSS, Zustand, and React Router.
 

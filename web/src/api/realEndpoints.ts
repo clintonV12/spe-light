@@ -33,6 +33,7 @@ export const activitiesApi = {
   delete: (id: string)                          => apiClient.delete(`/activities/${id}`),
   createLink: (id: string, p: Partial<ActivityLink>) => apiClient.post<ActivityLink>(`/activities/${id}/links`, p).then((r) => r.data),
   deleteLink: (actId: string, linkId: string)   => apiClient.delete(`/activities/${actId}/links/${linkId}`),
+  listLinks:  (planId: string)                  => apiClient.get<ActivityLink[]>(`/plans/${planId}/links`).then((r) => r.data),
 }
 
 export const reportsApi = {

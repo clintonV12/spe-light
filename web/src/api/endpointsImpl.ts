@@ -65,6 +65,7 @@ export const activitiesApi = {
   delete:     (id: string)                           => api().then((m) => m.activitiesApi.delete(id))          as Promise<void>,
   createLink: (id: string, p: Partial<ActivityLink>) => api().then((m) => m.activitiesApi.createLink(id, p))   as Promise<ActivityLink>,
   deleteLink: (actId: string, linkId: string)        => api().then((m) => m.activitiesApi.deleteLink(actId, linkId)) as Promise<void>,
+  listLinks:  (planId: string)                       => api().then((m) => m.activitiesApi.listLinks(planId))   as Promise<ActivityLink[]>,
 }
 
 // ─── Reports ─────────────────────────────────────────────────────────────────

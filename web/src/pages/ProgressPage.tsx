@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, Clock, TrendingUp } from 'lucide-react'
-import { plansApi } from '../api/endpoints'
+import { AlertTriangle, CheckCircle2, Clock, TrendingUp, GitBranch } from 'lucide-react'
+import { plansApi, activitiesApi } from '../api/endpoints'
 import { ProgressBar } from '../components/ui'
-import type { Plan, Phase } from '../types'
+import TransPhaseNetwork from '../components/progress/TransPhaseNetwork'
+import type { Plan, Phase, Activity, ActivityLink } from '../types'
 
 const PHASE_META: Record<Phase, { label: string; color: string; bar: 'p1' | 'p2' | 'p3' }> = {
   P1: { label: 'Analysis',   color: 'text-p1-dark', bar: 'p1' },
@@ -33,10 +34,8 @@ function PlanProgressCard({ plan }: { plan: Plan }) {
         </div>
       </div>
 
-      {/* Overall bar */}
       <ProgressBar value={progress.overall_percent} className="mb-5" />
 
-      {/* Phase breakdown */}
       <div className="space-y-3">
         {progress.phases.map((p) => {
           const meta = PHASE_META[p.phase]
@@ -63,7 +62,6 @@ function PlanProgressCard({ plan }: { plan: Plan }) {
         })}
       </div>
 
-      {/* Footer stats */}
       <div className="flex items-center gap-4 mt-4 pt-4 border-t border-ink-50">
         <div className="flex items-center gap-1.5 text-xs text-ink-500">
           <CheckCircle2 className="size-3.5 text-p2-dark" />
@@ -85,23 +83,50 @@ function PlanProgressCard({ plan }: { plan: Plan }) {
 }
 
 export default function ProgressPage() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const filterPlan = searchParams.get('plan')
 
   const [plans, setPlans] = useState<Plan[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Network diagram state — scoped to one plan at a time
+  const [networkPlanId, setNetworkPlanId] = useState<string>('')
+  const [networkActivities, setNetworkActivities] = useState<Activity[]>([])
+  const [networkLinks, setNetworkLinks] = useState<ActivityLink[]>([])
+  const [networkLoading, setNetworkLoading] = useState(false)
+
   useEffect(() => {
     plansApi.list()
       .then((data) => {
         const active = data.filter((p) => p.status === 'active' || p.status === 'review')
-        setPlans(filterPlan ? active.filter((p) => p.id === filterPlan) : active)
+        const visible = filterPlan ? active.filter((p) => p.id === filterPlan) : active
+        setPlans(visible)
+        if (visible.length > 0 && !networkPlanId) {
+          setNetworkPlanId(visible[0].id)
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [filterPlan])
+  }, [filterPlan]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Aggregate stats
+  useEffect(() => {
+    if (!networkPlanId) return
+    setNetworkLoading(true)
+    Promise.all([
+      activitiesApi.list(networkPlanId),
+      activitiesApi.listLinks(networkPlanId),
+    ])
+      .then(([acts, links]) => {
+        setNetworkActivities(acts)
+        setNetworkLinks(links)
+      })
+      .catch(() => {
+        setNetworkActivities([])
+        setNetworkLinks([])
+      })
+      .finally(() => setNetworkLoading(false))
+  }, [networkPlanId])
+
   const totalActivities = plans.reduce((s, p) => s + (p.progress?.phases.reduce((ps, ph) => ps + ph.total, 0) ?? 0), 0)
   const totalComplete = plans.reduce((s, p) => s + (p.progress?.phases.reduce((ps, ph) => ps + ph.complete, 0) ?? 0), 0)
   const totalOverdue = plans.reduce((s, p) => s + (p.progress?.overdue_count ?? 0), 0)
@@ -110,7 +135,7 @@ export default function ProgressPage() {
     : 0
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-8">
+    <div className="p-6 max-w-6xl mx-auto space-y-8">
       <div>
         <h1 className="font-display text-2xl font-bold text-ink-900">Progress</h1>
         <p className="text-ink-500 text-sm mt-0.5">Across {plans.length} active plan{plans.length !== 1 ? 's' : ''}</p>
@@ -119,10 +144,10 @@ export default function ProgressPage() {
       {/* Summary stat row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Avg. completion',    value: `${avgProgress}%`,     icon: <TrendingUp className="size-5 text-accent" />,       bg: 'bg-accent-50' },
-          { label: 'Activities complete', value: totalComplete,          icon: <CheckCircle2 className="size-5 text-p2-dark" />,    bg: 'bg-p2-light' },
-          { label: 'Total activities',    value: totalActivities,        icon: <Clock className="size-5 text-p3-dark" />,           bg: 'bg-p3-light' },
-          { label: 'Overdue',             value: totalOverdue,           icon: <AlertTriangle className="size-5 text-red-500" />,   bg: 'bg-red-50', alert: totalOverdue > 0 },
+          { label: 'Avg. completion',     value: `${avgProgress}%`,  icon: <TrendingUp className="size-5 text-accent" />,     bg: 'bg-accent-50' },
+          { label: 'Activities complete', value: totalComplete,      icon: <CheckCircle2 className="size-5 text-p2-dark" />,  bg: 'bg-p2-light' },
+          { label: 'Total activities',    value: totalActivities,    icon: <Clock className="size-5 text-p3-dark" />,         bg: 'bg-p3-light' },
+          { label: 'Overdue',             value: totalOverdue,       icon: <AlertTriangle className="size-5 text-red-500" />, bg: 'bg-red-50', alert: totalOverdue > 0 },
         ].map(({ label, value, icon, bg, alert }) => (
           <div key={label} className={`rounded-2xl border ${alert ? 'border-red-200' : 'border-ink-100'} bg-white p-5`}>
             <div className={`size-10 rounded-xl ${bg} flex items-center justify-center mb-3`}>{icon}</div>
@@ -157,6 +182,42 @@ export default function ProgressPage() {
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* Trans-Phase Network Diagram */}
+      {!loading && plans.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <GitBranch className="size-4 text-ink-400" />
+              <h2 className="font-display text-sm font-bold text-ink-800">Activity dependency network</h2>
+            </div>
+            {plans.length > 1 && (
+              <select
+                value={networkPlanId}
+                onChange={(e) => {
+                  setNetworkPlanId(e.target.value)
+                  setSearchParams({ plan: e.target.value })
+                }}
+                className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs text-ink-700 outline-none focus:ring-2 focus:ring-accent-400"
+              >
+                {plans.map((p) => (
+                  <option key={p.id} value={p.id}>{p.title}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {networkLoading ? (
+            <div className="h-[560px] bg-ink-100 rounded-2xl animate-pulse" />
+          ) : (
+            <TransPhaseNetwork
+              activities={networkActivities}
+              links={networkLinks}
+              planId={networkPlanId}
+            />
+          )}
         </div>
       )}
 

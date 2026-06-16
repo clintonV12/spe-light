@@ -387,7 +387,46 @@ export const MOCK_ACTIVITIES: Activity[] = [
   },
 ]
 
-// ─── Reports ─────────────────────────────────────────────────────────────────
+// ─── Activity Links (cross-phase dependency graph) ───────────────────────────
+// link_type: 'auto' (system-inferred from content references), 'manual'
+// (user-drawn), 'ai_suggested' (Ollama-proposed during drafting).
+
+export const MOCK_ACTIVITY_LINKS: import('../types').ActivityLink[] = [
+  // SWOT (P1) feeds Strategic Objectives (P2) — auto-detected
+  { id: 'link-001', plan_id: 'plan-001', source_id: 'act-001', target_id: 'act-008', link_type: 'auto', created_by: 'user-001', created_at: '2025-03-01T08:00:00Z' },
+  // PESTLE (P1) feeds Strategic Objectives (P2)
+  { id: 'link-002', plan_id: 'plan-001', source_id: 'act-002', target_id: 'act-008', link_type: 'auto', created_by: 'user-001', created_at: '2025-03-01T08:05:00Z' },
+  // Risk Register (P1) feeds Strategic Initiatives (P2) — AI suggested
+  { id: 'link-003', plan_id: 'plan-001', source_id: 'act-003', target_id: 'act-010', link_type: 'ai_suggested', created_by: 'user-001', created_at: '2025-03-20T08:00:00Z' },
+  // Stakeholder Map (P1) feeds Investor Value Proposition (P2)
+  { id: 'link-004', plan_id: 'plan-001', source_id: 'act-004', target_id: 'act-011', link_type: 'manual', created_by: 'user-002', created_at: '2025-04-01T08:00:00Z' },
+  // Competitive Analysis (P1) feeds Value Proposition (P2)
+  { id: 'link-005', plan_id: 'plan-001', source_id: 'act-005', target_id: 'act-011', link_type: 'auto', created_by: 'user-001', created_at: '2025-04-01T08:10:00Z' },
+  // Market Analysis (P1, still in_progress) feeds Strategic Initiatives (P2) — shows a link from an incomplete source
+  { id: 'link-006', plan_id: 'plan-001', source_id: 'act-006', target_id: 'act-010', link_type: 'ai_suggested', created_by: 'user-001', created_at: '2025-05-15T08:00:00Z' },
+
+  // Strategic Objectives (P2) feeds KPI Framework (P2) — same-phase link
+  { id: 'link-007', plan_id: 'plan-001', source_id: 'act-008', target_id: 'act-009', link_type: 'auto', created_by: 'user-001', created_at: '2025-03-10T08:00:00Z' },
+  // Strategic Objectives (P2) feeds Operational Roadmap (P3)
+  { id: 'link-008', plan_id: 'plan-001', source_id: 'act-008', target_id: 'act-012', link_type: 'auto', created_by: 'user-001', created_at: '2025-04-10T08:00:00Z' },
+  // KPI Framework (P2) feeds Action Items (P3) — direct P2 -> P3 skip
+  { id: 'link-009', plan_id: 'plan-001', source_id: 'act-009', target_id: 'act-015', link_type: 'manual', created_by: 'user-002', created_at: '2025-04-25T08:00:00Z' },
+  // Strategic Initiatives (P2, in_progress) feeds Budget Allocation (P3) — demonstrates a P3 task already linked to an unfinished P2 driver
+  { id: 'link-010', plan_id: 'plan-001', source_id: 'act-010', target_id: 'act-013', link_type: 'ai_suggested', created_by: 'user-001', created_at: '2025-04-15T08:00:00Z' },
+  // Value Proposition (P2, under_review) feeds Resource Plan (P3)
+  { id: 'link-011', plan_id: 'plan-001', source_id: 'act-011', target_id: 'act-014', link_type: 'manual', created_by: 'user-002', created_at: '2025-04-20T08:00:00Z' },
+
+  // Operational Roadmap (P3) feeds Budget Allocation (P3) — same-phase
+  { id: 'link-012', plan_id: 'plan-001', source_id: 'act-012', target_id: 'act-013', link_type: 'auto', created_by: 'user-001', created_at: '2025-04-12T08:00:00Z' },
+  // Operational Roadmap (P3) feeds Implementation Timeline (P3, not_started) — shows downstream not-started node
+  { id: 'link-013', plan_id: 'plan-001', source_id: 'act-012', target_id: 'act-017', link_type: 'auto', created_by: 'user-001', created_at: '2025-04-12T08:05:00Z' },
+  // Budget Allocation (P3) feeds Financial Projections (P3, not_started)
+  { id: 'link-014', plan_id: 'plan-001', source_id: 'act-013', target_id: 'act-018', link_type: 'manual', created_by: 'user-002', created_at: '2025-05-01T08:00:00Z' },
+  // Resource Plan (P3) feeds Action Items (P3)
+  { id: 'link-015', plan_id: 'plan-001', source_id: 'act-014', target_id: 'act-015', link_type: 'auto', created_by: 'user-001', created_at: '2025-04-22T08:00:00Z' },
+  // Action Items (P3) feeds Procurement Plan (P3, not_started)
+  { id: 'link-016', plan_id: 'plan-001', source_id: 'act-015', target_id: 'act-016', link_type: 'ai_suggested', created_by: 'user-001', created_at: '2025-05-02T08:00:00Z' },
+]
 
 export const MOCK_REPORTS: Report[] = [
   {

@@ -6,11 +6,11 @@
 
 import type {
   Plan, Activity, User, Invitation, Organisation,
-  AuthTokens, UserRole, ActivityStatus,
+  AuthTokens, UserRole, ActivityStatus, ActivityLink,
 } from '../types'
 import {
   MOCK_ME, MOCK_ORG, MOCK_USERS, MOCK_INVITATIONS,
-  MOCK_PLANS, MOCK_ACTIVITIES, MOCK_REPORTS,
+  MOCK_PLANS, MOCK_ACTIVITIES, MOCK_REPORTS, MOCK_ACTIVITY_LINKS,
 } from './seed'
 
 // ─── In-memory mutable state ────────────────────────────────────────────────
@@ -19,6 +19,7 @@ let plans: Plan[]        = structuredClone(MOCK_PLANS)
 let activities: Activity[] = structuredClone(MOCK_ACTIVITIES)
 let users: User[]        = structuredClone(MOCK_USERS)
 let invitations: Invitation[] = structuredClone(MOCK_INVITATIONS)
+let activityLinks: ActivityLink[] = structuredClone(MOCK_ACTIVITY_LINKS)
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -198,6 +199,36 @@ export const mockActivities = {
   delete: async (id: string): Promise<void> => {
     await delay(300)
     activities = activities.filter((a) => a.id !== id)
+    activityLinks = activityLinks.filter((l) => l.source_id !== id && l.target_id !== id)
+  },
+
+  listLinks: async (planId: string): Promise<ActivityLink[]> => {
+    await delay(250)
+    return structuredClone(activityLinks.filter((l) => l.plan_id === planId))
+  },
+
+  createLink: async (sourceId: string, payload: Partial<ActivityLink>): Promise<ActivityLink> => {
+    await delay(350)
+    const targetId = payload.target_id
+    if (!targetId) throw new Error('target_id is required')
+    const sourceAct = activities.find((a) => a.id === sourceId)
+    if (!sourceAct) throw new Error('Source activity not found')
+    const link: ActivityLink = {
+      id: `link-${uuid().slice(0, 8)}`,
+      plan_id: sourceAct.plan_id,
+      source_id: sourceId,
+      target_id: targetId,
+      link_type: payload.link_type ?? 'manual',
+      created_by: MOCK_ME.id,
+      created_at: now(),
+    }
+    activityLinks = [...activityLinks, link]
+    return structuredClone(link)
+  },
+
+  deleteLink: async (_activityId: string, linkId: string): Promise<void> => {
+    await delay(250)
+    activityLinks = activityLinks.filter((l) => l.id !== linkId)
   },
 }
 

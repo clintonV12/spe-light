@@ -42,7 +42,7 @@ export const AppShell: React.FC = () => {
             <span className="font-display font-bold text-sm">SP</span>
           </div>
           {!collapsed && (
-            <span className="font-display font-bold text-base tracking-tight">StratPlan</span>
+            <span className="font-display font-bold text-base tracking-tight">SPE-Lite</span>
           )}
         </div>
 
