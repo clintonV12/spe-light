@@ -1,3 +1,10 @@
+// This file implements HTTP handlers for authentication endpoints (Sprint 1).
+//
+// All handlers in this file are intentionally thin — they decode the request,
+// call the service, and encode the response. Business logic lives in authsvc.
+//
+// Security note: password reset always returns 200 regardless of whether
+// the email exists, to prevent account enumeration (REQ-F-007).
 package handlers
 
 import (
@@ -12,6 +19,7 @@ type Auth struct {
 	svc *authsvc.Service
 }
 
+// NewAuth creates an Auth handler group.
 func NewAuth(svc *authsvc.Service) *Auth {
 	return &Auth{svc: svc}
 }
@@ -70,12 +78,12 @@ func (h *Auth) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /auth/password-reset/request
+// Always returns 200 regardless of whether the email exists (REQ-F-007).
 func (h *Auth) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	var req authsvc.RequestPasswordResetRequest
 	if !response.DecodeJSON(w, r, &req) {
 		return
 	}
-	// Always return 200 — don't reveal whether email exists
 	_ = h.svc.RequestPasswordReset(r.Context(), req.Email)
 	response.JSON(w, http.StatusOK, map[string]string{
 		"message": "if that email exists, a reset link has been sent",

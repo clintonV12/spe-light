@@ -1,7 +1,16 @@
+// Command server is the StratPlan API entry point.
+//
+// Start-up sequence:
+//  1. Load config from environment / .env file.
+//  2. Connect to PostgreSQL.
+//  3. Build the HTTP router (all services and handlers are constructed here).
+//  4. Listen on the configured port.
+//  5. On SIGINT/SIGTERM, drain in-flight requests gracefully (10 s deadline).
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -16,22 +25,12 @@ import (
 )
 
 func main() {
+	// ── Config ────────────────────────────────────────────────────────
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("load config", "err", err)
 		os.Exit(1)
 	}
-
-	// ── Logger ────────────────────────────────────────────────────────
-	logLevel := slog.LevelInfo
-	if !cfg.IsProduction() {
-		logLevel = slog.LevelDebug
-	}
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevel,
-	})))
-
-	slog.Info("starting spe-light", "env", cfg.AppEnv, "port", cfg.Port)
 
 	// ── Database ──────────────────────────────────────────────────────
 	ctx := context.Background()
@@ -43,21 +42,20 @@ func main() {
 	defer db.Close()
 	slog.Info("database connected")
 
-	// ── Router ────────────────────────────────────────────────────────
-	router := handlers.NewRouter(cfg, db)
-
 	// ── HTTP server ───────────────────────────────────────────────────
+	router := handlers.NewRouter(cfg, db)
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.Port),
 		Handler:      router,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
+	// Start in background so we can listen for signals.
 	go func() {
-		slog.Info("server listening", "addr", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		slog.Info("server starting", "addr", srv.Addr, "env", cfg.AppEnv)
+		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("server error", "err", err)
 			os.Exit(1)
 		}
@@ -68,11 +66,12 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	slog.Info("shutting down...")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	slog.Info("shutting down — draining requests (10 s)")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("shutdown error", "err", err)
+		slog.Error("graceful shutdown failed", "err", err)
 	}
-	slog.Info("stopped")
+	slog.Info("server stopped")
 }
