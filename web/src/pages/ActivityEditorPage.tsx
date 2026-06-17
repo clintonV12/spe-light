@@ -8,13 +8,14 @@ import { activitiesApi } from '../api/endpoints'
 import { useOfflineStore } from '../store/offline'
 import { usePermission, useToast } from '../hooks'
 import AiDraftPanel from '../components/ai/AiDraftPanel'
+import LinkedActivitiesPanel from '../components/activities/LinkedActivitiesPanel'
 import SwotEditor from '../components/activities/editors/SwotEditor'
 import KpiEditor from '../components/activities/editors/KpiEditor'
 import type { KpiRow } from '../components/activities/editors/KpiEditor'
 import RiskRegisterEditor from '../components/activities/editors/RiskRegisterEditor'
 import type { RiskRow } from '../components/activities/editors/RiskRegisterEditor'
 import GenericEditor from '../components/activities/editors/GenericEditor'
-import type { Activity, ActivityStatus, Phase } from '../types'
+import type { Activity, ActivityStatus, Phase, ActivityLink } from '../types'
 
 const STATUS_OPTIONS: { value: ActivityStatus; label: string }[] = [
   { value: 'not_started',  label: 'Not started' },
@@ -113,6 +114,11 @@ export default function ActivityEditorPage() {
   const [loading, setLoading] = useState(true)
   const [showAi, setShowAi] = useState(false)
 
+  // Linked-activities panel state
+  const [planActivities, setPlanActivities] = useState<Activity[]>([])
+  const [planLinks, setPlanLinks] = useState<ActivityLink[]>([])
+  const [linksLoading, setLinksLoading] = useState(true)
+
   const canEdit = can.editActivity
 
   useEffect(() => {
@@ -122,6 +128,26 @@ export default function ActivityEditorPage() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [activityId])
+
+  const loadLinks = useCallback(() => {
+    if (!planId) return
+    setLinksLoading(true)
+    Promise.all([
+      activitiesApi.list(planId),
+      activitiesApi.listLinks(planId),
+    ])
+      .then(([acts, links]) => {
+        setPlanActivities(acts)
+        setPlanLinks(links)
+      })
+      .catch(() => {
+        setPlanActivities([])
+        setPlanLinks([])
+      })
+      .finally(() => setLinksLoading(false))
+  }, [planId])
+
+  useEffect(() => { loadLinks() }, [loadLinks])
 
   const handleContentChange = useCallback((c: Record<string, unknown>) => {
     setContent(c)
@@ -156,10 +182,13 @@ export default function ActivityEditorPage() {
 
   if (loading) {
     return (
-      <div className="p-6 max-w-4xl mx-auto space-y-4">
+      <div className="p-6 max-w-6xl mx-auto space-y-4">
         <div className="h-5 bg-ink-100 rounded w-1/4 animate-pulse" />
         <div className="h-8 bg-ink-100 rounded w-2/3 animate-pulse" />
-        <div className="h-64 bg-ink-100 rounded-2xl animate-pulse" />
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+          <div className="h-64 bg-ink-100 rounded-2xl animate-pulse" />
+          <div className="h-64 bg-ink-100 rounded-2xl animate-pulse" />
+        </div>
       </div>
     )
   }
@@ -168,7 +197,7 @@ export default function ActivityEditorPage() {
   const overdue = activity.due_date && status !== 'complete' && new Date(activity.due_date) < new Date()
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Back */}
       <button
         onClick={() => navigate(`/plans/${planId}`)}
@@ -279,13 +308,27 @@ export default function ActivityEditorPage() {
         </div>
       )}
 
-      {/* Editor */}
-      <div className="bg-white rounded-2xl border border-ink-100 p-6">
-        <ActivityEditor
-          activity={{ ...activity, content }}
-          onChange={handleContentChange}
-          readOnly={!canEdit}
-        />
+      {/* Two-column layout: editor + linked activities */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6 items-start">
+        <div className="bg-white rounded-2xl border border-ink-100 p-6">
+          <ActivityEditor
+            activity={{ ...activity, content }}
+            onChange={handleContentChange}
+            readOnly={!canEdit}
+          />
+        </div>
+
+        {linksLoading ? (
+          <div className="h-72 bg-ink-100 rounded-2xl animate-pulse" />
+        ) : (
+          <LinkedActivitiesPanel
+            activity={activity}
+            allActivities={planActivities}
+            links={planLinks}
+            onLinksChanged={loadLinks}
+            canEdit={canEdit}
+          />
+        )}
       </div>
     </div>
   )

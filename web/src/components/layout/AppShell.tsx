@@ -1,15 +1,16 @@
-import React from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { clsx } from 'clsx'
 import {
   LayoutDashboard, FileText, BarChart2, FileOutput,
   Settings, ChevronLeft, ChevronRight, WifiOff, RefreshCw,
-  Menu,
+  Menu, Search,
 } from 'lucide-react'
 import { useUIStore } from '../../store/ui'
 import { useOfflineStore } from '../../store/offline'
 import { useSyncEngine } from '../../hooks'
 import ToastContainer from '../ui/ToastContainer'
+import CommandPalette from './CommandPalette'
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -27,6 +28,31 @@ export const AppShell: React.FC = () => {
   const isSyncing = useOfflineStore((s) => s.isSyncing)
   const { sync } = useSyncEngine()
 
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  // Global Cmd+K / Ctrl+K / "/" shortcut to open search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isTypingTarget = ['INPUT', 'TEXTAREA', 'SELECT'].includes(
+        (e.target as HTMLElement)?.tagName,
+      )
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchOpen((v) => !v)
+        return
+      }
+      if (e.key === '/' && !isTypingTarget) {
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  const closeSearch = useCallback(() => setSearchOpen(false), [])
+
   return (
     <div className="flex h-screen overflow-hidden bg-ink-50">
       {/* Sidebar */}
@@ -42,7 +68,7 @@ export const AppShell: React.FC = () => {
             <span className="font-display font-bold text-sm">SP</span>
           </div>
           {!collapsed && (
-            <span className="font-display font-bold text-base tracking-tight">SPE-Lite</span>
+            <span className="font-display font-bold text-base tracking-tight">StratPlan</span>
           )}
         </div>
 
@@ -109,6 +135,19 @@ export const AppShell: React.FC = () => {
           >
             <Menu className="size-5" />
           </button>
+
+          {/* Search trigger */}
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-ink-200 bg-ink-50 text-ink-400 hover:bg-ink-100 hover:text-ink-600 transition-colors w-full max-w-xs"
+          >
+            <Search className="size-3.5 shrink-0" />
+            <span className="text-xs flex-1 text-left">Search…</span>
+            <kbd className="hidden sm:inline-flex items-center gap-0.5 text-[10px] font-mono text-ink-400 bg-white border border-ink-200 rounded px-1.5 py-0.5">
+              ⌘K
+            </kbd>
+          </button>
+
           <div className="flex-1" />
 
           {/* Sync indicator */}
@@ -131,6 +170,7 @@ export const AppShell: React.FC = () => {
       </div>
 
       <ToastContainer />
+      <CommandPalette open={searchOpen} onClose={closeSearch} />
     </div>
   )
 }
