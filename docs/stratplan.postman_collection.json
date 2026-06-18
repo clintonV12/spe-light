@@ -1,0 +1,524 @@
+{
+  "info": {
+    "name": "StratPlan API (Sprint 1 + 2)",
+    "description": "Covers every endpoint implemented through Sprint 2. Set the `base_url` collection variable, run '1. Auth > Login' once, and the access_token/refresh_token variables auto-populate for every subsequent request via the included test scripts. See API_REFERENCE.md and AUTH_AND_CONVENTIONS.md for full written documentation.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8080" },
+    { "key": "access_token", "value": "" },
+    { "key": "refresh_token", "value": "" },
+    { "key": "plan_id", "value": "" },
+    { "key": "activity_id", "value": "" },
+    { "key": "activity_id_2", "value": "" },
+    { "key": "user_id", "value": "" },
+    { "key": "invitation_id", "value": "" },
+    { "key": "org_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('access_token', body.access_token);",
+                  "  pm.collectionVariables.set('refresh_token', body.refresh_token);",
+                  "  if (body.user && body.user.org_id) pm.collectionVariables.set('org_id', body.user.org_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@acme.test\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": "{{base_url}}/auth/login"
+          }
+        },
+        {
+          "name": "Refresh token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('access_token', body.access_token);",
+                  "  pm.collectionVariables.set('refresh_token', body.refresh_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": "{{base_url}}/auth/refresh"
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": "{{base_url}}/auth/logout"
+          }
+        },
+        {
+          "name": "Request password reset",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@acme.test\"\n}"
+            },
+            "url": "{{base_url}}/auth/password-reset/request"
+          }
+        },
+        {
+          "name": "Confirm password reset",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"<plaintext token from the reset email>\",\n  \"password\": \"newSecurePassword123\"\n}"
+            },
+            "url": "{{base_url}}/auth/password-reset/confirm"
+          }
+        },
+        {
+          "name": "Accept invitation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('access_token', body.access_token);",
+                  "  pm.collectionVariables.set('refresh_token', body.refresh_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"<plaintext token from the invite email>\",\n  \"name\": \"Jane Doe\",\n  \"password\": \"securePassword123\"\n}"
+            },
+            "url": "{{base_url}}/invitations/accept"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Org Admin",
+      "item": [
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/org/users"
+          }
+        },
+        {
+          "name": "Update user",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"planner\",\n  \"is_active\": true\n}"
+            },
+            "url": "{{base_url}}/api/v1/org/users/{{user_id}}"
+          }
+        },
+        {
+          "name": "List invitations",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/org/invitations"
+          }
+        },
+        {
+          "name": "Send invitation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('invitation_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newhire@acme.test\",\n  \"role\": \"contributor\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/org/invitations"
+          }
+        },
+        {
+          "name": "Cancel invitation",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/org/invitations/{{invitation_id}}"
+          }
+        },
+        {
+          "name": "Resend invitation",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/org/invitations/{{invitation_id}}/resend"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Platform Admin",
+      "item": [
+        {
+          "name": "List orgs",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/orgs?active_only=true&limit=50&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "orgs"],
+              "query": [
+                { "key": "active_only", "value": "true" },
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "0" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create org",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Globex Inc\",\n  \"industry\": \"Manufacturing\",\n  \"locale\": \"en\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/admin/orgs"
+          }
+        },
+        {
+          "name": "Update org",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": false\n}"
+            },
+            "url": "{{base_url}}/api/v1/admin/orgs/{{org_id}}"
+          }
+        },
+        {
+          "name": "Send org invitation",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newcustomer@example.com\",\n  \"org_name\": \"New Customer LLC\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/admin/org-invitations"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Plans",
+      "item": [
+        {
+          "name": "List plans",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/plans"
+          }
+        },
+        {
+          "name": "Create plan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('plan_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"2026 Growth Strategy\",\n  \"description\": \"Our first strategic plan\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/plans"
+          }
+        },
+        {
+          "name": "Get plan",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/plans/{{plan_id}}"
+          }
+        },
+        {
+          "name": "Update plan",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/plans/{{plan_id}}"
+          }
+        },
+        {
+          "name": "List activities (all phases)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/plans/{{plan_id}}/activities"
+          }
+        },
+        {
+          "name": "List activities (filter by phase)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/plans/{{plan_id}}/activities?phase=P1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "plans", "{{plan_id}}", "activities"],
+              "query": [{ "key": "phase", "value": "P1" }]
+            }
+          }
+        },
+        {
+          "name": "Create activity (P1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('activity_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phase\": \"P1\",\n  \"type\": \"swot\",\n  \"title\": \"Initial SWOT Analysis\",\n  \"content\": { \"strengths\": [\"Strong brand\"] }\n}"
+            },
+            "url": "{{base_url}}/api/v1/plans/{{plan_id}}/activities"
+          }
+        },
+        {
+          "name": "Create activity (P3, created before P2 - phase independence demo)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('activity_id_2', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phase\": \"P3\",\n  \"type\": \"roadmap\",\n  \"title\": \"Q1 Roadmap\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/plans/{{plan_id}}/activities"
+          }
+        },
+        {
+          "name": "Get progress",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/plans/{{plan_id}}/progress"
+          }
+        },
+        {
+          "name": "Delete plan",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/plans/{{plan_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Activities",
+      "item": [
+        {
+          "name": "Update activity",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/activities/{{activity_id}}"
+          }
+        },
+        {
+          "name": "Create activity link",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"target_id\": \"{{activity_id_2}}\",\n  \"link_type\": \"manual\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/activities/{{activity_id}}/links"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Not Yet Implemented (expect 501)",
+      "item": [
+        {
+          "name": "AI draft",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/ai/draft"
+          }
+        },
+        {
+          "name": "AI summary",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/ai/summary"
+          }
+        },
+        {
+          "name": "Generate report",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/plans/{{plan_id}}/reports"
+          }
+        },
+        {
+          "name": "Get report status",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/reports/some-job-id"
+          }
+        }
+      ]
+    },
+    {
+      "name": "0. Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/health"
+          }
+        }
+      ]
+    }
+  ]
+}
