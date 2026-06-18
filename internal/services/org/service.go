@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"time"
 
+	"spe-light/internal/auditlog"
 	"spe-light/internal/auth"
 	"spe-light/internal/config"
 	"spe-light/internal/email"
@@ -212,10 +213,13 @@ type UpdateUserRequest struct {
 
 // UpdateUser updates a user's role and/or active status within the same org.
 //
+// actorID is the org admin performing the change; it is recorded in the
+// audit log alongside the change itself.
+//
 // Constraints enforced here (in addition to RBAC in the middleware):
 //   - Cannot assign platform-level roles (super_admin, platform_support) via this endpoint.
 //   - Deactivating a user immediately revokes all their active sessions.
-func (s *Service) UpdateUser(ctx context.Context, userID, orgID uuid.UUID, req UpdateUserRequest) (*models.User, error) {
+func (s *Service) UpdateUser(ctx context.Context, userID, orgID, actorID uuid.UUID, req UpdateUserRequest) (*models.User, error) {
 	if req.Role == nil && req.IsActive == nil {
 		return nil, fmt.Errorf("nothing to update")
 	}
@@ -223,6 +227,13 @@ func (s *Service) UpdateUser(ctx context.Context, userID, orgID uuid.UUID, req U
 	if req.Role != nil && req.Role.IsPlatformRole() {
 		return nil, fmt.Errorf("cannot assign platform roles via org admin")
 	}
+
+	// Capture prior state for the audit diff.
+	var priorRole models.Role
+	var priorActive bool
+	_ = s.db.QueryRow(ctx,
+		`SELECT role, is_active FROM users WHERE id = $1 AND org_id = $2`,
+		userID, orgID).Scan(&priorRole, &priorActive)
 
 	if req.Role != nil {
 		result, err := s.db.Exec(ctx,
@@ -236,6 +247,11 @@ func (s *Service) UpdateUser(ctx context.Context, userID, orgID uuid.UUID, req U
 			return nil, fmt.Errorf("user not found in this organisation")
 		}
 		slog.Info("user role updated", "user_id", userID, "new_role", *req.Role)
+		auditlog.Record(ctx, s.db, auditlog.Entry{
+			OrgID: orgID, UserID: actorID, Action: "user.role_changed",
+			TableName: "users", RecordID: userID,
+			Diff: map[string]any{"role": map[string]string{"from": string(priorRole), "to": string(*req.Role)}},
+		})
 	}
 
 	if req.IsActive != nil {
@@ -256,6 +272,11 @@ func (s *Service) UpdateUser(ctx context.Context, userID, orgID uuid.UUID, req U
 			}
 			slog.Info("user deactivated, sessions revoked", "user_id", userID)
 		}
+		auditlog.Record(ctx, s.db, auditlog.Entry{
+			OrgID: orgID, UserID: actorID, Action: "user.active_status_changed",
+			TableName: "users", RecordID: userID,
+			Diff: map[string]any{"is_active": map[string]bool{"from": priorActive, "to": *req.IsActive}},
+		})
 	}
 
 	// Reload and return the updated user.
@@ -298,21 +319,6 @@ func (s *Service) ListUsers(ctx context.Context, orgID uuid.UUID) ([]models.User
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-
-// slugify converts a string to a URL-safe lowercase slug.
-// Non-alphanumeric characters are dropped; spaces and hyphens become hyphens.
-func slugify(s string) string {
-	result := make([]byte, 0, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c >= 'A' && c <= 'Z':
-			result = append(result, c+32)
-		case (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'):
-			result = append(result, c)
-		case c == ' ' || c == '-':
-			result = append(result, '-')
-		}
-	}
-	return string(result)
-}
+//
+// Note: org creation (and its slugify helper) lives in the admin service —
+// org admins manage existing orgs, they don't create new ones.

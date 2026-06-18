@@ -63,6 +63,7 @@ func (h *Admin) CreateOrg(w http.ResponseWriter, r *http.Request) {
 
 // PATCH /api/v1/admin/orgs/{orgID}
 func (h *Admin) UpdateOrg(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFrom(r.Context())
 	orgID, err := uuid.Parse(chi.URLParam(r, "orgID"))
 	if err != nil {
 		response.ErrorJSON(w, "invalid org id", http.StatusBadRequest)
@@ -72,7 +73,7 @@ func (h *Admin) UpdateOrg(w http.ResponseWriter, r *http.Request) {
 	if !response.DecodeJSON(w, r, &req) {
 		return
 	}
-	org, err := h.svc.UpdateOrg(r.Context(), orgID, req)
+	org, err := h.svc.UpdateOrg(r.Context(), orgID, claims.UserID, req)
 	if err != nil {
 		response.ErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return

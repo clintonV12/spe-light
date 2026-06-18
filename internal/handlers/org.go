@@ -51,7 +51,7 @@ func (h *Org) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	if !response.DecodeJSON(w, r, &req) {
 		return
 	}
-	user, err := h.svc.UpdateUser(r.Context(), userID, *claims.OrgID, req)
+	user, err := h.svc.UpdateUser(r.Context(), userID, *claims.OrgID, claims.UserID, req)
 	if err != nil {
 		response.ErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return

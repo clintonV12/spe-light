@@ -124,7 +124,7 @@ func (h *Plan) DeletePlan(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := h.svc.DeletePlan(r.Context(), planID, *claims.OrgID); err != nil {
+	if err := h.svc.DeletePlan(r.Context(), planID, *claims.OrgID, claims.UserID); err != nil {
 		response.ErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}

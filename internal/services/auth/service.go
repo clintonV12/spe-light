@@ -334,14 +334,12 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*T
 
 	user := models.User{
 		ID:       uuid.New(),
+		OrgID:    inv.OrgID, // nil for platform-level invites (e.g. future org-admin self-setup flows)
 		Email:    inv.Email,
 		Name:     req.Name,
 		Role:     inv.Role,
 		IsActive: true,
 		Locale:   "en",
-	}
-	if inv.OrgID != nil {
-		user.OrgID = *inv.OrgID
 	}
 
 	_, err = tx.Exec(ctx,
@@ -375,13 +373,9 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*T
 func (s *Service) issueTokenPair(ctx context.Context, user *models.User) (*TokenResponse, error) {
 	claims := models.TokenClaims{
 		UserID: user.ID,
+		OrgID:  user.OrgID, // nil for platform-tier users (super_admin, platform_support)
 		Role:   user.Role,
 		Email:  user.Email,
-	}
-	// Platform-tier users (super_admin, platform_support) have no OrgID in the token.
-	if user.OrgID != (uuid.UUID{}) {
-		orgID := user.OrgID
-		claims.OrgID = &orgID
 	}
 
 	accessToken, err := auth.IssueAccessToken(s.cfg.JWTSecret, s.cfg.JWTAccessExpiry(), claims)

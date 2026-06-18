@@ -1,3 +1,9 @@
+// Package auth provides the low-level security primitives used across
+// StratPlan: password hashing, JWT issuance/parsing, opaque token generation,
+// and HMAC link signing.
+//
+// This package has no knowledge of HTTP or the database — it is pure crypto
+// and token logic, which makes it easy to unit test in isolation.
 package auth
 
 import (

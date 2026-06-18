@@ -115,9 +115,13 @@ type Organisation struct {
 
 // ── User ──────────────────────────────────────────────────────────────────
 
+// User represents a person with access to the platform.
+// OrgID is nil for platform-tier users (super_admin, platform_support), who
+// are not scoped to a single organisation. PasswordHash and SSOSubject are
+// never serialised to JSON.
 type User struct {
 	ID           uuid.UUID  `json:"id"                       db:"id"`
-	OrgID        uuid.UUID  `json:"org_id"                   db:"org_id"`
+	OrgID        *uuid.UUID `json:"org_id,omitempty"         db:"org_id"`
 	Email        string     `json:"email"                    db:"email"`
 	PasswordHash *string    `json:"-"                        db:"password_hash"`
 	Name         string     `json:"name"                     db:"name"`

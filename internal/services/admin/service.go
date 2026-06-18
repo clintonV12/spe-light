@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"time"
 
+	"spe-light/internal/auditlog"
 	"spe-light/internal/auth"
 	"spe-light/internal/config"
 	"spe-light/internal/email"
@@ -147,11 +148,13 @@ type UpdateOrgRequest struct {
 
 // UpdateOrg applies a partial update to an organisation.
 //
+// actorID is the platform admin performing the change, recorded in the audit log.
+//
 // When deactivating (is_active = false):
 //   - All refresh tokens for users in this org are revoked immediately.
 //   - Active sessions are terminated on the next API call (JWT expires naturally).
 //   - Org admin email notification is sent.
-func (s *Service) UpdateOrg(ctx context.Context, orgID uuid.UUID, req UpdateOrgRequest) (*models.Organisation, error) {
+func (s *Service) UpdateOrg(ctx context.Context, orgID, actorID uuid.UUID, req UpdateOrgRequest) (*models.Organisation, error) {
 	if req.Name == nil && req.IsActive == nil && req.Industry == nil && req.Locale == nil {
 		return nil, fmt.Errorf("nothing to update")
 	}
@@ -195,6 +198,11 @@ func (s *Service) UpdateOrg(ctx context.Context, orgID uuid.UUID, req UpdateOrgR
 			*req.IsActive, orgID); err != nil {
 			return nil, fmt.Errorf("update is_active: %w", err)
 		}
+		auditlog.Record(ctx, s.db, auditlog.Entry{
+			OrgID: orgID, UserID: actorID, Action: "organisation.active_status_changed",
+			TableName: "organisations", RecordID: orgID,
+			Diff: map[string]any{"is_active": map[string]bool{"from": currentActive, "to": *req.IsActive}},
+		})
 		// If the org is being deactivated, revoke all sessions for its users
 		// and notify org admins (REQ-F-005).
 		if !*req.IsActive && currentActive {

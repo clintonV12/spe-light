@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"time"
 
+	"spe-light/internal/auditlog"
 	"spe-light/internal/config"
 	"spe-light/internal/models"
 
@@ -234,7 +235,7 @@ func (s *Service) UpdatePlan(ctx context.Context, planID, orgID uuid.UUID, req U
 
 // DeletePlan soft-deletes a plan and all its activities.
 // Hard deletes are not supported in v1; use the migrations to purge if needed.
-func (s *Service) DeletePlan(ctx context.Context, planID, orgID uuid.UUID) error {
+func (s *Service) DeletePlan(ctx context.Context, planID, orgID, actorID uuid.UUID) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -261,8 +262,16 @@ func (s *Service) DeletePlan(ctx context.Context, planID, orgID uuid.UUID) error
 		return fmt.Errorf("delete activities: %w", err)
 	}
 
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+
 	slog.Info("plan deleted", "plan_id", planID, "org_id", orgID)
-	return tx.Commit(ctx)
+	auditlog.Record(ctx, s.db, auditlog.Entry{
+		OrgID: orgID, UserID: actorID, Action: "plan.deleted",
+		TableName: "plans", RecordID: planID,
+	})
+	return nil
 }
 
 // ── Activity CRUD ─────────────────────────────────────────────────────────
