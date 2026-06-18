@@ -77,6 +77,20 @@ export interface User {
   role: UserRole
   locale?: string
   is_active: boolean
+  /**
+   * Plan-scoped access grant — mirrors the `plan_viewers` table.
+   * - `undefined` or empty array: role-based default (org_admin/planner/
+   *   contributor see all org plans they're otherwise permitted to see).
+   * - Non-empty array: this user can ONLY see these specific plan IDs,
+   *   regardless of role. Primarily used for `viewer` accounts invited
+   *   with `plan_ids` set, but the field is generic so any role can be
+   *   scoped this way (e.g. a contractor contributor restricted to one
+   *   engagement).
+   * This must be enforced server-side once real auth lands (Postgres RLS
+   * per the SRS) — the frontend never filters by this itself, it only
+   * ever renders what the API returns.
+   */
+  plan_ids?: string[]
   created_at: string
   updated_at: string
 }

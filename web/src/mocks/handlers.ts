@@ -11,6 +11,7 @@ import type {
 import {
   MOCK_ME, MOCK_ORG, MOCK_USERS, MOCK_INVITATIONS,
   MOCK_PLANS, MOCK_ACTIVITIES, MOCK_REPORTS, MOCK_ACTIVITY_LINKS,
+  MOCK_ACTIVE_USER_ID,
 } from './seed'
 
 // ─── In-memory mutable state ────────────────────────────────────────────────
@@ -26,6 +27,59 @@ let activityLinks: ActivityLink[] = structuredClone(MOCK_ACTIVITY_LINKS)
 const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms))
 const now   = () => new Date().toISOString()
 const uuid  = () => crypto.randomUUID()
+
+/**
+ * Resolves the "current" mock-session user. In real mode this is whoever
+ * the JWT identifies; the Go backend resolves it from the access token on
+ * every request and applies row-level security at the query layer. Here we
+ * simulate that by reading MOCK_ACTIVE_USER_ID from seed data — change that
+ * constant to test as a different user (e.g. a plan-scoped viewer).
+ */
+function currentUser(): User {
+  return users.find((u) => u.id === MOCK_ACTIVE_USER_ID) ?? MOCK_ME
+}
+
+/**
+ * Mirrors the server-side authorization rule that MUST be enforced by
+ * Postgres RLS / query-layer filtering once the real Go API is connected:
+ *
+ *   - A user with a non-empty `plan_ids` grant (plan-scoped, typically a
+ *     `viewer` invited to specific plans) can see ONLY those plan IDs,
+ *     regardless of role.
+ *   - Everyone else sees every plan in their organisation (existing
+ *     role checks on write operations — create/update/delete — are
+ *     handled separately via usePermission on the frontend and
+ *     RequireRole middleware on the backend; this function only governs
+ *     READ visibility of plans/activities).
+ *
+ * Returns `null` to mean "no restriction — show all org plans".
+ */
+function scopedPlanIds(user: User): Set<string> | null {
+  if (user.plan_ids && user.plan_ids.length > 0) {
+    return new Set(user.plan_ids)
+  }
+  return null
+}
+
+function canSeePlan(user: User, plan: Plan): boolean {
+  if (plan.org_id !== user.org_id) return false
+  const scope = scopedPlanIds(user)
+  if (scope === null) return true
+  return scope.has(plan.id)
+}
+
+function filterVisiblePlans(allPlans: Plan[], user: User): Plan[] {
+  return allPlans.filter((p) => canSeePlan(user, p))
+}
+
+function assertPlanVisible(planId: string, user: User): void {
+  const plan = plans.find((p) => p.id === planId)
+  if (!plan || !canSeePlan(user, plan)) {
+    // Same error shape a real 403/404 from the API would surface as —
+    // deliberately vague so we don't leak whether the plan exists at all.
+    throw new Error('Plan not found')
+  }
+}
 
 function recomputeProgress(planId: string): Plan['progress'] {
   const acts = activities.filter((a) => a.plan_id === planId)
@@ -58,7 +112,7 @@ export const mockAuth = {
 
   me: async (): Promise<User> => {
     await delay(200)
-    return structuredClone(MOCK_ME)
+    return structuredClone(currentUser())
   },
 
   org: async (): Promise<Organisation> => {
@@ -72,13 +126,14 @@ export const mockAuth = {
 export const mockPlans = {
   list: async (): Promise<Plan[]> => {
     await delay()
-    return plans.map((p) => ({ ...p, progress: recomputeProgress(p.id) }))
+    const visible = filterVisiblePlans(plans, currentUser())
+    return visible.map((p) => ({ ...p, progress: recomputeProgress(p.id) }))
   },
 
   get: async (id: string): Promise<Plan> => {
     await delay(200)
-    const plan = plans.find((p) => p.id === id)
-    if (!plan) throw new Error('Plan not found')
+    assertPlanVisible(id, currentUser())
+    const plan = plans.find((p) => p.id === id)!
     return { ...structuredClone(plan), progress: recomputeProgress(id) }
   },
 
@@ -87,7 +142,7 @@ export const mockPlans = {
     const plan: Plan = {
       id: `plan-${uuid().slice(0, 8)}`,
       org_id: MOCK_ORG.id,
-      owner_id: MOCK_ME.id,
+      owner_id: currentUser().id,
       title: payload.title ?? 'Untitled plan',
       description: payload.description,
       status: payload.status ?? 'draft',
@@ -102,6 +157,7 @@ export const mockPlans = {
 
   update: async (id: string, payload: Partial<Plan>): Promise<Plan> => {
     await delay(400)
+    assertPlanVisible(id, currentUser())
     plans = plans.map((p) =>
       p.id === id ? { ...p, ...payload, updated_at: now() } : p
     )
@@ -111,14 +167,15 @@ export const mockPlans = {
 
   delete: async (id: string): Promise<void> => {
     await delay(400)
+    assertPlanVisible(id, currentUser())
     plans = plans.filter((p) => p.id !== id)
     activities = activities.filter((a) => a.plan_id !== id)
   },
 
   duplicate: async (id: string): Promise<Plan> => {
     await delay(600)
-    const source = plans.find((p) => p.id === id)
-    if (!source) throw new Error('Plan not found')
+    assertPlanVisible(id, currentUser())
+    const source = plans.find((p) => p.id === id)!
     const newId = `plan-${uuid().slice(0, 8)}`
     const copy: Plan = {
       ...structuredClone(source),
@@ -145,6 +202,7 @@ export const mockPlans = {
 
   progress: async (id: string) => {
     await delay(200)
+    assertPlanVisible(id, currentUser())
     return recomputeProgress(id)
   },
 }
@@ -154,6 +212,7 @@ export const mockPlans = {
 export const mockActivities = {
   list: async (planId: string): Promise<Activity[]> => {
     await delay()
+    assertPlanVisible(planId, currentUser())
     return structuredClone(activities.filter((a) => a.plan_id === planId))
   },
 
@@ -161,11 +220,13 @@ export const mockActivities = {
     await delay(200)
     const a = activities.find((a) => a.id === id)
     if (!a) throw new Error('Activity not found')
+    assertPlanVisible(a.plan_id, currentUser())
     return structuredClone(a)
   },
 
   create: async (planId: string, payload: Partial<Activity>): Promise<Activity> => {
     await delay(400)
+    assertPlanVisible(planId, currentUser())
     const maxOrder = activities
       .filter((a) => a.plan_id === planId && a.phase === payload.phase)
       .reduce((m, a) => Math.max(m, a.user_order), 0)
@@ -190,6 +251,9 @@ export const mockActivities = {
 
   update: async (id: string, payload: Partial<Activity>): Promise<Activity> => {
     await delay(350)
+    const existing = activities.find((a) => a.id === id)
+    if (!existing) throw new Error('Activity not found')
+    assertPlanVisible(existing.plan_id, currentUser())
     activities = activities.map((a) =>
       a.id === id ? { ...a, ...payload, updated_at: now() } : a
     )
@@ -198,12 +262,16 @@ export const mockActivities = {
 
   delete: async (id: string): Promise<void> => {
     await delay(300)
+    const existing = activities.find((a) => a.id === id)
+    if (!existing) throw new Error('Activity not found')
+    assertPlanVisible(existing.plan_id, currentUser())
     activities = activities.filter((a) => a.id !== id)
     activityLinks = activityLinks.filter((l) => l.source_id !== id && l.target_id !== id)
   },
 
   listLinks: async (planId: string): Promise<ActivityLink[]> => {
     await delay(250)
+    assertPlanVisible(planId, currentUser())
     return structuredClone(activityLinks.filter((l) => l.plan_id === planId))
   },
 
@@ -213,21 +281,24 @@ export const mockActivities = {
     if (!targetId) throw new Error('target_id is required')
     const sourceAct = activities.find((a) => a.id === sourceId)
     if (!sourceAct) throw new Error('Source activity not found')
+    assertPlanVisible(sourceAct.plan_id, currentUser())
     const link: ActivityLink = {
       id: `link-${uuid().slice(0, 8)}`,
       plan_id: sourceAct.plan_id,
       source_id: sourceId,
       target_id: targetId,
       link_type: payload.link_type ?? 'manual',
-      created_by: MOCK_ME.id,
+      created_by: currentUser().id,
       created_at: now(),
     }
     activityLinks = [...activityLinks, link]
     return structuredClone(link)
   },
 
-  deleteLink: async (_activityId: string, linkId: string): Promise<void> => {
+  deleteLink: async (activityId: string, linkId: string): Promise<void> => {
     await delay(250)
+    const sourceAct = activities.find((a) => a.id === activityId)
+    if (sourceAct) assertPlanVisible(sourceAct.plan_id, currentUser())
     activityLinks = activityLinks.filter((l) => l.id !== linkId)
   },
 }
@@ -260,7 +331,7 @@ export const mockOrg = {
       org_id: MOCK_ORG.id,
       email: payload.email,
       role: payload.role,
-      invited_by: MOCK_ME.id,
+      invited_by: currentUser().id,
       expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
       status: 'pending',
       created_at: now(),
@@ -293,6 +364,7 @@ let pendingJobs: Record<string, { resolveAt: number; planId: string }> = {}
 export const mockReports = {
   generate: async (planId: string): Promise<{ job_id: string }> => {
     await delay(400)
+    assertPlanVisible(planId, currentUser())
     const jobId = `job-${uuid().slice(0, 8)}`
     pendingJobs[jobId] = { resolveAt: Date.now() + 3000, planId }
     return { job_id: jobId }
@@ -314,7 +386,7 @@ export const mockReports = {
         type: 'full_plan' as const,
         format: 'pdf' as const,
         file_path: `/mock-reports/${jobId}.pdf`,
-        generated_by: MOCK_ME.id,
+        generated_by: currentUser().id,
         generated_at: now(),
       },
     }
@@ -322,6 +394,7 @@ export const mockReports = {
 
   history: async (planId: string) => {
     await delay(250)
+    assertPlanVisible(planId, currentUser())
     return MOCK_REPORTS.filter((r) => r.plan_id === planId)
   },
 }

@@ -58,10 +58,28 @@ export const MOCK_USERS: User[] = [
     name: 'Nomcebo Mthembu',
     role: 'viewer',
     is_active: false,
+    plan_ids: ['plan-001'],
     created_at: '2024-04-01T08:00:00Z',
     updated_at: '2024-11-01T08:00:00Z',
   },
+  {
+    id: 'user-005',
+    org_id: 'org-001',
+    email: 'bongani@partner-ngo.org.sz',
+    name: 'Bongani Simelane',
+    role: 'viewer',
+    is_active: true,
+    // Plan-scoped: can ONLY see the Youth Employment Initiative (plan-003).
+    // Used to verify viewer scoping — see MOCK_SCOPED_VIEWER_ID below.
+    plan_ids: ['plan-003'],
+    created_at: '2025-05-01T08:00:00Z',
+    updated_at: '2025-05-01T08:00:00Z',
+  },
 ]
+
+// Switch which user is "logged in" for mock testing — see mocks/handlers.ts.
+// Set to 'user-005' to test viewer plan-scoping (should only see plan-003).
+export const MOCK_ACTIVE_USER_ID = 'user-001'
 
 // ─── Invitations ─────────────────────────────────────────────────────────────
 
