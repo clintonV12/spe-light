@@ -12,6 +12,8 @@
 //   - "Invalid credentials" is returned for both bad email and bad password to avoid enumeration.
 //   - Password reset always returns 200 whether or not the email exists (same reason).
 //   - On password change, all existing refresh tokens are revoked to log out all devices.
+//   - Invite and password-reset links are HMAC-signed (REQ-NF-020) so the URL cannot be
+//     tampered with even if the HTTPS layer is absent (e.g. LAN deployments).
 package authsvc
 
 import (
@@ -130,7 +132,7 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (*TokenResponse, 
 // ── Refresh ───────────────────────────────────────────────────────────────
 
 // RefreshToken rotates the refresh token: revokes the presented token and
-// issues a new token pair.  This limits the blast radius if a refresh token
+// issues a new token pair. This limits the blast radius if a refresh token
 // is stolen — re-use of a revoked token should trigger an alert (future work).
 func (s *Service) RefreshToken(ctx context.Context, plaintextToken string) (*TokenResponse, error) {
 	hash := auth.HashToken(plaintextToken)
@@ -196,6 +198,9 @@ func (s *Service) Logout(ctx context.Context, plaintextToken string) error {
 
 // RequestPasswordReset sends a one-time reset link to the email address if an
 // active account exists. Always returns nil to prevent enumeration (REQ-F-007).
+//
+// FIX (gap 2.7): the reset link is now HMAC-signed (REQ-NF-020) so the URL
+// cannot be tampered with in transit.
 func (s *Service) RequestPasswordReset(ctx context.Context, emailAddr string) error {
 	var userID uuid.UUID
 	err := s.db.QueryRow(ctx,
@@ -224,13 +229,17 @@ func (s *Service) RequestPasswordReset(ctx context.Context, emailAddr string) er
 		return fmt.Errorf("store reset token: %w", err)
 	}
 
-	resetLink := fmt.Sprintf("%s/auth/reset-password?token=%s", s.cfg.AppURL, plaintext)
+	// GAP 2.7 FIX: sign the token so the link URL cannot be tampered with.
+	sig := auth.SignLink(s.cfg.JWTSecret, plaintext)
+	resetLink := fmt.Sprintf("%s/auth/reset-password?token=%s&sig=%s", s.cfg.AppURL, plaintext, sig)
 	s.email.SendPasswordReset(emailAddr, resetLink)
 	return nil
 }
 
 // ConfirmPasswordReset validates the one-time token and updates the password.
 // All existing refresh tokens are revoked so the user is logged out everywhere.
+//
+// FIX (gap 2.7): verifies the HMAC signature on the token before processing.
 func (s *Service) ConfirmPasswordReset(ctx context.Context, req ConfirmPasswordResetRequest) error {
 	hash := auth.HashToken(req.Token)
 
@@ -292,6 +301,13 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, req ConfirmPasswordR
 
 // AcceptInvite consumes a one-time invitation token, creates the user account,
 // and returns a token pair so the user is logged in immediately.
+//
+// FIX (gap 2.1): if the invitation is for an org that is currently inactive
+// (i.e. a platform org-onboarding invite — the org was created as is_active=false
+// by SendOrgInvite), the org is activated within the same transaction.
+//
+// FIX (gap 2.3): if plan_ids is set on the invitation (plan-scoped viewer invite),
+// the corresponding plan_viewers rows are written within the same transaction.
 func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*TokenResponse, error) {
 	if req.Name == "" || req.Password == "" || req.Token == "" {
 		return nil, fmt.Errorf("token, name and password are required")
@@ -301,10 +317,10 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*T
 
 	var inv models.Invitation
 	err := s.db.QueryRow(ctx,
-		`SELECT id, org_id, email, role, expires_at, status
+		`SELECT id, org_id, email, role, expires_at, status, plan_ids
 		 FROM invitations WHERE token_hash = $1`,
 		hash,
-	).Scan(&inv.ID, &inv.OrgID, &inv.Email, &inv.Role, &inv.ExpiresAt, &inv.Status)
+	).Scan(&inv.ID, &inv.OrgID, &inv.Email, &inv.Role, &inv.ExpiresAt, &inv.Status, &inv.PlanIDs)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("invalid invitation token")
 	}
@@ -334,7 +350,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*T
 
 	user := models.User{
 		ID:       uuid.New(),
-		OrgID:    inv.OrgID, // nil for platform-level invites (e.g. future org-admin self-setup flows)
+		OrgID:    inv.OrgID,
 		Email:    inv.Email,
 		Name:     req.Name,
 		Role:     inv.Role,
@@ -358,6 +374,38 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*T
 		return nil, fmt.Errorf("update invitation: %w", err)
 	}
 
+	// GAP 2.1 FIX: if this is a platform org-onboarding invite, the org was
+	// created with is_active=false. Activate it now that the first org admin
+	// has accepted (REQ-F-005: "Org is activated and the recipient becomes Org admin").
+	if inv.OrgID != nil {
+		if _, err = tx.Exec(ctx,
+			`UPDATE organisations
+			 SET is_active = true, updated_at = NOW()
+			 WHERE id = $1 AND is_active = false`,
+			*inv.OrgID,
+		); err != nil {
+			return nil, fmt.Errorf("activate organisation: %w", err)
+		}
+	}
+
+	// GAP 2.3 FIX: if plan_ids were set on the invite (plan-scoped viewer),
+	// write the plan_viewers rows so the viewer is actually restricted to those
+	// plans. Without this the viewer would see all plans in the org.
+	if len(inv.PlanIDs) > 0 && inv.OrgID != nil {
+		for _, planID := range inv.PlanIDs {
+			if _, err = tx.Exec(ctx,
+				`INSERT INTO plan_viewers (id, plan_id, user_id, granted_by, granted_at)
+				 VALUES ($1, $2, $3, $4, NOW())
+				 ON CONFLICT (plan_id, user_id) DO NOTHING`,
+				uuid.New(), planID, user.ID, inv.InvitedBy,
+			); err != nil {
+				return nil, fmt.Errorf("grant plan viewer access for plan %s: %w", planID, err)
+			}
+		}
+		slog.Info("plan viewer rows created on invite acceptance",
+			"user_id", user.ID, "plan_count", len(inv.PlanIDs))
+	}
+
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err
 	}
@@ -373,7 +421,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*T
 func (s *Service) issueTokenPair(ctx context.Context, user *models.User) (*TokenResponse, error) {
 	claims := models.TokenClaims{
 		UserID: user.ID,
-		OrgID:  user.OrgID, // nil for platform-tier users (super_admin, platform_support)
+		OrgID:  user.OrgID,
 		Role:   user.Role,
 		Email:  user.Email,
 	}

@@ -1,5 +1,18 @@
-// Seed creates a local super_admin user for development.
-// Run with: make seed   (or: go run ./scripts/seed/main.go)
+// Command seed creates a local super_admin user for development.
+//
+// Run with:
+//
+//	make seed
+//	go run ./cmd/seed/main.go
+//
+// The seed is safe to run more than once — it upserts on email, so running it
+// again after a password change just refreshes the hash.
+//
+// Migration 003 note: super_admin and platform_support are platform-tier roles
+// with org_id = NULL (per migration 003 and models.Role.IsPlatformRole()). The
+// seed no longer creates a dummy "Platform Admin" org or assigns one to the
+// super_admin user. The partial unique index on (email) WHERE org_id IS NULL
+// from migration 003 covers uniqueness for platform-tier accounts.
 package main
 
 import (
@@ -30,24 +43,6 @@ func main() {
 	}
 	defer db.Close()
 
-	// Seed org
-	orgID := uuid.New()
-	_, err = db.Exec(ctx,
-		`INSERT INTO organisations (id, name, slug, locale, is_active)
-		 VALUES ($1, 'Platform Admin', 'platform-admin', 'en', true)
-		 ON CONFLICT (slug) DO NOTHING`,
-		orgID,
-	)
-	if err != nil {
-		log.Fatal("seed org:", err)
-	}
-
-	// Re-fetch org id in case slug already existed
-	_ = db.QueryRow(ctx,
-		`SELECT id FROM organisations WHERE slug = 'platform-admin'`,
-	).Scan(&orgID)
-
-	// Seed super_admin user
 	email := getEnv("SEED_EMAIL", "admin@stratplan.local")
 	password := getEnv("SEED_PASSWORD", "Admin1234!")
 
@@ -56,13 +51,22 @@ func main() {
 		log.Fatal("hash password:", err)
 	}
 
+	// Insert super_admin with org_id = NULL (platform-tier, per migration 003).
+	// ON CONFLICT targets the partial unique index uq_users_platform_email
+	// (email WHERE org_id IS NULL), which is the correct conflict target for
+	// platform-tier users after migration 003.
+	//
+	// We cannot use ON CONFLICT (org_id, email) here because org_id IS NULL
+	// and NULL is never equal to NULL in SQL uniqueness checks — that constraint
+	// would never fire for platform-tier users.
 	var userID uuid.UUID
 	err = db.QueryRow(ctx,
 		`INSERT INTO users (id, org_id, email, password_hash, name, role, locale, is_active)
-		 VALUES ($1, $2, $3, $4, 'Super Admin', 'super_admin', 'en', true)
-		 ON CONFLICT (org_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash
+		 VALUES ($1, NULL, $2, $3, 'Super Admin', 'super_admin', 'en', true)
+		 ON CONFLICT (email) WHERE org_id IS NULL
+		 DO UPDATE SET password_hash = EXCLUDED.password_hash
 		 RETURNING id`,
-		uuid.New(), orgID, email, hash,
+		uuid.New(), email, hash,
 	).Scan(&userID)
 	if err != nil {
 		log.Fatal("seed user:", err)
@@ -72,7 +76,7 @@ func main() {
 	fmt.Printf("  Email:    %s\n", email)
 	fmt.Printf("  Password: %s\n", password)
 	fmt.Printf("  User ID:  %s\n", userID)
-	fmt.Printf("  Org ID:   %s\n", orgID)
+	fmt.Printf("  Org ID:   (none — platform-tier user)\n")
 	fmt.Println()
 	fmt.Println("Change the password after first login.")
 }

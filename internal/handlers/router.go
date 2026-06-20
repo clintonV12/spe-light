@@ -5,12 +5,12 @@
 //
 //	Public (no auth):
 //	  GET  /health
-//	  POST /auth/login                      — email+password login (rate-limited)
-//	  POST /auth/refresh                    — rotate refresh token
-//	  POST /auth/logout                     — revoke session
-//	  POST /auth/password-reset/request     — request a reset link
-//	  POST /auth/password-reset/confirm     — consume reset token + set new password
-//	  POST /invitations/accept              — accept an invite token
+//	  POST /auth/login                              — email+password login (rate-limited)
+//	  POST /auth/refresh                            — rotate refresh token
+//	  POST /auth/logout                             — revoke session
+//	  POST /auth/password-reset/request             — request a reset link
+//	  POST /auth/password-reset/confirm             — consume reset token + set new password
+//	  POST /invitations/accept                      — accept an invite token
 //
 //	Authenticated (Bearer JWT required):
 //	  Org admin (/api/v1/org):
@@ -22,24 +22,34 @@
 //	    POST   /invitations/{invitationID}/resend
 //
 //	  Platform admin (/api/v1/admin) — super_admin + platform_support:
-//	    GET  /orgs                          — list all orgs
-//	    POST /orgs                          — create org  (super_admin only)
-//	    PATCH /orgs/{orgID}                 — update org  (super_admin only)
-//	    POST /org-invitations               — invite org admin (super_admin only)
+//	    GET   /orgs                                 — list all orgs
+//	    POST  /orgs                                 — create org (super_admin only)
+//	    PATCH /orgs/{orgID}                         — update org (super_admin only)
+//	    POST  /org-invitations                      — invite org admin (super_admin only)
 //
-//	  Plans + activities (/api/v1/plans, /api/v1/activities) — Sprint 2:
+//	  Plans + activities (/api/v1/plans, /api/v1/activities):
 //	    GET    /plans
-//	    POST   /plans                       — planner+
+//	    POST   /plans                               — planner+
 //	    GET    /plans/{planID}
-//	    PUT    /plans/{planID}              — planner+
-//	    DELETE /plans/{planID}              — org_admin only
+//	    PUT    /plans/{planID}                      — planner+
+//	    DELETE /plans/{planID}                      — org_admin only
 //	    GET    /plans/{planID}/activities
-//	    POST   /plans/{planID}/activities   — planner+
+//	    POST   /plans/{planID}/activities           — planner+
 //	    GET    /plans/{planID}/progress
-//	    PUT    /activities/{activityID}     — planner+ or assigned contributor
-//	    POST   /activities/{activityID}/links — planner+
+//	    PUT    /activities/{activityID}             — planner+ or assigned contributor
+//	    POST   /activities/{activityID}/links       — planner+
 //
-//	  AI + Reports (Sprint 3+):
+//	  Plan-scoped viewers (Sprint B / gap 2.3):
+//	    POST   /plans/{planID}/viewers              — org_admin only
+//	    DELETE /plans/{planID}/viewers/{userID}     — org_admin only
+//
+//	  Milestones (Sprint B / gap 2.4):
+//	    GET    /plans/{planID}/milestones           — all org roles
+//	    POST   /plans/{planID}/milestones           — planner+
+//	    PUT    /milestones/{milestoneID}            — planner+
+//	    DELETE /milestones/{milestoneID}            — org_admin only
+//
+//	  AI + Reports (Sprint C/D — currently 501):
 //	    POST /ai/draft
 //	    POST /ai/summary
 //	    POST /plans/{planID}/reports
@@ -55,6 +65,7 @@ import (
 	"spe-light/internal/response"
 	adminsvc "spe-light/internal/services/admin"
 	authsvc "spe-light/internal/services/auth"
+	milestonesvc "spe-light/internal/services/milestone"
 	orgsvc "spe-light/internal/services/org"
 	plansvc "spe-light/internal/services/plan"
 
@@ -90,12 +101,14 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 	orgService := orgsvc.New(db, cfg, emailSvc)
 	adminService := adminsvc.New(db, cfg, emailSvc)
 	planService := plansvc.New(db, cfg)
+	milestoneService := milestonesvc.New(db) // Sprint B: gap 2.4
 
 	// ── Handler construction ──────────────────────────────────────────
 	authH := NewAuth(authService)
 	orgH := NewOrg(orgService)
 	adminH := NewAdmin(adminService)
 	planH := NewPlan(planService)
+	milestoneH := NewMilestone(milestoneService) // Sprint B: gap 2.4
 
 	// ── Public routes ─────────────────────────────────────────────────
 	r.Get("/health", Health)
@@ -139,15 +152,15 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Post("/org-invitations", adminH.SendOrgInvitation)
 		})
 
-		// ── Plans (Sprint 2) ───────────────────────────────────────
+		// ── Plans ──────────────────────────────────────────────────
 		r.Route("/api/v1/plans", func(r chi.Router) {
-			// All authenticated org users can list and view plans.
+			// All authenticated org users can read.
 			r.Get("/", planH.ListPlans)
 			r.Get("/{planID}", planH.GetPlan)
 			r.Get("/{planID}/progress", planH.GetProgress)
 			r.Get("/{planID}/activities", planH.ListActivities)
 
-			// Only planner and above can create/edit.
+			// Planner+ can create and edit.
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/", planH.CreatePlan)
@@ -156,7 +169,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Put("/{planID}", planH.UpdatePlan)
 
-			// Only org_admin can delete plans.
+			// Only org_admin can delete.
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin,
 			)).Delete("/{planID}", planH.DeletePlan)
@@ -165,15 +178,34 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/{planID}/activities", planH.CreateActivity)
 
-			// Report generation — Sprint 3.
+			// ── Sprint B: Plan-scoped viewer management (gap 2.3) ─
+			// Direct grant/revoke for existing org users; org_admin only.
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin,
+			)).Post("/{planID}/viewers", planH.GrantPlanViewer)
+
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin,
+			)).Delete("/{planID}/viewers/{userID}", planH.RevokePlanViewer)
+
+			// ── Sprint B: Milestones (gap 2.4) ────────────────────
+			// List is readable by all org roles.
+			r.Get("/{planID}/milestones", milestoneH.ListMilestones)
+
+			// Create requires planner+.
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Post("/{planID}/milestones", milestoneH.CreateMilestone)
+
+			// Report generation — Sprint D (501 until implemented).
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/{planID}/reports", notImplemented)
 		})
 
-		// ── Activities (Sprint 2) ──────────────────────────────────
+		// ── Activities ─────────────────────────────────────────────
 		// Activity updates allow contributors (for assigned activities);
-		// the handler enforces the assignment check.
+		// the handler enforces the assignment check server-side.
 		r.Route("/api/v1/activities/{activityID}", func(r chi.Router) {
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner, models.RoleContributor,
@@ -184,7 +216,20 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 			)).Post("/links", planH.CreateActivityLink)
 		})
 
-		// ── AI (Sprint 3+) ─────────────────────────────────────────
+		// ── Sprint B: Milestones — update and delete ───────────────
+		// These are at /milestones/{id} (not nested under a plan) to
+		// avoid requiring planID in single-resource mutation URLs.
+		r.Route("/api/v1/milestones/{milestoneID}", func(r chi.Router) {
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Put("/", milestoneH.UpdateMilestone)
+
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin,
+			)).Delete("/", milestoneH.DeleteMilestone)
+		})
+
+		// ── AI (Sprint C — 501 until implemented) ──────────────────
 		r.Route("/api/v1/ai", func(r chi.Router) {
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
@@ -194,7 +239,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 			)).Post("/summary", notImplemented)
 		})
 
-		// ── Reports (Sprint 3+) ────────────────────────────────────
+		// ── Reports (Sprint D — 501 until implemented) ─────────────
 		r.Get("/api/v1/reports/{jobID}", notImplemented)
 	})
 
@@ -202,8 +247,8 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 }
 
 // notImplemented returns 501 for routes that are defined but not yet built.
-// Returning 501 (not 404) lets the frontend know the route exists but is
-// coming in a future sprint, rather than being a routing mistake.
+// Using 501 rather than 404 lets the frontend distinguish "coming soon"
+// from "this route doesn't exist."
 func notImplemented(w http.ResponseWriter, r *http.Request) {
 	response.ErrorJSON(w, "not yet implemented", http.StatusNotImplemented)
 }

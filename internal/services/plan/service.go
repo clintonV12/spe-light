@@ -667,6 +667,15 @@ func (s *Service) CreateActivityLink(ctx context.Context, sourceID, orgID, creat
 		return nil, fmt.Errorf("cannot link activities across different plans")
 	}
 
+	// Prevent cycles (REQ-F-042).
+	hasCycle, err := s.hasCycle(ctx, req.TargetID, sourceID)
+	if err != nil {
+		return nil, fmt.Errorf("cycle check: %w", err)
+	}
+	if hasCycle {
+		return nil, fmt.Errorf("this link would create a cycle")
+	}
+
 	link := &models.ActivityLink{
 		ID:        uuid.New(),
 		PlanID:    sourcePlanID,
