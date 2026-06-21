@@ -235,6 +235,27 @@ export interface AiSummaryResponse {
 
 // ─── API helpers ───────────────────────────────────────────────────────────
 
+export type AuditAction =
+  | 'plan.created'   | 'plan.updated'   | 'plan.archived'  | 'plan.deleted' | 'plan.duplicated'
+  | 'activity.created' | 'activity.updated' | 'activity.deleted' | 'activity.status_changed'
+  | 'user.invited'   | 'user.role_changed' | 'user.deactivated' | 'user.reactivated'
+  | 'invitation.cancelled' | 'invitation.resent' | 'invitation.accepted'
+  | 'report.generated' | 'link.created' | 'link.deleted'
+
+export interface AuditLog {
+  id: string
+  org_id: string
+  user_id: string
+  user_name: string   // denormalised for display — avoids a join on every read
+  user_email: string
+  action: AuditAction
+  table_name: string
+  record_id: string
+  record_label: string  // e.g. plan title or activity title at the time of the action
+  diff: Record<string, { from: unknown; to: unknown }>
+  created_at: string
+}
+
 export interface PaginatedResponse<T> {
   data: T[]
   total: number

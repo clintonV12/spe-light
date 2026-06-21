@@ -6,7 +6,7 @@
 
 import {
   mockAuth, mockPlans, mockActivities, mockOrg,
-  mockReports, mockAi,
+  mockReports, mockAi, mockAuditLog,
 } from './handlers'
 import type {
   LoginPayload, Plan, Activity, ActivityLink, UserRole,
@@ -75,4 +75,8 @@ export const adminApi = {
   createOrg:         async () => {},
   updateOrg:         async () => {},
   sendOrgInvitation: async () => {},
+}
+
+export const auditApi = {
+  list: (params?: Parameters<typeof mockAuditLog.list>[0]) => mockAuditLog.list(params),
 }

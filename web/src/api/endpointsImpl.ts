@@ -11,7 +11,7 @@ import type {
   AuthTokens, LoginPayload, Plan, Activity, ActivityLink,
   AiDraftRequest, AiSummaryRequest,
   Invitation, Organisation, PlanProgress, Report,
-  ReportFormat, ReportType, User, UserRole,
+  ReportFormat, ReportType, User, UserRole, AuditLog,
 } from '../types'
 
 const IS_MOCK = import.meta.env.VITE_MOCK === 'true'
@@ -101,6 +101,16 @@ export const orgApi = {
 export const invitationsApi = {
   accept: (p: { token: string; name: string; password: string }) =>
             api().then((m) => m.invitationsApi.accept(p)) as Promise<AuthTokens>,
+}
+
+// ─── Audit log ────────────────────────────────────────────────────────────────
+
+export const auditApi = {
+  list: (params?: {
+    user_id?: string; action?: string; table_name?: string
+    from?: string; to?: string; limit?: number; offset?: number
+  }): Promise<{ logs: AuditLog[]; total: number; offset: number; limit: number }> =>
+    api().then((m) => m.auditApi.list(params)),
 }
 
 // ─── Super Admin ──────────────────────────────────────────────────────────────

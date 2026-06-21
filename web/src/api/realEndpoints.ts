@@ -3,7 +3,7 @@ import type {
   AuthTokens, LoginPayload, Plan, Activity, ActivityLink,
   AiDraftRequest, AiDraftResponse, AiSummaryRequest, AiSummaryResponse,
   Invitation, Organisation, PlanProgress, Report,
-  ReportFormat, ReportType, User, UserRole,
+  ReportFormat, ReportType, User, UserRole, AuditLog,
 } from '../types'
 
 export const authApi = {
@@ -67,4 +67,13 @@ export const adminApi = {
   createOrg:         (p: Partial<Organisation>)            => apiClient.post<Organisation>('/admin/orgs', p).then((r) => r.data),
   updateOrg:         (id: string, p: { is_active: boolean }) => apiClient.patch<Organisation>(`/admin/orgs/${id}`, p).then((r) => r.data),
   sendOrgInvitation: (p: { email: string })                => apiClient.post<Invitation>('/admin/org-invitations', p).then((r) => r.data),
+}
+
+export const auditApi = {
+  list: (params: {
+    user_id?: string; action?: string; table_name?: string
+    from?: string; to?: string; limit?: number; offset?: number
+  } = {}) =>
+    apiClient.get('/org/audit-log', { params })
+      .then((r) => r.data as { logs: AuditLog[]; total: number; offset: number; limit: number }),
 }

@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Plus, ArrowLeft, BarChart2, Sparkles, AlertTriangle,
-  ChevronRight, Clock, CheckCircle2,
+  ChevronRight, Clock, Square, CheckSquare,
+  X, ChevronDown,
 } from 'lucide-react'
 import { plansApi, activitiesApi } from '../api/endpoints'
 import { usePermission } from '../hooks'
@@ -18,30 +19,121 @@ const PHASE_META: Record<Phase, { label: string; desc: string; color: string; bg
   P3: { label: 'Operations',  desc: 'Plan how to get there',        color: 'text-p3-dark', bg: 'bg-p3-light', border: 'border-p3' },
 }
 
-const STATUS_META: Record<ActivityStatus, { label: string; icon: React.ReactNode }> = {
-  not_started:  { label: 'Not started',  icon: <div className="size-2 rounded-full bg-ink-300" /> },
-  in_progress:  { label: 'In progress',  icon: <div className="size-2 rounded-full bg-p2" /> },
-  under_review: { label: 'Under review', icon: <div className="size-2 rounded-full bg-p1" /> },
-  complete:     { label: 'Complete',     icon: <CheckCircle2 className="size-3.5 text-p2-dark" /> },
+const STATUS_OPTIONS: { value: ActivityStatus; label: string }[] = [
+  { value: 'not_started',  label: 'Not started' },
+  { value: 'in_progress',  label: 'In progress' },
+  { value: 'under_review', label: 'Under review' },
+  { value: 'complete',     label: 'Complete' },
+]
+
+const STATUS_DOT: Record<ActivityStatus, string> = {
+  not_started:  'bg-ink-300',
+  in_progress:  'bg-p2',
+  under_review: 'bg-p1',
+  complete:     'bg-green-500',
 }
 
-function ActivityRow({ activity, onClick }: { activity: Activity; onClick: () => void }) {
+const STATUS_LABEL: Record<ActivityStatus, string> = {
+  not_started:  'Not started',
+  in_progress:  'In progress',
+  under_review: 'Under review',
+  complete:     'Complete',
+}
+
+// ─── Bulk action bar ──────────────────────────────────────────────────────────
+function ActivityBulkBar({
+  count, onStatusChange, onClear, loading,
+}: {
+  count: number
+  onStatusChange: (s: ActivityStatus) => void
+  onClear: () => void
+  loading: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5 bg-accent-50 border border-accent-200 rounded-xl mb-3">
+      <span className="text-sm font-semibold text-accent shrink-0">
+        {count} selected
+      </span>
+
+      {/* Status picker */}
+      <div className="relative">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ink-200 bg-white text-sm text-ink-700 hover:bg-ink-50 transition-colors disabled:opacity-50"
+        >
+          Set status <ChevronDown className="size-3.5" />
+        </button>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+            <div className="absolute left-0 z-20 mt-1 w-44 rounded-xl border border-ink-100 bg-white shadow-lg py-1">
+              {STATUS_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  onClick={() => { onStatusChange(o.value); setOpen(false) }}
+                  className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
+                >
+                  <span className={`size-2 rounded-full shrink-0 ${STATUS_DOT[o.value]}`} />
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {loading && <span className="size-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />}
+      <button onClick={onClear} className="ml-auto text-ink-400 hover:text-ink-700 transition-colors">
+        <X className="size-4" />
+      </button>
+    </div>
+  )
+}
+
+// ─── Activity row ─────────────────────────────────────────────────────────────
+function ActivityRow({
+  activity, selected, onSelect, onClick, canEdit,
+}: {
+  activity: Activity
+  selected: boolean
+  onSelect: () => void
+  onClick: () => void
+  canEdit: boolean
+}) {
   const overdue = activity.due_date && activity.status !== 'complete'
     && new Date(activity.due_date) < new Date()
-  const sm = STATUS_META[activity.status]
 
   return (
-    <div
-      onClick={onClick}
-      className="group flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-ink-50 cursor-pointer transition-colors"
-    >
-      <span className="flex items-center justify-center shrink-0">{sm.icon}</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-ink-800 group-hover:text-accent truncate transition-colors">
-          {activity.title}
+    <div className={`group flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+      selected ? 'bg-accent-50' : 'hover:bg-ink-50'
+    }`}>
+      {/* Checkbox */}
+      {canEdit && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSelect() }}
+          className="shrink-0 text-ink-300 hover:text-accent transition-colors"
+        >
+          {selected
+            ? <CheckSquare className="size-4 text-accent" />
+            : <Square className="size-4" />}
+        </button>
+      )}
+
+      {/* Status dot */}
+      <span className={`size-2 rounded-full shrink-0 ${STATUS_DOT[activity.status]}`} />
+
+      {/* Main content — clickable */}
+      <button className="flex-1 min-w-0 text-left" onClick={onClick}>
+        <p className={`text-sm font-medium truncate transition-colors ${
+          selected ? 'text-accent' : 'text-ink-800 group-hover:text-accent'
+        }`}>{activity.title}</p>
+        <p className="text-xs text-ink-400 mt-0.5 capitalize">
+          {activity.type.replace(/_/g, ' ')} · {STATUS_LABEL[activity.status]}
         </p>
-        <p className="text-xs text-ink-400 capitalize mt-0.5">{activity.type.replace(/_/g, ' ')}</p>
-      </div>
+      </button>
+
       {overdue && (
         <span className="flex items-center gap-1 text-xs text-red-500 shrink-0">
           <AlertTriangle className="size-3" /> Overdue
@@ -53,11 +145,12 @@ function ActivityRow({ activity, onClick }: { activity: Activity; onClick: () =>
           {new Date(activity.due_date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
         </span>
       )}
-      <ChevronRight className="size-4 text-ink-200 group-hover:text-accent shrink-0 transition-colors" />
+      <ChevronRight className="size-4 text-ink-200 group-hover:text-accent shrink-0 transition-colors" onClick={onClick} />
     </div>
   )
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function PlanDetailPage() {
   const { planId } = useParams<{ planId: string }>()
   const navigate = useNavigate()
@@ -69,19 +162,54 @@ export default function PlanDetailPage() {
   const [activePhase, setActivePhase] = useState<Phase>('P1')
   const [showCreate, setShowCreate] = useState(false)
 
+  // ── Bulk selection (per-phase — clears when switching phase) ──────────────
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkLoading, setBulkLoading] = useState(false)
+
   const load = async () => {
     if (!planId) return
     try {
-      const [p, acts] = await Promise.all([
-        plansApi.get(planId),
-        activitiesApi.list(planId),
-      ])
+      const [p, acts] = await Promise.all([plansApi.get(planId), activitiesApi.list(planId)])
       setPlan(p)
       setActivities(acts)
     } catch { } finally { setLoading(false) }
   }
 
   useEffect(() => { load() }, [planId])
+
+  // Clear selection when phase changes
+  useEffect(() => { setSelected(new Set()) }, [activePhase])
+
+  const phaseActivities = useMemo(
+    () => activities.filter((a) => a.phase === activePhase).sort((a, b) => a.user_order - b.user_order),
+    [activities, activePhase],
+  )
+
+  const allPhaseSelected = phaseActivities.length > 0 && phaseActivities.every((a) => selected.has(a.id))
+  const someSelected = selected.size > 0
+
+  const toggleAll = () => {
+    if (allPhaseSelected) setSelected(new Set())
+    else setSelected(new Set(phaseActivities.map((a) => a.id)))
+  }
+
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleBulkStatus = async (status: ActivityStatus) => {
+    setBulkLoading(true)
+    try {
+      await Promise.all([...selected].map((id) => activitiesApi.update(id, { status })))
+      setSelected(new Set())
+      await load()
+    } catch { } finally { setBulkLoading(false) }
+  }
 
   if (loading) {
     return (
@@ -97,25 +225,19 @@ export default function PlanDetailPage() {
 
   if (!plan) return null
 
-  const phaseActivities = activities.filter((a) => a.phase === activePhase)
   const phaseMeta = PHASE_META[activePhase]
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Back + Header */}
       <div>
-        <button
-          onClick={() => navigate('/plans')}
-          className="flex items-center gap-1.5 text-sm text-ink-400 hover:text-ink-700 mb-3 transition-colors"
-        >
+        <button onClick={() => navigate('/plans')} className="flex items-center gap-1.5 text-sm text-ink-400 hover:text-ink-700 mb-3 transition-colors">
           <ArrowLeft className="size-4" /> Plans
         </button>
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="font-display text-2xl font-bold text-ink-900">{plan.title}</h1>
-            {plan.description && (
-              <p className="text-ink-500 text-sm mt-0.5">{plan.description}</p>
-            )}
+            {plan.description && <p className="text-ink-500 text-sm mt-0.5">{plan.description}</p>}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -136,21 +258,18 @@ export default function PlanDetailPage() {
         </div>
       </div>
 
-      {/* Phase progress cards */}
+      {/* Phase progress cards / tabs */}
       <div className="grid grid-cols-3 gap-4">
         {PHASES.map((phase) => {
           const phData = plan.progress?.phases.find((p) => p.phase === phase)
           const meta = PHASE_META[phase]
           const pct = phData?.percent ?? 0
-
           return (
             <button
               key={phase}
               onClick={() => setActivePhase(phase)}
               className={`text-left rounded-2xl border-2 p-4 transition-all ${
-                activePhase === phase
-                  ? `${meta.border} ${meta.bg}`
-                  : 'border-ink-100 bg-white hover:border-ink-200'
+                activePhase === phase ? `${meta.border} ${meta.bg}` : 'border-ink-100 bg-white hover:border-ink-200'
               }`}
             >
               <div className="flex items-center justify-between mb-2">
@@ -161,10 +280,7 @@ export default function PlanDetailPage() {
                   {Math.round(pct)}%
                 </span>
               </div>
-              <ProgressBar
-                value={pct}
-                variant={phase.toLowerCase() as 'p1' | 'p2' | 'p3'}
-              />
+              <ProgressBar value={pct} variant={phase.toLowerCase() as 'p1' | 'p2' | 'p3'} />
               <div className="flex items-center gap-3 mt-2 text-xs text-ink-400">
                 <span>{phData?.complete ?? 0} done</span>
                 {phData && phData.overdue > 0 && (
@@ -178,46 +294,65 @@ export default function PlanDetailPage() {
         })}
       </div>
 
-      {/* Phase detail */}
+      {/* Phase detail panel */}
       <div className="bg-white rounded-2xl border border-ink-100">
-        <div className={`flex items-center justify-between px-5 py-4 border-b ${phaseMeta.border} border-opacity-30 ${phaseMeta.bg} rounded-t-2xl`}>
+        {/* Panel header */}
+        <div className={`flex items-center justify-between px-5 py-4 border-b border-opacity-30 ${phaseMeta.bg} rounded-t-2xl ${phaseMeta.border}`}>
           <div>
             <p className={`text-sm font-bold ${phaseMeta.color}`}>{activePhase} — {phaseMeta.label}</p>
             <p className="text-xs text-ink-500">{phaseMeta.desc}</p>
           </div>
-          <span className="text-xs text-ink-400">
-            {phaseActivities.length} {phaseActivities.length === 1 ? 'activity' : 'activities'}
-          </span>
+          <div className="flex items-center gap-3">
+            {can.editActivity && phaseActivities.length > 0 && (
+              <button
+                onClick={toggleAll}
+                className="flex items-center gap-1.5 text-xs text-ink-400 hover:text-accent transition-colors"
+              >
+                {allPhaseSelected
+                  ? <><CheckSquare className="size-3.5 text-accent" /> Deselect all</>
+                  : <><Square className="size-3.5" /> Select all</>}
+              </button>
+            )}
+            <span className="text-xs text-ink-400">
+              {phaseActivities.length} {phaseActivities.length === 1 ? 'activity' : 'activities'}
+            </span>
+          </div>
         </div>
 
         <div className="p-3">
+          {/* Bulk action bar — only shown when activities are selected */}
+          {someSelected && (
+            <ActivityBulkBar
+              count={selected.size}
+              loading={bulkLoading}
+              onStatusChange={handleBulkStatus}
+              onClear={() => setSelected(new Set())}
+            />
+          )}
+
           {phaseActivities.length === 0 ? (
             <EmptyState
               icon={<Sparkles className="size-8" />}
               title={`No ${phaseMeta.label.toLowerCase()} activities yet`}
               description={`Add a ${activePhase} activity like a ${activePhase === 'P1' ? 'SWOT or PESTLE' : activePhase === 'P2' ? 'Vision statement or KPI framework' : 'Roadmap or Action plan'} to get started.`}
-              action={
-                can.createPlan ? (
-                  <button
-                    onClick={() => setShowCreate(true)}
-                    className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors"
-                  >
-                    <Plus className="size-4" /> Add {activePhase} activity
-                  </button>
-                ) : undefined
-              }
+              action={can.createPlan ? (
+                <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors">
+                  <Plus className="size-4" /> Add {activePhase} activity
+                </button>
+              ) : undefined}
             />
           ) : (
             <div className="divide-y divide-ink-50">
-              {phaseActivities
-                .sort((a, b) => a.user_order - b.user_order)
-                .map((activity) => (
-                  <ActivityRow
-                    key={activity.id}
-                    activity={activity}
-                    onClick={() => navigate(`/plans/${planId}/activities/${activity.id}`)}
-                  />
-                ))}
+              {phaseActivities.map((activity) => (
+                <ActivityRow
+                  key={activity.id}
+                  activity={activity}
+                  selected={selected.has(activity.id)}
+                  onSelect={() => toggleOne(activity.id)}
+                  onClick={() => navigate(`/plans/${planId}/activities/${activity.id}`)}
+                  canEdit={can.editActivity}
+                />
+              ))}
             </div>
           )}
         </div>

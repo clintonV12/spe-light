@@ -11,7 +11,7 @@ import type {
 import {
   MOCK_ME, MOCK_ORG, MOCK_USERS, MOCK_INVITATIONS,
   MOCK_PLANS, MOCK_ACTIVITIES, MOCK_REPORTS, MOCK_ACTIVITY_LINKS,
-  MOCK_ACTIVE_USER_ID,
+  MOCK_ACTIVE_USER_ID, MOCK_AUDIT_LOG,
 } from './seed'
 
 // ─── In-memory mutable state ────────────────────────────────────────────────
@@ -452,5 +452,33 @@ export const mockAi = {
       summary: `This strategic plan demonstrates strong progress at the analysis phase, with a comprehensive evidence base established across SWOT, PESTLE, and risk dimensions. The strategy phase has defined clear objectives and a robust KPI framework. Operational planning is underway with budget allocation confirmed. Key risks include procurement delays and stakeholder alignment on SOE reform. Overall trajectory is positive; attention is needed on two overdue deliverables in P1 and P2.`,
       model: 'llama3 (mock)',
     }
+  },
+}
+
+// ─── Audit log ────────────────────────────────────────────────────────────────
+
+export const mockAuditLog = {
+  list: async (params: {
+    user_id?: string
+    action?: string
+    table_name?: string
+    from?: string
+    to?: string
+    limit?: number
+    offset?: number
+  } = {}) => {
+    await delay(400)
+    let logs = structuredClone(MOCK_AUDIT_LOG).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
+    if (params.user_id) logs = logs.filter((l) => l.user_id === params.user_id)
+    if (params.action) logs = logs.filter((l) => l.action === params.action || l.action.startsWith(params.action + '.'))
+    if (params.table_name) logs = logs.filter((l) => l.table_name === params.table_name)
+    if (params.from) logs = logs.filter((l) => l.created_at >= params.from!)
+    if (params.to)   logs = logs.filter((l) => l.created_at <= params.to!)
+    const total = logs.length
+    const offset = params.offset ?? 0
+    const limit  = params.limit  ?? 25
+    return { logs: logs.slice(offset, offset + limit), total, offset, limit }
   },
 }
