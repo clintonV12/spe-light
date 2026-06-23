@@ -4,45 +4,54 @@ import { clsx } from 'clsx'
 import {
   LayoutDashboard, FileText, BarChart2, FileOutput,
   Settings, ChevronLeft, ChevronRight, WifiOff, RefreshCw,
-  Menu, Search,
+  Menu, Search, Keyboard,
 } from 'lucide-react'
 import { useUIStore } from '../../store/ui'
 import { useOfflineStore } from '../../store/offline'
 import { useSyncEngine } from '../../hooks'
+import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import ToastContainer from '../ui/ToastContainer'
 import CommandPalette from './CommandPalette'
+import ShortcutsModal from './ShortcutsModal'
+
+// Custom event dispatched by AppShell when the user presses 'c'.
+// Pages listen for this and open their own create modal.
+export const SHORTCUT_CREATE_EVENT = 'stratplan:shortcut:create'
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/plans',     icon: FileText,        label: 'Plans' },
-  { to: '/progress',  icon: BarChart2,        label: 'Progress' },
-  { to: '/reports',   icon: FileOutput,       label: 'Reports' },
-  { to: '/admin',     icon: Settings,         label: 'Admin' },
+  { to: '/plans',     icon: FileText,        label: 'Plans'     },
+  { to: '/progress',  icon: BarChart2,        label: 'Progress'  },
+  { to: '/reports',   icon: FileOutput,       label: 'Reports'   },
+  { to: '/admin',     icon: Settings,         label: 'Admin'     },
 ]
 
 export const AppShell: React.FC = () => {
-  const collapsed = useUIStore((s) => s.sidebarCollapsed)
-  const toggle = useUIStore((s) => s.toggleSidebar)
-  const isOnline = useOfflineStore((s) => s.isOnline)
+  const collapsed    = useUIStore((s) => s.sidebarCollapsed)
+  const toggle       = useUIStore((s) => s.toggleSidebar)
+  const isOnline     = useOfflineStore((s) => s.isOnline)
   const pendingCount = useOfflineStore((s) => s.pendingCount)
-  const isSyncing = useOfflineStore((s) => s.isSyncing)
-  const { sync } = useSyncEngine()
+  const isSyncing    = useOfflineStore((s) => s.isSyncing)
+  const { sync }     = useSyncEngine()
 
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchOpen,    setSearchOpen]    = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
-  // Global Cmd+K / Ctrl+K / "/" shortcut to open search
+  const closeSearch    = useCallback(() => setSearchOpen(false),    [])
+  const closeShortcuts = useCallback(() => setShortcutsOpen(false), [])
+
+  // ── Global search shortcut: / and Cmd+K ────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const isTypingTarget = ['INPUT', 'TEXTAREA', 'SELECT'].includes(
+      const isEditing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(
         (e.target as HTMLElement)?.tagName,
       )
-
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setSearchOpen((v) => !v)
         return
       }
-      if (e.key === '/' && !isTypingTarget) {
+      if (e.key === '/' && !isEditing) {
         e.preventDefault()
         setSearchOpen(true)
       }
@@ -51,17 +60,21 @@ export const AppShell: React.FC = () => {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  const closeSearch = useCallback(() => setSearchOpen(false), [])
+  // ── Navigation + action shortcuts ──────────────────────────────────────────
+  useKeyboardShortcuts({
+    onOpenSearch:  () => setSearchOpen(true),
+    onOpenCreate:  () => window.dispatchEvent(new CustomEvent(SHORTCUT_CREATE_EVENT)),
+    onOpenHelp:    () => setShortcutsOpen((v) => !v),
+  })
 
   return (
     <div className="flex h-screen overflow-hidden bg-ink-50">
-      {/* Sidebar */}
-      <aside
-        className={clsx(
-          'flex flex-col bg-ink-900 text-white transition-all duration-200 shrink-0',
-          collapsed ? 'w-16' : 'w-56',
-        )}
-      >
+
+      {/* ── Sidebar ────────────────────────────────────────────────────────── */}
+      <aside className={clsx(
+        'flex flex-col bg-ink-900 text-white transition-all duration-200 shrink-0',
+        collapsed ? 'w-16' : 'w-56',
+      )}>
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 h-16 border-b border-ink-700">
           <div className="size-8 rounded-lg bg-accent flex items-center justify-center shrink-0">
@@ -72,26 +85,38 @@ export const AppShell: React.FC = () => {
           )}
         </div>
 
-        {/* Nav */}
+        {/* Nav items */}
         <nav className="flex-1 py-4 space-y-1 px-2">
           {navItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
-              className={({ isActive }) =>
-                clsx(
-                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-accent text-white'
-                    : 'text-ink-300 hover:bg-ink-800 hover:text-white',
-                )
-              }
+              className={({ isActive }) => clsx(
+                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                isActive
+                  ? 'bg-accent text-white'
+                  : 'text-ink-300 hover:bg-ink-800 hover:text-white',
+              )}
             >
               <Icon className="size-5 shrink-0" />
               {!collapsed && <span>{label}</span>}
             </NavLink>
           ))}
         </nav>
+
+        {/* Shortcuts hint */}
+        {!collapsed && (
+          <div className="px-3 pb-2">
+            <button
+              onClick={() => setShortcutsOpen(true)}
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs text-ink-500 hover:text-ink-300 hover:bg-ink-800 transition-colors"
+            >
+              <Keyboard className="size-3.5" />
+              <span>Keyboard shortcuts</span>
+              <kbd className="ml-auto text-[10px] font-mono bg-ink-800 border border-ink-700 rounded px-1">?</kbd>
+            </button>
+          </div>
+        )}
 
         {/* Collapse toggle */}
         <div className="p-2 border-t border-ink-700">
@@ -100,20 +125,17 @@ export const AppShell: React.FC = () => {
             className="w-full flex items-center justify-center p-2 rounded-lg text-ink-400 hover:text-white hover:bg-ink-800 transition-colors"
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {collapsed ? (
-              <ChevronRight className="size-4" />
-            ) : (
-              <>
-                <ChevronLeft className="size-4 mr-2" />
-                <span className="text-xs">Collapse</span>
-              </>
-            )}
+            {collapsed
+              ? <ChevronRight className="size-4" />
+              : <><ChevronLeft className="size-4 mr-2" /><span className="text-xs">Collapse</span></>
+            }
           </button>
         </div>
       </aside>
 
-      {/* Main */}
+      {/* ── Main column ────────────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 overflow-hidden">
+
         {/* Offline banner */}
         {!isOnline && (
           <div className="flex items-center gap-2 bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-800">
@@ -161,6 +183,15 @@ export const AppShell: React.FC = () => {
               {isSyncing ? 'Syncing…' : `${pendingCount} to sync`}
             </button>
           )}
+
+          {/* Shortcuts hint button in top bar */}
+          <button
+            onClick={() => setShortcutsOpen(true)}
+            className="hidden md:flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-600 transition-colors"
+            title="Keyboard shortcuts (?)"
+          >
+            <Keyboard className="size-3.5" />
+          </button>
         </header>
 
         {/* Page content */}
@@ -169,8 +200,10 @@ export const AppShell: React.FC = () => {
         </main>
       </div>
 
+      {/* ── Overlays ───────────────────────────────────────────────────────── */}
       <ToastContainer />
-      <CommandPalette open={searchOpen} onClose={closeSearch} />
+      <CommandPalette   open={searchOpen}    onClose={closeSearch}    />
+      <ShortcutsModal   open={shortcutsOpen} onClose={closeShortcuts} />
     </div>
   )
 }

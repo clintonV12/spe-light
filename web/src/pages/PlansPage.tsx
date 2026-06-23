@@ -9,6 +9,7 @@ import { plansApi } from '../api/endpoints'
 import { usePermission } from '../hooks'
 import { Badge, ProgressBar, EmptyState } from '../components/ui'
 import CreatePlanModal from '../components/plans/CreatePlanModal'
+import { SHORTCUT_CREATE_EVENT } from '../components/layout/AppShell'
 import type { Plan, PlanStatus } from '../types'
 
 const STATUS_OPTIONS: { value: PlanStatus | 'all'; label: string }[] = [
@@ -130,6 +131,14 @@ export default function PlansPage() {
   }
 
   useEffect(() => { load() }, [])
+
+  // 'c' keyboard shortcut opens the create plan modal
+  useEffect(() => {
+    const handler = () => setShowCreate(true)
+    window.addEventListener(SHORTCUT_CREATE_EVENT, handler)
+    return () => window.removeEventListener(SHORTCUT_CREATE_EVENT, handler)
+  }, [])
+
 
   const filtered = useMemo(() => {
     let result = plans

@@ -9,6 +9,7 @@ import { plansApi, activitiesApi } from '../api/endpoints'
 import { usePermission } from '../hooks'
 import { ProgressBar, EmptyState } from '../components/ui'
 import CreateActivityModal from '../components/activities/CreateActivityModal'
+import { SHORTCUT_CREATE_EVENT } from '../components/layout/AppShell'
 import type { Plan, Activity, Phase, ActivityStatus } from '../types'
 
 const PHASES: Phase[] = ['P1', 'P2', 'P3']
@@ -179,6 +180,14 @@ export default function PlanDetailPage() {
 
   // Clear selection when phase changes
   useEffect(() => { setSelected(new Set()) }, [activePhase])
+
+  // 'c' keyboard shortcut opens the create activity modal
+  useEffect(() => {
+    const handler = () => setShowCreate(true)
+    window.addEventListener(SHORTCUT_CREATE_EVENT, handler)
+    return () => window.removeEventListener(SHORTCUT_CREATE_EVENT, handler)
+  }, [])
+
 
   const phaseActivities = useMemo(
     () => activities.filter((a) => a.phase === activePhase).sort((a, b) => a.user_order - b.user_order),

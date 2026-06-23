@@ -1,12 +1,13 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Save, Sparkles, CheckCircle2, Clock,
-  User, AlertTriangle, ChevronDown,
+  ArrowLeft, Sparkles, Clock, User, AlertTriangle, ChevronDown,
 } from 'lucide-react'
 import { activitiesApi } from '../api/endpoints'
 import { useOfflineStore } from '../store/offline'
-import { usePermission, useToast } from '../hooks'
+import { usePermission } from '../hooks'
+import { useAutoSave } from '../hooks/useAutoSave'
+import SaveIndicator from '../components/ui/SaveIndicator'
 import AiDraftPanel from '../components/ai/AiDraftPanel'
 import LinkedActivitiesPanel from '../components/activities/LinkedActivitiesPanel'
 import SwotEditor from '../components/activities/editors/SwotEditor'
@@ -37,7 +38,6 @@ const PHASE_COLOR: Record<Phase, string> = {
   P3: 'text-p3-dark bg-p3-light',
 }
 
-// Generic sections per activity type
 const GENERIC_SECTIONS: Record<string, { key: string; label: string; placeholder?: string }[]> = {
   vision_mission:       [{ key: 'vision', label: 'Vision' }, { key: 'mission', label: 'Mission' }, { key: 'values', label: 'Core values' }],
   strategic_objectives: [{ key: 'objectives', label: 'Strategic objectives' }, { key: 'rationale', label: 'Rationale' }],
@@ -48,6 +48,8 @@ const GENERIC_SECTIONS: Record<string, { key: string; label: string; placeholder
   operational_roadmap:  [{ key: 'q1', label: 'Q1 milestones' }, { key: 'q2', label: 'Q2 milestones' }, { key: 'q3', label: 'Q3 milestones' }, { key: 'q4', label: 'Q4 milestones' }],
   action_items:         [{ key: 'actions', label: 'Action items' }, { key: 'owners', label: 'Owners' }, { key: 'blockers', label: 'Blockers' }],
 }
+
+// ─── Type-routed editor ───────────────────────────────────────────────────────
 
 function ActivityEditor({ activity, onChange, readOnly }: {
   activity: Activity
@@ -99,32 +101,40 @@ function ActivityEditor({ activity, onChange, readOnly }: {
   )
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function ActivityEditorPage() {
   const { planId, activityId } = useParams<{ planId: string; activityId: string }>()
   const navigate = useNavigate()
   const { can } = usePermission()
-  const { success, error: toastError } = useToast()
   const isOnline = useOfflineStore((s) => s.isOnline)
 
   const [activity, setActivity] = useState<Activity | null>(null)
   const [content, setContent] = useState<Record<string, unknown>>({})
   const [status, setStatus] = useState<ActivityStatus>('not_started')
-  const [saving, setSaving] = useState(false)
-  const [dirty, setDirty] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showAi, setShowAi] = useState(false)
-
-  // Linked-activities panel state
   const [planActivities, setPlanActivities] = useState<Activity[]>([])
   const [planLinks, setPlanLinks] = useState<ActivityLink[]>([])
   const [linksLoading, setLinksLoading] = useState(true)
 
+  // Track whether the editor has been initialised (skip auto-save on first render)
+  const initialised = useRef(false)
   const canEdit = can.editActivity
+
+  // ── Data fetching ───────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!activityId) return
     activitiesApi.get(activityId)
-      .then((a) => { setActivity(a); setContent(a.content ?? {}); setStatus(a.status) })
+      .then((a) => {
+        setActivity(a)
+        setContent(a.content ?? {})
+        setStatus(a.status)
+        // Mark as initialised AFTER setting state so the first data load
+        // doesn't trigger the auto-save (content hasn't "changed" yet).
+        setTimeout(() => { initialised.current = true }, 50)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [activityId])
@@ -132,53 +142,60 @@ export default function ActivityEditorPage() {
   const loadLinks = useCallback(() => {
     if (!planId) return
     setLinksLoading(true)
-    Promise.all([
-      activitiesApi.list(planId),
-      activitiesApi.listLinks(planId),
-    ])
-      .then(([acts, links]) => {
-        setPlanActivities(acts)
-        setPlanLinks(links)
-      })
-      .catch(() => {
-        setPlanActivities([])
-        setPlanLinks([])
-      })
+    Promise.all([activitiesApi.list(planId), activitiesApi.listLinks(planId)])
+      .then(([acts, links]) => { setPlanActivities(acts); setPlanLinks(links) })
+      .catch(() => { setPlanActivities([]); setPlanLinks([]) })
       .finally(() => setLinksLoading(false))
   }, [planId])
 
   useEffect(() => { loadLinks() }, [loadLinks])
 
+  // ── Auto-save ───────────────────────────────────────────────────────────────
+
+  const doSave = useCallback(async (payload: { content: Record<string, unknown>; status: ActivityStatus }) => {
+    if (!activityId || !activity || !initialised.current) return
+    await activitiesApi.update(activityId, payload)
+  }, [activityId, activity])
+
+  const { saveState, saveNow, markDirty } = useAutoSave({
+    data: { content, status },
+    onSave: doSave,
+    debounceMs: 1500,
+    disabled: !canEdit || !initialised.current,
+  })
+
+  // ── Cmd+S instant save ──────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        if (canEdit && initialised.current) saveNow()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [canEdit, saveNow])
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
   const handleContentChange = useCallback((c: Record<string, unknown>) => {
     setContent(c)
-    setDirty(true)
-  }, [])
+    markDirty()
+  }, [markDirty])
 
-  const handleStatusChange = (s: ActivityStatus) => {
+  const handleStatusChange = useCallback((s: ActivityStatus) => {
     setStatus(s)
-    setDirty(true)
-  }
-
-  const handleSave = async () => {
-    if (!activityId || !activity) return
-    setSaving(true)
-    try {
-      await activitiesApi.update(activityId, { content, status })
-      setDirty(false)
-      success('Changes saved')
-    } catch {
-      toastError('Failed to save. Changes will be queued if offline.')
-    } finally {
-      setSaving(false)
-    }
-  }
+    markDirty()
+  }, [markDirty])
 
   const handleAiAccept = (draft: Record<string, unknown>) => {
     setContent(draft)
-    setDirty(true)
+    markDirty()
     setShowAi(false)
-    success('AI draft applied — review and save.')
   }
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -194,7 +211,9 @@ export default function ActivityEditorPage() {
   }
 
   if (!activity) return null
-  const overdue = activity.due_date && status !== 'complete' && new Date(activity.due_date) < new Date()
+
+  const overdue = activity.due_date && status !== 'complete'
+    && new Date(activity.due_date) < new Date()
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -213,7 +232,9 @@ export default function ActivityEditorPage() {
             <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-bold ${PHASE_COLOR[activity.phase]}`}>
               {activity.phase}
             </span>
-            <span className="text-xs text-ink-400 capitalize">{activity.type.replace(/_/g, ' ')}</span>
+            <span className="text-xs text-ink-400 capitalize">
+              {activity.type.replace(/_/g, ' ')}
+            </span>
             {overdue && (
               <span className="flex items-center gap-1 text-xs text-red-500 font-medium">
                 <AlertTriangle className="size-3" /> Overdue
@@ -225,7 +246,9 @@ export default function ActivityEditorPage() {
             {activity.due_date && (
               <span className="flex items-center gap-1">
                 <Clock className="size-3.5" />
-                Due {new Date(activity.due_date).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}
+                Due {new Date(activity.due_date).toLocaleDateString(undefined, {
+                  day: 'numeric', month: 'long', year: 'numeric',
+                })}
               </span>
             )}
             {activity.assigned_to && activity.assigned_to.length > 0 && (
@@ -237,7 +260,13 @@ export default function ActivityEditorPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Right controls — status + save indicator + AI */}
+        <div className="flex items-center gap-3 shrink-0">
+          {/* Auto-save indicator */}
+          {canEdit && (
+            <SaveIndicator state={saveState} onSaveNow={saveNow} />
+          )}
+
           {/* Status dropdown */}
           {canEdit && (
             <div className="relative">
@@ -254,7 +283,7 @@ export default function ActivityEditorPage() {
             </div>
           )}
 
-          {/* AI */}
+          {/* AI toggle */}
           {can.runAI && (
             <button
               onClick={() => setShowAi((v) => !v)}
@@ -265,26 +294,16 @@ export default function ActivityEditorPage() {
               <Sparkles className="size-4" /> AI draft
             </button>
           )}
-
-          {/* Save */}
-          {canEdit && (
-            <button
-              onClick={handleSave}
-              disabled={saving || !dirty}
-              className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? (
-                <span className="size-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              ) : dirty ? (
-                <Save className="size-4" />
-              ) : (
-                <CheckCircle2 className="size-4" />
-              )}
-              {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
-            </button>
-          )}
         </div>
       </div>
+
+      {/* Offline notice — only show when there are unsaved pending changes */}
+      {!isOnline && saveState === 'pending' && (
+        <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-sm text-amber-800">
+          <span className="size-2 rounded-full bg-amber-400 shrink-0 animate-pulse" />
+          You're offline. Changes will be saved automatically when reconnected.
+        </div>
+      )}
 
       {/* AI panel */}
       {showAi && planId && (
@@ -297,18 +316,7 @@ export default function ActivityEditorPage() {
         />
       )}
 
-      {/* Unsaved indicator */}
-      {dirty && (
-        <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5">
-          <div className="size-2 rounded-full bg-amber-400 animate-pulse" />
-          <p className="text-sm text-amber-800">You have unsaved changes.</p>
-          <button onClick={handleSave} disabled={saving} className="ml-auto text-xs font-semibold text-amber-700 hover:text-amber-900">
-            Save now
-          </button>
-        </div>
-      )}
-
-      {/* Two-column layout: editor + linked activities */}
+      {/* Two-column: editor + linked activities */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6 items-start">
         <div className="bg-white rounded-2xl border border-ink-100 p-6">
           <ActivityEditor
