@@ -122,10 +122,19 @@ func (s *AuthService) BuildSAMLSP(ctx context.Context, orgSlug string, r *http.R
 		return nil, nil, nil, fmt.Errorf("SAML config incomplete: provide metadata_url or both entity_id and certificate")
 	}
 
+	// Wire the PostgreSQL replay cache so assertion deduplication survives restarts.
+	opts.UseArtifactResponse = false // not used; explicit clarity
+	store := NewPGAssertionStore(s.db, org.ID)
+	_ = store // assigned to opts when samlsp exposes the AssertionStore field; see TODO below
+	// TODO: samlsp.Options does not currently have an AssertionStore field exposed
+	// in v0.4.x. Wire it via sp.ServiceProvider.AssertionStore after construction:
 	sp, err := samlsp.New(opts)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("build SAML SP: %w", err)
 	}
+	// Assign the PostgreSQL store to the underlying SP so replay protection
+	// is durable. crewjam/saml reads from sp.ServiceProvider.AssertionStore.
+	sp.ServiceProvider.AssertionStore = store
 	return sp, ssoConfig, org, nil
 }
 
@@ -212,10 +221,10 @@ func (s *AuthService) HandleOIDCCallback(
 	ssoConfig *models.SSOConfig,
 	oauthCfg *oauth2.Config,
 	provider *gooidc.Provider,
-	code, nonce string,
+	code, nonce, codeVerifier string,
 ) (*TokenResponse, error) {
 	// Exchange the authorization code for OAuth2 tokens (verifies PKCE).
-	oauth2Token, err := oauthCfg.Exchange(ctx, code)
+	oauth2Token, err := oauthCfg.Exchange(ctx, code, oauth2.VerifierOption(codeVerifier))
 	if err != nil {
 		return nil, fmt.Errorf("OIDC code exchange failed: %w", err)
 	}

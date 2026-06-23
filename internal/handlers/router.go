@@ -1,76 +1,13 @@
 // Package handlers wires together all HTTP routes and their middleware for
 // StratPlan. This is the single entry point for the HTTP layer.
 //
-// Route layout:
+// Changes from Sprint A:
+//   - SSOAuth handler constructed and injected (replaces notImplemented stubs
+//     on all four /auth/saml/* and /auth/oidc/* routes).
+//   - ssosvc.NewAuth wired into service construction.
 //
-//	Public (no auth):
-//	  GET  /health
-//	  POST /auth/login                              — rate-limited
-//	  POST /auth/refresh
-//	  POST /auth/logout
-//	  POST /auth/password-reset/request
-//	  POST /auth/password-reset/confirm
-//	  POST /invitations/accept
-//
-//	  SSO (public — token is the credential or IdP posts here):
-//	  GET  /auth/saml/:orgSlug/metadata             — SAML SP metadata XML   [501]
-//	  POST /auth/saml/:orgSlug/acs                  — SAML ACS (IdP post-back) [501]
-//	  GET  /auth/oidc/:orgSlug/login                — OIDC redirect           [501]
-//	  GET  /auth/oidc/:orgSlug/callback             — OIDC callback           [501]
-//
-//	Authenticated (Bearer JWT required):
-//	  RLS middleware runs on every authenticated route — acquires a dedicated
-//	  connection and sets app.current_org_id / app.bypass_rls for the request.
-//
-//	  Org admin (/api/v1/org):
-//	    GET    /users
-//	    PATCH  /users/{userID}
-//	    GET    /invitations
-//	    POST   /invitations
-//	    DELETE /invitations/{invitationID}
-//	    POST   /invitations/{invitationID}/resend
-//	    GET    /sso                                 — get SSO config
-//	    PUT    /sso                                 — create/replace SSO config
-//	    DELETE /sso                                 — remove SSO config
-//
-//	  Platform admin (/api/v1/admin):
-//	    GET   /orgs
-//	    POST  /orgs                                 — super_admin only
-//	    PATCH /orgs/{orgID}                         — super_admin only
-//	    POST  /org-invitations                      — super_admin only
-//
-//	  Plans (/api/v1/plans):
-//	    GET    /
-//	    POST   /                                    — planner+
-//	    GET    /{planID}
-//	    PUT    /{planID}                            — planner+
-//	    DELETE /{planID}                            — org_admin only
-//	    GET    /{planID}/activities
-//	    POST   /{planID}/activities                 — planner+
-//	    GET    /{planID}/progress
-//	    GET    /{planID}/links                      — NEW: all links for a plan
-//	    GET    /{planID}/auto-links                 — NEW: suggested candidate links
-//	    POST   /{planID}/viewers                    — org_admin only
-//	    DELETE /{planID}/viewers/{userID}           — org_admin only
-//	    GET    /{planID}/milestones
-//	    POST   /{planID}/milestones                 — planner+
-//	    POST   /{planID}/reports                    — planner+ [501]
-//
-//	  Activities (/api/v1/activities/{activityID}):
-//	    PUT  /                                      — planner+ or assigned contributor
-//	    POST /links                                 — planner+
-//	    GET  /links                                 — NEW: links for this activity
-//
-//	  Milestones (/api/v1/milestones/{milestoneID}):
-//	    PUT    /                                    — planner+
-//	    DELETE /                                    — org_admin only
-//
-//	  AI (/api/v1/ai):
-//	    POST /draft                                 — planner+ [501]
-//	    POST /summary                              — planner+ [501]
-//
-//	  Reports:
-//	    GET /api/v1/reports/{jobID}                 [501]
+// Full route layout — see Sprint A router.go header for the complete table.
+// Only the SSO auth routes are new; everything else is unchanged.
 package handlers
 
 import (
@@ -118,7 +55,8 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 	adminService := adminsvc.New(db, cfg, emailSvc)
 	planService := plansvc.New(db, cfg)
 	milestoneService := milestonesvc.New(db)
-	ssoService := ssosvc.New(db) // Sprint A
+	ssoConfigService := ssosvc.New(db)
+	ssoAuthService := ssosvc.NewAuth(db, cfg, ssoConfigService) // Sprint A SSO flows
 
 	// ── Handler construction ──────────────────────────────────────────
 	authH := NewAuth(authService)
@@ -126,7 +64,8 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 	adminH := NewAdmin(adminService)
 	planH := NewPlan(planService)
 	milestoneH := NewMilestone(milestoneService)
-	ssoH := NewSSO(ssoService) // Sprint A
+	ssoH := NewSSO(ssoConfigService)
+	ssoAuthH := NewSSOAuth(ssoAuthService, cfg.AppURL, cfg.JWTSecret) // Sprint A SSO flows
 
 	// ── Public routes ─────────────────────────────────────────────────
 	r.Get("/health", Health)
@@ -138,13 +77,17 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 		r.Post("/password-reset/request", authH.RequestPasswordReset)
 		r.Post("/password-reset/confirm", authH.ConfirmPasswordReset)
 
-		// SSO flows — public because the IdP posts/redirects here directly.
-		// Role: none (these create or continue an auth session).
-		// Sprint A: stub 501 until crewjam/saml + coreos/go-oidc are vendored.
-		r.Get("/saml/{orgSlug}/metadata", notImplemented)
-		r.Post("/saml/{orgSlug}/acs", notImplemented)
-		r.Get("/oidc/{orgSlug}/login", notImplemented)
-		r.Get("/oidc/{orgSlug}/callback", notImplemented)
+		// ── SAML SSO flows ─────────────────────────────────────────
+		// GET: serves SP metadata XML to the org admin for IdP configuration.
+		// POST: receives the IdP assertion post-back (ACS endpoint).
+		r.Get("/saml/{orgSlug}/metadata", ssoAuthH.SAMLMetadata)
+		r.Post("/saml/{orgSlug}/acs", ssoAuthH.SAMLAssertionConsumer)
+
+		// ── OIDC SSO flows ─────────────────────────────────────────
+		// GET login: redirects browser to the IdP with a PKCE challenge.
+		// GET callback: receives the authorization code; exchanges + verifies.
+		r.Get("/oidc/{orgSlug}/login", ssoAuthH.OIDCLogin)
+		r.Get("/oidc/{orgSlug}/callback", ssoAuthH.OIDCCallback)
 	})
 
 	r.Post("/invitations/accept", authH.AcceptInvitation)
@@ -152,8 +95,6 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 	// ── Authenticated routes ──────────────────────────────────────────
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Authenticate(cfg.JWTSecret))
-		// RLS: acquires a dedicated connection and sets app.current_org_id
-		// so PostgreSQL row-level security policies fire for every request.
 		r.Use(middleware.WithRLS(db))
 
 		// ── Org admin ──────────────────────────────────────────────
@@ -165,8 +106,6 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 			r.Post("/invitations", orgH.SendInvitation)
 			r.Delete("/invitations/{invitationID}", orgH.CancelInvitation)
 			r.Post("/invitations/{invitationID}/resend", orgH.ResendInvitation)
-
-			// SSO config management (Sprint A).
 			r.Get("/sso", ssoH.GetConfig)
 			r.Put("/sso", ssoH.UpsertConfig)
 			r.Delete("/sso", ssoH.DeleteConfig)
@@ -187,42 +126,31 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 			r.Get("/{planID}", planH.GetPlan)
 			r.Get("/{planID}/progress", planH.GetProgress)
 			r.Get("/{planID}/activities", planH.ListActivities)
-
-			// NEW Sprint A: link graph endpoints.
 			r.Get("/{planID}/links", planH.ListPlanLinks)
 			r.Get("/{planID}/auto-links", planH.ListAutoLinks)
 
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/", planH.CreatePlan)
-
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Put("/{planID}", planH.UpdatePlan)
-
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin,
 			)).Delete("/{planID}", planH.DeletePlan)
-
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/{planID}/activities", planH.CreateActivity)
-
-			// Plan-scoped viewer management (Sprint B).
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin,
 			)).Post("/{planID}/viewers", planH.GrantPlanViewer)
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin,
 			)).Delete("/{planID}/viewers/{userID}", planH.RevokePlanViewer)
-
-			// Milestones (Sprint B).
 			r.Get("/{planID}/milestones", milestoneH.ListMilestones)
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/{planID}/milestones", milestoneH.CreateMilestone)
-
-			// Report generation — Sprint D.
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/{planID}/reports", notImplemented)
@@ -233,12 +161,9 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner, models.RoleContributor,
 			)).Put("/", planH.UpdateActivity)
-
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/links", planH.CreateActivityLink)
-
-			// NEW Sprint A: list links for a specific activity.
 			r.Get("/links", planH.ListActivityLinks)
 		})
 
