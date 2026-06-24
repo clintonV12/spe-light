@@ -1,9 +1,12 @@
-import { useEffect, useState, useCallback } from 'react'
+import {
+  useCallback, useEffect, useRef, useState
+} from 'react'
 import {
   UserPlus, RefreshCw, MoreHorizontal, ShieldCheck, Shield, Eye,
   Users, Mail, Activity, ChevronLeft, ChevronRight, Filter,
   ArrowDownUp,
 } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { orgApi, auditApi } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
 import { Badge } from '../components/ui'
@@ -299,7 +302,18 @@ function AuditLogTab({ users }: { users: User[] }) {
 
 export default function AdminPage() {
   const currentUser = useAuthStore((s) => s.user)
-  const [tab, setTab] = useState<Tab>('users')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const paramTab = searchParams.get('tab') as Tab | null
+  const [tab, setTab] = useState<Tab>(paramTab ?? 'users')
+
+  // Sync tab state when URL param changes (e.g. navigating from dashboard feed)
+  const prevParam = useRef(paramTab)
+  useEffect(() => {
+    if (paramTab && paramTab !== prevParam.current) {
+      setTab(paramTab)
+      prevParam.current = paramTab
+    }
+  }, [paramTab])
   const [users, setUsers] = useState<User[]>([])
   const [invitations, setInvitations] = useState<Invitation[]>([])
   const [loading, setLoading] = useState(true)
@@ -370,7 +384,10 @@ export default function AdminPage() {
         {TABS.map(({ id, label, count }) => (
           <button
             key={id}
-            onClick={() => setTab(id)}
+            onClick={() => {
+              setTab(id)
+              setSearchParams(id !== 'users' ? { tab: id } : {})
+            }}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               tab === id ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-700'
             }`}
