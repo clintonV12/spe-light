@@ -191,35 +191,56 @@ export const Card: React.FC<CardProps> = ({ children, className, onClick }) => (
 interface ProgressBarProps {
   value: number       // 0–100
   variant?: 'p1' | 'p2' | 'p3' | 'default'
+  size?: 'xs' | 'sm' | 'md'
   showLabel?: boolean
   className?: string
 }
 
-const progressColors: Record<NonNullable<ProgressBarProps['variant']>, string> = {
-  p1:      'bg-p1',
-  p2:      'bg-p2',
-  p3:      'bg-p3',
-  default: 'bg-accent',
+// Each variant gets a gradient pair (from → to) for a modern filled look
+const progressGradients: Record<NonNullable<ProgressBarProps['variant']>, string> = {
+  p1:      'from-amber-400 to-amber-500',
+  p2:      'from-emerald-400 to-emerald-500',
+  p3:      'from-violet-400 to-violet-500',
+  default: 'from-blue-500 to-indigo-500',
+}
+
+const progressHeights: Record<NonNullable<ProgressBarProps['size']>, string> = {
+  xs: 'h-1',
+  sm: 'h-1.5',
+  md: 'h-2',
 }
 
 export const ProgressBar: React.FC<ProgressBarProps> = ({
   value,
   variant = 'default',
+  size = 'sm',
   showLabel,
   className,
-}) => (
-  <div className={clsx('flex items-center gap-2', className)}>
-    <div className="flex-1 rounded-full bg-ink-100 h-2 overflow-hidden">
-      <div
-        className={clsx('h-full rounded-full transition-all duration-500', progressColors[variant])}
-        style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
-      />
+}) => {
+  const pct = Math.min(100, Math.max(0, value))
+  return (
+    <div className={clsx('flex items-center gap-2', className)}>
+      <div className={clsx(
+        'flex-1 rounded-full overflow-hidden',
+        progressHeights[size],
+        'bg-ink-100',
+      )}>
+        <div
+          className={clsx(
+            'h-full rounded-full bg-gradient-to-r transition-all duration-700 ease-out',
+            progressGradients[variant],
+          )}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {showLabel && (
+        <span className="text-xs font-medium text-ink-500 w-8 text-right tabular-nums">
+          {Math.round(pct)}%
+        </span>
+      )}
     </div>
-    {showLabel && (
-      <span className="text-xs font-medium text-ink-500 w-8 text-right">{Math.round(value)}%</span>
-    )}
-  </div>
-)
+  )
+}
 
 // ─── EmptyState ──────────────────────────────────────────────────────────────
 
