@@ -13,6 +13,7 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import ToastContainer from '../ui/ToastContainer'
 import CommandPalette from './CommandPalette'
 import ShortcutsModal from './ShortcutsModal'
+import AppFooter from './AppFooter'
 
 // Custom event dispatched by AppShell when the user presses 'c'.
 // Pages listen for this and open their own create modal.
@@ -77,8 +78,14 @@ export const AppShell: React.FC = () => {
       )}>
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 h-16 border-b border-ink-700">
-          <div className="size-8 rounded-lg bg-accent flex items-center justify-center shrink-0">
-            <span className="font-display font-bold text-sm">SP</span>
+          <div className="size-8 rounded-lg bg-accent flex items-center justify-center shrink-0 overflow-hidden">
+            {/* StratPlan SVG logo mark — three phase bars + rising arrow */}
+            <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="4" y="8"  width="9"  height="2.5" rx="1.25" fill="white" opacity="0.65"/>
+              <rect x="4" y="13" width="14" height="2.5" rx="1.25" fill="white" opacity="0.82"/>
+              <rect x="4" y="18" width="18" height="2.5" rx="1.25" fill="white"/>
+              <path d="M18 10 L24 5 L24 11" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.90"/>
+            </svg>
           </div>
           {!collapsed && (
             <span className="font-display font-bold text-base tracking-tight">StratPlan</span>
@@ -194,9 +201,12 @@ export const AppShell: React.FC = () => {
           </button>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
-          <Outlet />
+        {/* Page content + footer */}
+        <main className="flex-1 overflow-y-auto flex flex-col">
+          <div className="flex-1">
+            <Outlet />
+          </div>
+          <AppFooter />
         </main>
       </div>
 

@@ -110,6 +110,36 @@ func (h *Admin) SendOrgInvitation(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusCreated, inv)
 }
 
+// GET /api/v1/admin/audit-log — super_admin or platform_support.
+// Optional org_id query param scopes to one org; omitted = all orgs.
+func (h *Admin) ListAuditLog(w http.ResponseWriter, r *http.Request) {
+	var orgID *uuid.UUID
+	if s := r.URL.Query().Get("org_id"); s != "" {
+		if id, err := uuid.Parse(s); err == nil {
+			orgID = &id
+		}
+	}
+	params := adminsvc.AuditLogParams{
+		OrgID:     orgID,
+		UserID:    r.URL.Query().Get("user_id"),
+		Action:    r.URL.Query().Get("action"),
+		TableName: r.URL.Query().Get("table_name"),
+		From:      r.URL.Query().Get("from"),
+		To:        r.URL.Query().Get("to"),
+		Limit:     parseIntQuery(r, "limit", 50),
+		Offset:    parseIntQuery(r, "offset", 0),
+	}
+	if params.Limit > 200 {
+		params.Limit = 200
+	}
+	result, err := h.svc.ListAuditLog(r.Context(), params)
+	if err != nil {
+		response.ErrorJSON(w, "failed to fetch audit log", http.StatusInternalServerError)
+		return
+	}
+	response.JSON(w, http.StatusOK, result)
+}
+
 // parseIntQuery reads an integer query parameter with a fallback default.
 func parseIntQuery(r *http.Request, key string, defaultVal int) int {
 	s := r.URL.Query().Get(key)

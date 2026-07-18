@@ -1,0 +1,13 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background square with rounded corners — filled by caller via className -->
+  <rect width="32" height="32" rx="8" fill="currentColor"/>
+  <!-- Stylised "SP" mark: three stacked horizontal bars suggesting P1/P2/P3 phases -->
+  <!-- Bar 1 (P1 — shortest, top) -->
+  <rect x="7" y="8" width="10" height="2.5" rx="1.25" fill="white" opacity="0.70"/>
+  <!-- Bar 2 (P2 — medium, middle) -->
+  <rect x="7" y="13" width="15" height="2.5" rx="1.25" fill="white" opacity="0.85"/>
+  <!-- Bar 3 (P3 — full, bottom) -->
+  <rect x="7" y="18" width="18" height="2.5" rx="1.25" fill="white"/>
+  <!-- Upward-trending arrow head — strategy going up -->
+  <path d="M20 10.5 L25 6 L25 11" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.90"/>
+</svg>

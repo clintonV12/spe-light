@@ -39,7 +39,6 @@ import (
 	"spe-light/internal/response"
 	ssosvc "spe-light/internal/services/sso"
 
-	"github.com/crewjam/saml/samlsp"
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/oauth2"
 )
@@ -78,11 +77,21 @@ func (h *SSOAuth) SAMLMetadata(w http.ResponseWriter, r *http.Request) {
 // POST /auth/saml/{orgSlug}/acs
 //
 // SAML Assertion Consumer Service. The IdP POST-backs here after the user
-// authenticates. crewjam/saml's middleware validates the assertion (signature,
-// audience, NotBefore/NotOnOrAfter, replay cache) before this handler body
-// runs — any invalid assertion is rejected with 403 by the library.
+// authenticates.
 //
-// On success: redirects to {APP_URL}/auth/callback with tokens in the query.
+// samlsp.Middleware.ServeHTTP only takes (w, r) — it has no hook to run our
+// own logic between "assertion validated" and "response sent." Internally
+// it would call CreateSessionFromAssertion, which sets crewjam/saml's own
+// session cookie and redirects — not what we want, since we mint our own
+// JWT/refresh token pair instead. So rather than call sp.ServeHTTP/ServeACS,
+// this handler replicates ServeACS's own validation steps directly (they're
+// only a few lines — see middleware.go's ServeACS in crewjam/saml) and takes
+// over once it has the validated *saml.Assertion.
+//
+// This still gets full validation: ParseResponse checks the signature,
+// audience, and NotBefore/NotOnOrAfter timestamps, and AssertionHandler
+// (PGAssertionHandler, see saml_cache.go) checks replay — any invalid or
+// replayed assertion is rejected before HandleSAMLAssertion is ever called.
 func (h *SSOAuth) SAMLAssertionConsumer(w http.ResponseWriter, r *http.Request) {
 	orgSlug := chi.URLParam(r, "orgSlug")
 
@@ -92,46 +101,67 @@ func (h *SSOAuth) SAMLAssertionConsumer(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Wrap our business logic in the crewjam/saml middleware chain.
-	// The middleware validates the assertion and injects the session into ctx.
-	sp.ServeHTTP(w, r, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, ok := r.Context().Value(samlsp.SessionContextKey).(samlsp.Session)
-		if !ok {
-			response.ErrorJSON(w, "SAML session missing from context after assertion", http.StatusInternalServerError)
-			return
-		}
+	if err := r.ParseForm(); err != nil {
+		response.ErrorJSON(w, "invalid SAML response form", http.StatusBadRequest)
+		return
+	}
 
-		jwtSession, ok := session.(samlsp.JWTSessionClaims)
-		if !ok {
-			response.ErrorJSON(w, "unexpected SAML session type", http.StatusInternalServerError)
-			return
-		}
+	// Same possibleRequestIDs construction ServeACS uses internally: "" is
+	// accepted when AllowIDPInitiated is set (our case — see BuildSAMLSP),
+	// plus any IDs from requests we tracked ourselves via an SP-initiated
+	// login flow, if one is ever added.
+	possibleRequestIDs := []string{}
+	if sp.ServiceProvider.AllowIDPInitiated {
+		possibleRequestIDs = append(possibleRequestIDs, "")
+	}
+	for _, tr := range sp.RequestTracker.GetTrackedRequests(r) {
+		possibleRequestIDs = append(possibleRequestIDs, tr.SAMLRequestID)
+	}
 
-		// Build a flat attribute map from the assertion's AttributeStatement.
-		attributes := make(map[string]string)
-		for _, attr := range jwtSession.Attributes {
-			if len(attr.Values) > 0 {
-				// Index by both friendly name and full URI name for broad IdP compatibility.
-				if attr.FriendlyName != "" {
-					attributes[attr.FriendlyName] = attr.Values[0].Value
-				}
-				attributes[attr.Name] = attr.Values[0].Value
+	assertion, err := sp.ServiceProvider.ParseResponse(r, possibleRequestIDs)
+	if err != nil {
+		slog.Warn("SAML response validation failed", "org", orgSlug, "err", err)
+		response.ErrorJSON(w, "SAML response validation failed", http.StatusForbidden)
+		return
+	}
+
+	// Replay protection (REQ-NF-017) — the same AssertionHandler ServeACS
+	// would have called, invoked explicitly since we're bypassing ServeACS.
+	if err := sp.AssertionHandler.HandleAssertion(assertion); err != nil {
+		slog.Warn("SAML assertion rejected", "org", orgSlug, "err", err)
+		response.ErrorJSON(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
+	// Build a flat attribute map straight from the assertion's
+	// AttributeStatements — no samlsp.Session/JWTSessionClaims involved
+	// since we never create one of crewjam/saml's own sessions.
+	attributes := make(map[string]string)
+	for _, stmt := range assertion.AttributeStatements {
+		for _, attr := range stmt.Attributes {
+			if len(attr.Values) == 0 {
+				continue
 			}
+			// Index by both friendly name and full URI name for broad IdP compatibility.
+			if attr.FriendlyName != "" {
+				attributes[attr.FriendlyName] = attr.Values[0].Value
+			}
+			attributes[attr.Name] = attr.Values[0].Value
 		}
-		// NameID is the most reliable stable subject identifier.
-		if jwtSession.Subject != "" {
-			attributes["NameID"] = jwtSession.Subject
-		}
+	}
+	// NameID is the most reliable stable subject identifier.
+	if assertion.Subject != nil && assertion.Subject.NameID != nil && assertion.Subject.NameID.Value != "" {
+		attributes["NameID"] = assertion.Subject.NameID.Value
+	}
 
-		tokens, err := h.svc.HandleSAMLAssertion(r.Context(), org.ID, ssoConfig, attributes)
-		if err != nil {
-			slog.Warn("SAML assertion handling failed", "org", orgSlug, "err", err)
-			response.ErrorJSON(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
+	tokens, err := h.svc.HandleSAMLAssertion(r.Context(), org.ID, ssoConfig, attributes)
+	if err != nil {
+		slog.Warn("SAML assertion handling failed", "org", orgSlug, "err", err)
+		response.ErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
 
-		redirectWithTokens(w, r, h.appURL, tokens)
-	}))
+	redirectWithTokens(w, r, h.appURL, tokens)
 }
 
 // ── OIDC ──────────────────────────────────────────────────────────────────

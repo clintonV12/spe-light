@@ -1,4 +1,22 @@
+/**
+ * api/endpoints.ts — public barrel re-export.
+ *
+ * Every page and hook imports from here:
+ *   import { plansApi, activitiesApi } from '../api/endpoints'
+ *
+ * The actual implementation (mock vs real switching) lives in endpointsImpl.ts.
+ * Adding a new API surface: export it from endpointsImpl.ts and re-export here.
+ */
 export {
-  authApi, plansApi, activitiesApi, reportsApi,
-  aiApi, orgApi, invitationsApi, adminApi, auditApi,
+  authApi,
+  invitationsApi,
+  plansApi,
+  activitiesApi,
+  milestonesApi,
+  reportsApi,
+  aiApi,
+  orgApi,
+  ssoApi,
+  adminApi,
+  auditApi,
 } from './endpointsImpl'

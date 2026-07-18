@@ -55,9 +55,11 @@ export default function LoginPage() {
       <div className="hidden lg:flex flex-col justify-between w-[480px] shrink-0 bg-ink-900 border-r border-ink-700 p-12">
         {/* Logo */}
         <div className="flex items-center gap-3">
-          <div className="size-9 rounded-xl bg-accent flex items-center justify-center">
-            <span className="font-display font-bold text-white text-sm tracking-tight">SP</span>
-          </div>
+          <img
+            src="/logo.jpg"
+            alt="StratPlan"
+            className="size-9 rounded-xl shrink-0 object-contain"
+          />
           <span className="font-display font-bold text-white text-lg tracking-tight">StratPlan</span>
         </div>
 
@@ -105,9 +107,11 @@ export default function LoginPage() {
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
           <div className="flex items-center gap-2 mb-10 lg:hidden">
-            <div className="size-8 rounded-lg bg-accent flex items-center justify-center">
-              <span className="font-display font-bold text-white text-xs">SP</span>
-            </div>
+            <img
+              src="/logo.jpg"
+              alt="StratPlan"
+              className="size-8 rounded-lg shrink-0 object-contain"
+            />
             <span className="font-display font-bold text-ink-900 text-base">StratPlan</span>
           </div>
 
@@ -190,6 +194,7 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+      
     </div>
   )
 }

@@ -1,13 +1,27 @@
 // saml_cache.go — PostgreSQL-backed SAML assertion replay cache.
 //
 // crewjam/saml prevents replay attacks by checking every incoming assertion
-// ID against a store before processing. The default is an in-memory map that
-// doesn't survive restarts and doesn't coordinate across instances. This file
-// provides a PostgreSQL-backed implementation using the saml_replay_cache
-// table from migration 004.
+// ID before the resulting session is created. Earlier revisions of this file
+// tried to wire that check in via a `saml.ServiceProvider.AssertionStore`
+// field — that field does not exist in crewjam/saml; there is no built-in
+// assertion-ID store to plug into.
 //
-// Wire it into BuildSAMLSP by passing a *PGAssertionStore via samlsp.Options.
-// See the comment in auth.go's BuildSAMLSP for where to set it.
+// The actual extension point crewjam/saml provides for this is the
+// `samlsp.AssertionHandler` interface: `samlsp.Middleware` calls
+// `AssertionHandler.HandleAssertion(assertion)` on every successfully
+// signature-and-timestamp-validated assertion, immediately before it creates
+// a session from it. Returning a non-nil error there rejects the login. The
+// library's default AssertionHandler (NopAssertionHandler) does nothing,
+// which is why replay protection needs to be supplied here.
+//
+// PGAssertionHandler persists each assertion's ID in Postgres (see the
+// saml_replay_cache table from migration 004) so a duplicate — whether from
+// a network resend, a captured/replayed HTTP POST, or two app instances
+// racing — is caught even across restarts and multiple instances, which an
+// in-memory set would not survive.
+//
+// Wire it into BuildSAMLSP by assigning it to sp.AssertionHandler after
+// samlsp.New(opts) — see auth.go.
 package ssosvc
 
 import (
@@ -16,58 +30,68 @@ import (
 	"strings"
 	"time"
 
+	"github.com/crewjam/saml"
+	"github.com/crewjam/saml/samlsp"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// PGAssertionStore is a PostgreSQL-backed SAML assertion replay cache scoped
-// to a single organisation.
-type PGAssertionStore struct {
+// Compile-time check that PGAssertionHandler satisfies samlsp.AssertionHandler.
+var _ samlsp.AssertionHandler = (*PGAssertionHandler)(nil)
+
+// PGAssertionHandler is a PostgreSQL-backed SAML assertion replay guard,
+// scoped to a single organisation.
+type PGAssertionHandler struct {
 	db    *pgxpool.Pool
 	orgID uuid.UUID
 }
 
-// NewPGAssertionStore creates a replay store for one org.
-func NewPGAssertionStore(db *pgxpool.Pool, orgID uuid.UUID) *PGAssertionStore {
-	return &PGAssertionStore{db: db, orgID: orgID}
+// NewPGAssertionHandler creates a replay guard for one org.
+func NewPGAssertionHandler(db *pgxpool.Pool, orgID uuid.UUID) *PGAssertionHandler {
+	return &PGAssertionHandler{db: db, orgID: orgID}
 }
 
-// Add records an assertion ID as consumed up to expiry.
-// Returns an error if the ID already exists (replay attack detected).
-// crewjam/saml calls this before processing the assertion body; any error
-// causes the assertion to be rejected.
-func (s *PGAssertionStore) Add(id string, expiry time.Time) error {
+// HandleAssertion is called by samlsp.Middleware.ServeACS with every
+// assertion that has already passed signature, audience, and timestamp
+// validation — but before a session is created from it. Returning an error
+// here aborts the login.
+//
+// It records the assertion's ID in saml_replay_cache. Because (id, org_id)
+// is unique, a second attempt to record the same assertion ID fails with a
+// unique-violation, which we surface as a replay error.
+func (h *PGAssertionHandler) HandleAssertion(assertion *saml.Assertion) error {
+	if assertion == nil || assertion.ID == "" {
+		return fmt.Errorf("SAML assertion is missing an ID")
+	}
+
+	// Expire the cache row when the assertion itself would no longer be
+	// valid, so the table doesn't grow forever. Prefer the bearer
+	// SubjectConfirmationData's NotOnOrAfter (the actual expiry crewjam/saml
+	// enforces); fall back to IssueInstant+MaxIssueDelay if that's absent.
+	expiry := assertion.IssueInstant.Add(saml.MaxIssueDelay)
+	if assertion.Subject != nil {
+		for _, sc := range assertion.Subject.SubjectConfirmations {
+			if sc.SubjectConfirmationData != nil && !sc.SubjectConfirmationData.NotOnOrAfter.IsZero() {
+				expiry = sc.SubjectConfirmationData.NotOnOrAfter
+				break
+			}
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	_, err := s.db.Exec(ctx,
+	_, err := h.db.Exec(ctx,
 		`INSERT INTO saml_replay_cache (id, org_id, not_on_or_after)
 		 VALUES ($1, $2, $3)`,
-		id, s.orgID, expiry,
+		assertion.ID, h.orgID, expiry,
 	)
 	if err != nil {
 		// SQLSTATE 23505 = unique_violation — assertion ID already consumed.
 		if strings.Contains(err.Error(), "23505") || strings.Contains(err.Error(), "unique") {
-			return fmt.Errorf("SAML assertion replay detected (assertion ID %q already used)", id)
+			return fmt.Errorf("SAML assertion replay detected (assertion ID %q already used)", assertion.ID)
 		}
-		return fmt.Errorf("store assertion ID: %w", err)
+		return fmt.Errorf("record assertion id: %w", err)
 	}
 	return nil
-}
-
-// Has reports whether the assertion ID is present and not yet expired.
-// crewjam/saml uses this as a quick pre-check before calling Add.
-func (s *PGAssertionStore) Has(id string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	var exists bool
-	_ = s.db.QueryRow(ctx,
-		`SELECT EXISTS(
-		   SELECT 1 FROM saml_replay_cache
-		   WHERE id = $1 AND org_id = $2 AND not_on_or_after > NOW()
-		 )`,
-		id, s.orgID,
-	).Scan(&exists)
-	return exists
 }

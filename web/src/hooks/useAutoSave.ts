@@ -1,108 +1,95 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+/**
+ * hooks/useAutoSave.ts
+ *
+ * Debounced auto-save for the ActivityEditorPage.
+ *
+ * Behaviour:
+ *   - After data changes (markDirty called), waits `debounceMs` before saving.
+ *   - Exposes `saveState`: 'idle' | 'pending' | 'saving' | 'saved' | 'error'
+ *   - `saveNow()` flushes the debounce immediately (used by Cmd+S).
+ *   - Skips saving if `disabled` is true (read-only or uninitialised).
+ *   - Clears the "saved" state back to "idle" after 3 seconds.
+ *
+ * Usage:
+ *   const { saveState, saveNow, markDirty } = useAutoSave({
+ *     data:        { content, status },
+ *     onSave:      async (data) => { await activitiesApi.update(id, data) },
+ *     debounceMs:  1500,
+ *     disabled:    !canEdit,
+ *   })
+ */
+
+import { useRef, useCallback, useState, useEffect } from 'react'
 
 export type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 
 interface UseAutoSaveOptions<T> {
-  data: T
-  onSave: (data: T) => Promise<void>
-  /** Milliseconds to wait after last change before firing. Default: 1500 */
+  data:        T
+  onSave:      (data: T) => Promise<void>
   debounceMs?: number
-  /** If true, auto-save is disabled (e.g. read-only mode). */
-  disabled?: boolean
-  /** Milliseconds to show "Saved" before returning to idle. Default: 2500 */
-  savedDuration?: number
-}
-
-interface UseAutoSaveReturn {
-  saveState: SaveState
-  /** Fire an immediate save regardless of debounce timer */
-  saveNow: () => Promise<void>
-  /** Mark data as dirty manually (call when you need to force a save cycle) */
-  markDirty: () => void
+  disabled?:   boolean
 }
 
 export function useAutoSave<T>({
   data,
   onSave,
   debounceMs = 1500,
-  disabled = false,
-  savedDuration = 2500,
-}: UseAutoSaveOptions<T>): UseAutoSaveReturn {
+  disabled   = false,
+}: UseAutoSaveOptions<T>): {
+  saveState: SaveState
+  saveNow:   () => void
+  markDirty: () => void
+} {
   const [saveState, setSaveState] = useState<SaveState>('idle')
 
-  // Track whether we have unsaved changes
-  const isDirtyRef = useRef(false)
-  // Track whether an active save is in-flight to avoid double-saving
-  const isSavingRef = useRef(false)
-  // Keep a stable ref to the latest data so the debounced callback always
-  // sees the current value without needing to re-register the timer
-  const dataRef = useRef(data)
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const timerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestData   = useRef<T>(data)
+  const isSaving     = useRef(false)
+  const isDirty      = useRef(false)
 
-  // Keep dataRef current
-  useEffect(() => {
-    dataRef.current = data
-  }, [data])
+  // Keep latestData in sync without triggering re-renders
+  useEffect(() => { latestData.current = data }, [data])
+
+  const clearTimers = useCallback(() => {
+    if (timerRef.current)   clearTimeout(timerRef.current)
+    if (savedTimer.current) clearTimeout(savedTimer.current)
+  }, [])
 
   const doSave = useCallback(async () => {
-    if (isSavingRef.current || disabled) return
-    isSavingRef.current = true
-    isDirtyRef.current = false
+    if (disabled || isSaving.current || !isDirty.current) return
+    isSaving.current = true
+    isDirty.current  = false
     setSaveState('saving')
     try {
-      await onSave(dataRef.current)
+      await onSave(latestData.current)
       setSaveState('saved')
-      // Reset to idle after savedDuration
-      if (savedTimer.current) clearTimeout(savedTimer.current)
-      savedTimer.current = setTimeout(() => {
-        setSaveState((s) => s === 'saved' ? 'idle' : s)
-      }, savedDuration)
+      // Reset to idle after 3 seconds
+      savedTimer.current = setTimeout(() => setSaveState('idle'), 3_000)
     } catch {
       setSaveState('error')
-      isDirtyRef.current = true // mark dirty again so next change retries
+      isDirty.current = true // allow retry
     } finally {
-      isSavingRef.current = false
+      isSaving.current = false
     }
-  }, [onSave, disabled, savedDuration])
-
-  // Called whenever data changes — schedules a debounced save
-  useEffect(() => {
-    if (disabled) return
-    // Skip the very first render (data hasn't changed yet, this is the initial load)
-    if (saveState === 'idle' && !isDirtyRef.current) return
-
-    isDirtyRef.current = true
-    setSaveState('pending')
-
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => {
-      doSave()
-    }, debounceMs)
-
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, disabled, debounceMs])
-
-  const saveNow = useCallback(async () => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    await doSave()
-  }, [doSave])
+  }, [disabled, onSave])
 
   const markDirty = useCallback(() => {
-    isDirtyRef.current = true
+    if (disabled) return
+    isDirty.current = true
     setSaveState('pending')
-  }, [])
+    // Reset the debounce timer
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(doSave, debounceMs)
+  }, [disabled, debounceMs, doSave])
+
+  const saveNow = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    doSave()
+  }, [doSave])
 
   // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current)
-      if (savedTimer.current) clearTimeout(savedTimer.current)
-    }
-  }, [])
+  useEffect(() => () => clearTimers(), [clearTimers])
 
   return { saveState, saveNow, markDirty }
 }

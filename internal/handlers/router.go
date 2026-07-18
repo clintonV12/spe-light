@@ -97,24 +97,35 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 		r.Use(middleware.Authenticate(cfg.JWTSecret))
 		r.Use(middleware.WithRLS(db))
 
-		// ── Org admin ──────────────────────────────────────────────
+		// ── Org ────────────────────────────────────────────────────
 		r.Route("/api/v1/org", func(r chi.Router) {
-			r.Use(middleware.RequireRole(models.RoleOrgAdmin))
-			r.Get("/users", orgH.ListUsers)
-			r.Patch("/users/{userID}", orgH.UpdateUser)
-			r.Get("/invitations", orgH.ListInvitations)
-			r.Post("/invitations", orgH.SendInvitation)
-			r.Delete("/invitations/{invitationID}", orgH.CancelInvitation)
-			r.Post("/invitations/{invitationID}/resend", orgH.ResendInvitation)
-			r.Get("/sso", ssoH.GetConfig)
-			r.Put("/sso", ssoH.UpsertConfig)
-			r.Delete("/sso", ssoH.DeleteConfig)
+			// No role gate — every authenticated org user (including
+			// viewers) can read their own profile and their own org's
+			// public details. Required by LoginPage.tsx (real mode).
+			r.Get("/me", orgH.GetMe)
+			r.Get("/", orgH.GetOrg)
+
+			// Org admin only.
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequireRole(models.RoleOrgAdmin))
+				r.Get("/users", orgH.ListUsers)
+				r.Patch("/users/{userID}", orgH.UpdateUser)
+				r.Get("/invitations", orgH.ListInvitations)
+				r.Post("/invitations", orgH.SendInvitation)
+				r.Delete("/invitations/{invitationID}", orgH.CancelInvitation)
+				r.Post("/invitations/{invitationID}/resend", orgH.ResendInvitation)
+				r.Get("/sso", ssoH.GetConfig)
+				r.Put("/sso", ssoH.UpsertConfig)
+				r.Delete("/sso", ssoH.DeleteConfig)
+				r.Get("/audit-log", orgH.ListAuditLog)
+			})
 		})
 
 		// ── Platform admin ─────────────────────────────────────────
 		r.Route("/api/v1/admin", func(r chi.Router) {
 			r.Use(middleware.RequireRole(models.RoleSuperAdmin, models.RolePlatformSupport))
 			r.Get("/orgs", adminH.ListOrgs)
+			r.Get("/audit-log", adminH.ListAuditLog)
 			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Post("/orgs", adminH.CreateOrg)
 			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Patch("/orgs/{orgID}", adminH.UpdateOrg)
 			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Post("/org-invitations", adminH.SendOrgInvitation)
@@ -140,6 +151,9 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 			)).Delete("/{planID}", planH.DeletePlan)
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
+			)).Post("/{planID}/duplicate", planH.DuplicatePlan)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/{planID}/activities", planH.CreateActivity)
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin,
@@ -158,13 +172,20 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 
 		// ── Activities ─────────────────────────────────────────────
 		r.Route("/api/v1/activities/{activityID}", func(r chi.Router) {
+			r.Get("/", planH.GetActivity)
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner, models.RoleContributor,
 			)).Put("/", planH.UpdateActivity)
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
+			)).Delete("/", planH.DeleteActivity)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/links", planH.CreateActivityLink)
 			r.Get("/links", planH.ListActivityLinks)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Delete("/links/{linkID}", planH.DeleteActivityLink)
 		})
 
 		// ── Milestones ─────────────────────────────────────────────

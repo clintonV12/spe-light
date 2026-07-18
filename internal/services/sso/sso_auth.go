@@ -101,6 +101,14 @@ func (s *AuthService) BuildSAMLSP(ctx context.Context, orgSlug string, r *http.R
 	opts := samlsp.Options{
 		URL:      *spURL,
 		EntityID: spBase + "/metadata",
+		// This app only exposes the metadata and ACS endpoints — there is no
+		// SP-initiated "/auth/saml/{orgSlug}/login" route that calls
+		// HandleStartAuthFlow. So every login is IdP-initiated: the org admin
+		// starts the flow from their IdP's own app portal, which POSTs
+		// straight to our ACS endpoint with no prior AuthnRequest and no
+		// InResponseTo to correlate. AllowIDPInitiated tells crewjam/saml to
+		// accept that instead of rejecting it as an unsolicited response.
+		AllowIDPInitiated: true,
 	}
 
 	switch {
@@ -122,19 +130,22 @@ func (s *AuthService) BuildSAMLSP(ctx context.Context, orgSlug string, r *http.R
 		return nil, nil, nil, fmt.Errorf("SAML config incomplete: provide metadata_url or both entity_id and certificate")
 	}
 
-	// Wire the PostgreSQL replay cache so assertion deduplication survives restarts.
-	opts.UseArtifactResponse = false // not used; explicit clarity
-	store := NewPGAssertionStore(s.db, org.ID)
-	_ = store // assigned to opts when samlsp exposes the AssertionStore field; see TODO below
-	// TODO: samlsp.Options does not currently have an AssertionStore field exposed
-	// in v0.4.x. Wire it via sp.ServiceProvider.AssertionStore after construction:
 	sp, err := samlsp.New(opts)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("build SAML SP: %w", err)
 	}
-	// Assign the PostgreSQL store to the underlying SP so replay protection
-	// is durable. crewjam/saml reads from sp.ServiceProvider.AssertionStore.
-	sp.ServiceProvider.AssertionStore = store
+
+	// Durable, cross-instance assertion replay protection (REQ-NF-017).
+	// crewjam/saml's ServiceProvider has no AssertionStore field — that was
+	// never a real extension point. The library's actual hook for this is
+	// the AssertionHandler interface, which runs on every successfully
+	// validated assertion right before the session is created and can
+	// reject it. The default AssertionHandler is a no-op, so we replace it
+	// with one that persists each assertion ID in Postgres (see
+	// saml_cache.go / saml_replay_cache, migration 004) — that way a replay
+	// is caught even across restarts and multiple app instances.
+	sp.AssertionHandler = NewPGAssertionHandler(s.db, org.ID)
+
 	return sp, ssoConfig, org, nil
 }
 
@@ -433,18 +444,31 @@ func coalesce(values ...string) string {
 // buildInlineMetadata constructs a minimal SAML EntityDescriptor from a
 // raw PEM certificate and entity ID, used when the IdP doesn't publish a
 // metadata URL.
+//
+// KeyDescriptors is NOT a direct field of IDPSSODescriptor — crewjam/saml
+// nests it two levels down through embedded structs:
+// IDPSSODescriptor -> SSODescriptor -> RoleDescriptor -> KeyDescriptors.
+// Go promotes embedded fields for reads (idp.KeyDescriptors works), but a
+// composite literal must name every level explicitly, so this constructs
+// the nested RoleDescriptor directly rather than trying to set
+// KeyDescriptors straight on IDPSSODescriptor (which does not compile).
 func buildInlineMetadata(entityID, certPEM string) *crewjamsaml.EntityDescriptor {
 	return &crewjamsaml.EntityDescriptor{
 		EntityID: entityID,
 		IDPSSODescriptors: []crewjamsaml.IDPSSODescriptor{
 			{
-				KeyDescriptors: []crewjamsaml.KeyDescriptor{
-					{
-						Use: "signing",
-						KeyInfo: crewjamsaml.KeyInfo{
-							X509Data: crewjamsaml.X509Data{
-								X509Certificates: []crewjamsaml.X509Certificate{
-									{Data: certPEM},
+				SSODescriptor: crewjamsaml.SSODescriptor{
+					RoleDescriptor: crewjamsaml.RoleDescriptor{
+						ProtocolSupportEnumeration: "urn:oasis:names:tc:SAML:2.0:protocol",
+						KeyDescriptors: []crewjamsaml.KeyDescriptor{
+							{
+								Use: "signing",
+								KeyInfo: crewjamsaml.KeyInfo{
+									X509Data: crewjamsaml.X509Data{
+										X509Certificates: []crewjamsaml.X509Certificate{
+											{Data: certPEM},
+										},
+									},
 								},
 							},
 						},

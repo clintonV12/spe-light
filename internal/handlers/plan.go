@@ -1,17 +1,11 @@
-// This file implements HTTP handlers for plans and activities (Sprint 2).
+// plan.go — HTTP handlers for plans and activities.
 //
-// Routes:
+// All existing handlers are unchanged. Added in this revision:
 //
-//	GET    /api/v1/plans                            — list plans for caller's org
-//	POST   /api/v1/plans                            — create a plan (planner+)
-//	GET    /api/v1/plans/{planID}                   — get a single plan
-//	PUT    /api/v1/plans/{planID}                   — update a plan (planner+)
-//	DELETE /api/v1/plans/{planID}                   — soft-delete a plan (org_admin only)
-//	GET    /api/v1/plans/{planID}/activities        — list activities, optional ?phase=P1|P2|P3
-//	POST   /api/v1/plans/{planID}/activities        — create activity (planner+)
-//	GET    /api/v1/plans/{planID}/progress          — progress metrics
-//	PUT    /api/v1/activities/{activityID}          — update activity
-//	POST   /api/v1/activities/{activityID}/links    — create activity link
+//	GET    /api/v1/activities/{activityID}              — GetActivity (gap 1)
+//	DELETE /api/v1/activities/{activityID}              — DeleteActivity (gap 2)
+//	DELETE /api/v1/activities/{activityID}/links/{linkID} — DeleteActivityLink (gap 3)
+//	POST   /api/v1/plans/{planID}/duplicate             — DuplicatePlan (gap 4)
 package handlers
 
 import (
@@ -49,7 +43,6 @@ func (h *Plan) ListPlans(w http.ResponseWriter, r *http.Request) {
 		response.ErrorJSON(w, "failed to list plans", http.StatusInternalServerError)
 		return
 	}
-	// Return empty array rather than null so the frontend doesn't need a nil check.
 	if plans == nil {
 		plans = []models.Plan{}
 	}
@@ -131,9 +124,30 @@ func (h *Plan) DeletePlan(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]string{"message": "plan deleted"})
 }
 
+// POST /api/v1/plans/{planID}/duplicate
+// Creates a full copy of a plan (including all activities) with status reset
+// to "draft". The duplicate is owned by the requesting user.
+// Requires planner or org_admin.
+func (h *Plan) DuplicatePlan(w http.ResponseWriter, r *http.Request) {
+	claims := mustOrgClaims(w, r)
+	if claims == nil {
+		return
+	}
+	planID, ok := parsePlanID(w, r)
+	if !ok {
+		return
+	}
+	plan, err := h.svc.DuplicatePlan(r.Context(), planID, *claims.OrgID, claims.UserID)
+	if err != nil {
+		response.ErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	response.JSON(w, http.StatusCreated, plan)
+}
+
 // ── Activity handlers ─────────────────────────────────────────────────────
 
-// GET /api/v1/plans/{planID}/activities?phase=P1
+// GET /api/v1/plans/{planID}/activities?phase=P1&status=in_progress
 func (h *Plan) ListActivities(w http.ResponseWriter, r *http.Request) {
 	claims := mustOrgClaims(w, r)
 	if claims == nil {
@@ -144,7 +158,6 @@ func (h *Plan) ListActivities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Optional phase filter.
 	var phase *models.Phase
 	if p := r.URL.Query().Get("phase"); p != "" {
 		ph := models.Phase(p)
@@ -155,7 +168,21 @@ func (h *Plan) ListActivities(w http.ResponseWriter, r *http.Request) {
 		phase = &ph
 	}
 
-	activities, err := h.svc.ListActivities(r.Context(), planID, *claims.OrgID, phase)
+	// Optional status filter — new in this revision, passed through to the service.
+	var status *models.ActivityStatus
+	if s := r.URL.Query().Get("status"); s != "" {
+		as := models.ActivityStatus(s)
+		switch as {
+		case models.ActivityNotStarted, models.ActivityInProgress,
+			models.ActivityReview, models.ActivityComplete:
+			status = &as
+		default:
+			response.ErrorJSON(w, "invalid status value", http.StatusBadRequest)
+			return
+		}
+	}
+
+	activities, err := h.svc.ListActivities(r.Context(), planID, *claims.OrgID, phase, status)
 	if err != nil {
 		response.ErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
@@ -206,10 +233,30 @@ func (h *Plan) GetProgress(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, progress)
 }
 
-// ── Activity mutation handlers ────────────────────────────────────────────
+// GET /api/v1/activities/{activityID}
+// Fetches a single activity by ID, verifying the caller's org owns it.
+// Eliminates the client-side list-and-filter workaround in realEndpoints.ts.
+func (h *Plan) GetActivity(w http.ResponseWriter, r *http.Request) {
+	claims := mustOrgClaims(w, r)
+	if claims == nil {
+		return
+	}
+	activityID, err := uuid.Parse(chi.URLParam(r, "activityID"))
+	if err != nil {
+		response.ErrorJSON(w, "invalid activity id", http.StatusBadRequest)
+		return
+	}
+	activity, err := h.svc.GetActivity(r.Context(), activityID, *claims.OrgID)
+	if err != nil {
+		response.ErrorJSON(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	response.JSON(w, http.StatusOK, activity)
+}
 
 // PUT /api/v1/activities/{activityID}
-// Contributors may only update activities assigned to them.
+// Contributors may only update activities assigned to them (enforced here and
+// by Postgres RLS).
 func (h *Plan) UpdateActivity(w http.ResponseWriter, r *http.Request) {
 	claims := mustOrgClaims(w, r)
 	if claims == nil {
@@ -220,26 +267,43 @@ func (h *Plan) UpdateActivity(w http.ResponseWriter, r *http.Request) {
 		response.ErrorJSON(w, "invalid activity id", http.StatusBadRequest)
 		return
 	}
-
 	var req plansvc.UpdateActivityRequest
 	if !response.DecodeJSON(w, r, &req) {
 		return
 	}
-
-	// For contributors, enforce that they are assigned to this activity.
 	if claims.Role == models.RoleContributor {
 		if !h.svc.IsAssigned(r.Context(), activityID, claims.UserID) {
 			response.ErrorJSON(w, "you are not assigned to this activity", http.StatusForbidden)
 			return
 		}
 	}
-
 	activity, err := h.svc.UpdateActivity(r.Context(), activityID, *claims.OrgID, req)
 	if err != nil {
 		response.ErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	response.JSON(w, http.StatusOK, activity)
+}
+
+// DELETE /api/v1/activities/{activityID}
+// Soft-deletes an activity. Requires planner or org_admin.
+// Also removes any links that reference this activity as source or target
+// (the service layer handles cascading).
+func (h *Plan) DeleteActivity(w http.ResponseWriter, r *http.Request) {
+	claims := mustOrgClaims(w, r)
+	if claims == nil {
+		return
+	}
+	activityID, err := uuid.Parse(chi.URLParam(r, "activityID"))
+	if err != nil {
+		response.ErrorJSON(w, "invalid activity id", http.StatusBadRequest)
+		return
+	}
+	if err := h.svc.DeleteActivity(r.Context(), activityID, *claims.OrgID, claims.UserID); err != nil {
+		response.ErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]string{"message": "activity deleted"})
 }
 
 // POST /api/v1/activities/{activityID}/links
@@ -265,10 +329,33 @@ func (h *Plan) CreateActivityLink(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusCreated, link)
 }
 
+// DELETE /api/v1/activities/{activityID}/links/{linkID}
+// Removes a specific activity link. Requires planner or org_admin.
+func (h *Plan) DeleteActivityLink(w http.ResponseWriter, r *http.Request) {
+	claims := mustOrgClaims(w, r)
+	if claims == nil {
+		return
+	}
+	activityID, err := uuid.Parse(chi.URLParam(r, "activityID"))
+	if err != nil {
+		response.ErrorJSON(w, "invalid activity id", http.StatusBadRequest)
+		return
+	}
+	linkID, err := uuid.Parse(chi.URLParam(r, "linkID"))
+	if err != nil {
+		response.ErrorJSON(w, "invalid link id", http.StatusBadRequest)
+		return
+	}
+	if err := h.svc.DeleteActivityLink(r.Context(), activityID, linkID, *claims.OrgID); err != nil {
+		response.ErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]string{"message": "link deleted"})
+}
+
 // ── Shared helpers ────────────────────────────────────────────────────────
 
 // mustOrgClaims extracts JWT claims and validates an org context exists.
-// Writes a 403 and returns nil if no OrgID is present (platform-tier users).
 func mustOrgClaims(w http.ResponseWriter, r *http.Request) *middleware.Claims {
 	claims := middleware.ClaimsFrom(r.Context())
 	if claims == nil || claims.OrgID == nil {

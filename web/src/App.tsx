@@ -13,6 +13,7 @@ const ActivityEditorPage = lazy(() => import('./pages/ActivityEditorPage'))
 const ProgressPage       = lazy(() => import('./pages/ProgressPage'))
 const ReportsPage        = lazy(() => import('./pages/ReportsPage'))
 const AdminPage          = lazy(() => import('./pages/AdminPage'))
+const PlatformAdminPage  = lazy(() => import('./pages/PlatformAdminPage'))
 
 const IS_MOCK = import.meta.env.VITE_MOCK === 'true'
 
@@ -51,6 +52,9 @@ export default function App() {
             <Route element={<ProtectedRoute minimumRole="org_admin" />}>
               <Route path="/admin"     element={<Suspense fallback={<PageLoader />}><AdminPage /></Suspense>} />
             </Route>
+            {/* Platform tier — auth-gated here, role-gated inside PlatformAdminPage itself
+                (see note above re: ProtectedRoute's hierarchy semantics). */}
+            <Route path="/platform-admin" element={<Suspense fallback={<PageLoader />}><PlatformAdminPage /></Suspense>} />
           </Route>
         </Route>
 

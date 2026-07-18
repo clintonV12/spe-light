@@ -1,79 +1,408 @@
+/**
+ * api/realEndpoints.ts — typed wrappers around every live backend route.
+ *
+ * Route map (from internal/handlers/router.go):
+ *
+ * PUBLIC (no Bearer token)
+ *   POST  /auth/login                           → authApi.login
+ *   POST  /auth/refresh                         → authApi.refresh
+ *   POST  /auth/logout                          → authApi.logout
+ *   POST  /auth/password-reset/request          → authApi.requestPasswordReset
+ *   POST  /auth/password-reset/confirm          → authApi.confirmPasswordReset
+ *   GET   /auth/saml/{orgSlug}/metadata         → ssoApi.samlMetadata (redirect only)
+ *   POST  /auth/saml/{orgSlug}/acs              → handled by browser redirect
+ *   GET   /auth/oidc/{orgSlug}/login            → ssoApi.oidcLogin (redirect only)
+ *   GET   /auth/oidc/{orgSlug}/callback         → handled by browser redirect
+ *   POST  /invitations/accept                   → invitationsApi.accept
+ *
+ * AUTHENTICATED — Org admin
+ *   GET   /api/v1/org/users                     → orgApi.listUsers
+ *   PATCH /api/v1/org/users/{userID}            → orgApi.updateUser
+ *   GET   /api/v1/org/invitations               → orgApi.listInvitations
+ *   POST  /api/v1/org/invitations               → orgApi.sendInvitation
+ *   DELETE /api/v1/org/invitations/{id}         → orgApi.cancelInvitation
+ *   POST  /api/v1/org/invitations/{id}/resend   → orgApi.resendInvitation
+ *   GET   /api/v1/org/sso                       → ssoApi.getConfig
+ *   PUT   /api/v1/org/sso                       → ssoApi.upsertConfig
+ *   DELETE /api/v1/org/sso                      → ssoApi.deleteConfig
+ *
+ * AUTHENTICATED — Super admin / Platform support
+ *   GET   /api/v1/admin/orgs                    → adminApi.listOrgs
+ *   POST  /api/v1/admin/orgs                    → adminApi.createOrg
+ *   PATCH /api/v1/admin/orgs/{orgID}            → adminApi.updateOrg
+ *   POST  /api/v1/admin/org-invitations         → adminApi.sendOrgInvitation
+ *
+ * AUTHENTICATED — Plans (role-gated per route)
+ *   GET   /api/v1/plans                         → plansApi.list
+ *   POST  /api/v1/plans                         → plansApi.create  (planner+)
+ *   GET   /api/v1/plans/{planID}                → plansApi.get
+ *   PUT   /api/v1/plans/{planID}                → plansApi.update  (planner+)
+ *   DELETE /api/v1/plans/{planID}               → plansApi.delete  (org_admin)
+ *   POST  /api/v1/plans/{planID}/duplicate      → plansApi.duplicate (planner+)
+ *   GET   /api/v1/plans/{planID}/progress       → plansApi.progress
+ *   GET   /api/v1/plans/{planID}/activities     → activitiesApi.list
+ *   POST  /api/v1/plans/{planID}/activities     → activitiesApi.create (planner+)
+ *   GET   /api/v1/plans/{planID}/links          → activitiesApi.listLinks
+ *   GET   /api/v1/plans/{planID}/auto-links     → activitiesApi.listAutoLinks
+ *   POST  /api/v1/plans/{planID}/viewers        → plansApi.grantViewer (org_admin)
+ *   DELETE /api/v1/plans/{planID}/viewers/{uid} → plansApi.revokeViewer (org_admin)
+ *   GET   /api/v1/plans/{planID}/milestones     → milestonesApi.list
+ *   POST  /api/v1/plans/{planID}/milestones     → milestonesApi.create (planner+)
+ *   POST  /api/v1/plans/{planID}/reports        → reportsApi.generate  (planner+)
+ *
+ * AUTHENTICATED — Activities
+ *   GET   /api/v1/activities/{activityID}             (via list, no standalone GET)
+ *   PUT   /api/v1/activities/{activityID}             → activitiesApi.update
+ *   POST  /api/v1/activities/{activityID}/links       → activitiesApi.createLink
+ *   GET   /api/v1/activities/{activityID}/links       → activitiesApi.listActivityLinks
+ *
+ * AUTHENTICATED — Milestones
+ *   PUT   /api/v1/milestones/{milestoneID}            → milestonesApi.update (planner+)
+ *   DELETE /api/v1/milestones/{milestoneID}           → milestonesApi.delete (org_admin)
+ *
+ * AUTHENTICATED — AI  (not yet implemented — returns 501)
+ *   POST  /api/v1/ai/draft                      → aiApi.draft
+ *   POST  /api/v1/ai/summary                    → aiApi.summary
+ *
+ * AUTHENTICATED — Reports (polling)
+ *   GET   /api/v1/reports/{jobID}               → reportsApi.poll
+ *   GET   /api/v1/plans/{planID}/reports        → reportsApi.history
+ *
+ * AUTHENTICATED — Org audit log
+ *   GET   /api/v1/org/audit-log                 → auditApi.list
+ */
+
 import apiClient from './client'
 import type {
-  AuthTokens, LoginPayload, Plan, Activity, ActivityLink,
+  AuthTokens, LoginPayload,
+  Plan, PlanProgress,
+  Activity, ActivityLink,
   AiDraftRequest, AiDraftResponse, AiSummaryRequest, AiSummaryResponse,
-  Invitation, Organisation, PlanProgress, Report,
-  ReportFormat, ReportType, User, UserRole, AuditLog,
+  Invitation, Organisation,
+  Report, ReportType, ReportFormat, ReportJobStatus,
+  User, UserRole,
+  AuditLog, AuditListResponse,
+  Milestone, MilestoneStatus,
+  SSOConfig,
 } from '../types'
 
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
 export const authApi = {
+  /** POST /auth/login — public, no Bearer token */
   login: (payload: LoginPayload) =>
-    apiClient.post<AuthTokens>('/auth/login', payload).then((r) => r.data),
+    apiClient.post<AuthTokens>('/auth/login', payload, { baseURL: '/' }).then((r) => r.data),
+
+  /** POST /auth/refresh — public. Uses plain axios via the interceptor. */
   refresh: (refreshToken: string) =>
-    apiClient.post<AuthTokens>('/auth/refresh', { refresh_token: refreshToken }).then((r) => r.data),
-  logout: () => apiClient.post('/auth/logout'),
+    apiClient.post<AuthTokens>('/auth/refresh', { refresh_token: refreshToken }, { baseURL: '/' }).then((r) => r.data),
+
+  /** POST /auth/logout */
+  logout: (refreshToken: string) =>
+    apiClient.post('/auth/logout', { refresh_token: refreshToken }, { baseURL: '/' }).then(() => undefined as void),
+
+  /** POST /auth/password-reset/request */
+  requestPasswordReset: (email: string) =>
+    apiClient.post('/auth/password-reset/request', { email }, { baseURL: '/' }).then(() => undefined as void),
+
+  /** POST /auth/password-reset/confirm */
+  confirmPasswordReset: (token: string, password: string) =>
+    apiClient.post('/auth/password-reset/confirm', { token, password }, { baseURL: '/' }).then(() => undefined as void),
 }
 
-export const plansApi = {
-  list:      ()                             => apiClient.get<Plan[]>('/plans').then((r) => r.data),
-  get:       (id: string)                   => apiClient.get<Plan>(`/plans/${id}`).then((r) => r.data),
-  create:    (p: Partial<Plan>)             => apiClient.post<Plan>('/plans', p).then((r) => r.data),
-  update:    (id: string, p: Partial<Plan>) => apiClient.put<Plan>(`/plans/${id}`, p).then((r) => r.data),
-  delete:    (id: string)                   => apiClient.delete(`/plans/${id}`),
-  duplicate: (id: string)                   => apiClient.post<Plan>(`/plans/${id}/duplicate`).then((r) => r.data),
-  progress:  (id: string)                   => apiClient.get<PlanProgress>(`/plans/${id}/progress`).then((r) => r.data),
-}
-
-export const activitiesApi = {
-  list: (planId: string, params?: { phase?: string; status?: string }) =>
-    apiClient.get<Activity[]>(`/plans/${planId}/activities`, { params }).then((r) => r.data),
-  get:    (id: string)                          => apiClient.get<Activity>(`/activities/${id}`).then((r) => r.data),
-  create: (planId: string, p: Partial<Activity>) => apiClient.post<Activity>(`/plans/${planId}/activities`, p).then((r) => r.data),
-  update: (id: string, p: Partial<Activity>)    => apiClient.put<Activity>(`/activities/${id}`, p).then((r) => r.data),
-  delete: (id: string)                          => apiClient.delete(`/activities/${id}`),
-  createLink: (id: string, p: Partial<ActivityLink>) => apiClient.post<ActivityLink>(`/activities/${id}/links`, p).then((r) => r.data),
-  deleteLink: (actId: string, linkId: string)   => apiClient.delete(`/activities/${actId}/links/${linkId}`),
-  listLinks:  (planId: string)                  => apiClient.get<ActivityLink[]>(`/plans/${planId}/links`).then((r) => r.data),
-}
-
-export const reportsApi = {
-  generate: (planId: string, p: { type: ReportType; format: ReportFormat; date_range?: { from: string; to: string } }) =>
-    apiClient.post<{ job_id: string }>(`/plans/${planId}/reports`, p).then((r) => r.data),
-  poll:    (jobId: string)  => apiClient.get<{ status: string; file_url?: string; report?: Report }>(`/reports/${jobId}`).then((r) => r.data),
-  history: (planId: string) => apiClient.get<Report[]>(`/plans/${planId}/reports`).then((r) => r.data),
-}
-
-export const aiApi = {
-  draft:   (p: AiDraftRequest)   => apiClient.post<AiDraftResponse>('/ai/draft', p).then((r) => r.data),
-  summary: (p: AiSummaryRequest) => apiClient.post<AiSummaryResponse>('/ai/summary', p).then((r) => r.data),
-}
-
-export const orgApi = {
-  listUsers:        ()                                              => apiClient.get<User[]>('/org/users').then((r) => r.data),
-  updateUser:       (id: string, p: { role?: UserRole; is_active?: boolean }) => apiClient.patch<User>(`/org/users/${id}`, p).then((r) => r.data),
-  listInvitations:  ()                                              => apiClient.get<Invitation[]>('/org/invitations').then((r) => r.data),
-  sendInvitation:   (p: { email: string; role: UserRole })          => apiClient.post<Invitation>('/org/invitations', p).then((r) => r.data),
-  cancelInvitation: (id: string)                                    => apiClient.delete(`/org/invitations/${id}`),
-  resendInvitation: (id: string)                                    => apiClient.post(`/org/invitations/${id}/resend`),
-}
+// ── Invitations (public) ──────────────────────────────────────────────────────
 
 export const invitationsApi = {
-  accept: (p: { token: string; name: string; password: string }) =>
-    apiClient.post<AuthTokens>('/invitations/accept', p).then((r) => r.data),
+  /** POST /invitations/accept — public, no Bearer required */
+  accept: (payload: { token: string; name: string; password: string }) =>
+    apiClient.post<AuthTokens>('/invitations/accept', payload, { baseURL: '/' }).then((r) => r.data),
 }
+
+// ── Plans ─────────────────────────────────────────────────────────────────────
+
+export const plansApi = {
+  /** GET /api/v1/plans — returns plans with progress already embedded via JOIN */
+  list: () =>
+    apiClient.get<Plan[]>('/plans').then((r) => r.data),
+
+  /** GET /api/v1/plans/{planID} */
+  get: (id: string) =>
+    apiClient.get<Plan>(`/plans/${id}`).then((r) => r.data),
+
+  /** POST /api/v1/plans — requires planner or org_admin */
+  create: (payload: {
+    title:        string
+    description?: string
+    start_date?:  string
+    end_date?:    string
+  }) => apiClient.post<Plan>('/plans', payload).then((r) => r.data),
+
+  /** PUT /api/v1/plans/{planID} — requires planner or org_admin */
+  update: (id: string, payload: Partial<Pick<Plan,
+    'title' | 'description' | 'status' | 'start_date' | 'end_date'
+  >>) => apiClient.put<Plan>(`/plans/${id}`, payload).then((r) => r.data),
+
+  /** DELETE /api/v1/plans/{planID} — soft delete, requires org_admin */
+  delete: (id: string) =>
+    apiClient.delete(`/plans/${id}`).then(() => undefined as void),
+
+  /**
+   * POST /api/v1/plans/{planID}/duplicate — requires planner or org_admin.
+   * NOTE: not yet wired in router.go (marked notImplemented). Will return 501
+   * until Sprint C. The frontend should handle 501 gracefully.
+   */
+  duplicate: (id: string) =>
+    apiClient.post<Plan>(`/plans/${id}/duplicate`).then((r) => r.data),
+
+  /** GET /api/v1/plans/{planID}/progress */
+  progress: (id: string) =>
+    apiClient.get<PlanProgress>(`/plans/${id}/progress`).then((r) => r.data),
+
+  /** POST /api/v1/plans/{planID}/viewers — requires org_admin */
+  grantViewer: (planId: string, userId: string) =>
+    apiClient.post(`/plans/${planId}/viewers`, { user_id: userId }).then(() => undefined as void),
+
+  /** DELETE /api/v1/plans/{planID}/viewers/{userID} — requires org_admin */
+  revokeViewer: (planId: string, userId: string) =>
+    apiClient.delete(`/plans/${planId}/viewers/${userId}`).then(() => undefined as void),
+}
+
+// ── Activities ────────────────────────────────────────────────────────────────
+
+export const activitiesApi = {
+  /**
+   * GET /api/v1/plans/{planID}/activities
+   * Optional filters: phase=P1|P2|P3, status=not_started|in_progress|…
+   */
+  list: (planId: string, params?: { phase?: string; status?: string }) =>
+    apiClient.get<Activity[]>(`/plans/${planId}/activities`, { params }).then((r) => r.data),
+
+  /**
+   * No standalone GET /activities/{id} in the router.
+   * Fetch by calling list() and filtering client-side, or add a dedicated
+   * backend route in a future sprint.
+   */
+  get: (planId: string, activityId: string) =>
+    activitiesApi.list(planId).then((acts) => {
+      const found = acts.find((a) => a.id === activityId)
+      if (!found) throw new Error(`Activity ${activityId} not found in plan ${planId}`)
+      return found
+    }),
+
+  /** POST /api/v1/plans/{planID}/activities — requires planner or org_admin */
+  create: (planId: string, payload: {
+    phase:       string
+    type:        string
+    title:       string
+    status?:     string
+    content?:    Record<string, unknown>
+    assigned_to?: string[]
+    due_date?:   string
+  }) => apiClient.post<Activity>(`/plans/${planId}/activities`, payload).then((r) => r.data),
+
+  /**
+   * PUT /api/v1/activities/{activityID}
+   * Contributors may only update activities assigned to them (enforced server-side).
+   */
+  update: (activityId: string, payload: Partial<Pick<Activity,
+    'title' | 'status' | 'content' | 'assigned_to' | 'due_date' | 'user_order'
+  >>) => apiClient.put<Activity>(`/activities/${activityId}`, payload).then((r) => r.data),
+
+  /** DELETE — not in the current router; will need a future sprint route */
+  delete: (_activityId: string): Promise<void> =>
+    Promise.reject(new Error('Activity delete not yet implemented on the backend')),
+
+  /** POST /api/v1/activities/{activityID}/links */
+  createLink: (activityId: string, payload: {
+    target_id:  string
+    link_type?: ActivityLink['link_type']
+  }) => apiClient.post<ActivityLink>(`/activities/${activityId}/links`, payload).then((r) => r.data),
+
+  /** GET /api/v1/activities/{activityID}/links */
+  listActivityLinks: (activityId: string) =>
+    apiClient.get<ActivityLink[]>(`/activities/${activityId}/links`).then((r) => r.data),
+
+  /** GET /api/v1/plans/{planID}/links — all links for a plan */
+  listLinks: (planId: string) =>
+    apiClient.get<ActivityLink[]>(`/plans/${planId}/links`).then((r) => r.data),
+
+  /**
+   * GET /api/v1/plans/{planID}/auto-links
+   * Returns candidate links suggested by the server but not yet created.
+   */
+  listAutoLinks: (planId: string) =>
+    apiClient.get<ActivityLink[]>(`/plans/${planId}/auto-links`).then((r) => r.data),
+
+  /** DELETE link — not in the current router */
+  deleteLink: (_activityId: string, _linkId: string): Promise<void> =>
+    Promise.reject(new Error('Link delete not yet implemented on the backend')),
+}
+
+// ── Milestones ────────────────────────────────────────────────────────────────
+
+export const milestonesApi = {
+  /** GET /api/v1/plans/{planID}/milestones */
+  list: (planId: string) =>
+    apiClient.get<Milestone[]>(`/plans/${planId}/milestones`).then((r) => r.data),
+
+  /** POST /api/v1/plans/{planID}/milestones — requires planner or org_admin */
+  create: (planId: string, payload: {
+    title:               string
+    due_date:            string
+    status?:             MilestoneStatus
+    linked_activity_id?: string
+  }) => apiClient.post<Milestone>(`/plans/${planId}/milestones`, payload).then((r) => r.data),
+
+  /** PUT /api/v1/milestones/{milestoneID} — requires planner or org_admin */
+  update: (milestoneId: string, payload: Partial<Pick<Milestone,
+    'title' | 'due_date' | 'status' | 'linked_activity_id'
+  >>) => apiClient.put<Milestone>(`/milestones/${milestoneId}`, payload).then((r) => r.data),
+
+  /** DELETE /api/v1/milestones/{milestoneID} — requires org_admin */
+  delete: (milestoneId: string) =>
+    apiClient.delete(`/milestones/${milestoneId}`).then(() => undefined as void),
+}
+
+// ── Reports ───────────────────────────────────────────────────────────────────
+
+export const reportsApi = {
+  /**
+   * POST /api/v1/plans/{planID}/reports — requires planner or org_admin.
+   * Starts an async job; poll reportsApi.poll(jobId) for completion.
+   */
+  generate: (planId: string, payload: {
+    type:         ReportType
+    format:       ReportFormat
+    date_range?:  { from: string; to: string }
+  }) => apiClient.post<{ job_id: string }>(`/plans/${planId}/reports`, payload).then((r) => r.data),
+
+  /**
+   * GET /api/v1/reports/{jobID}
+   * Returns { status, file_url?, report? }. Poll until status === 'complete'.
+   */
+  poll: (jobId: string) =>
+    apiClient.get<ReportJobStatus>(`/reports/${jobId}`, { baseURL: '/api/v1' }).then((r) => r.data),
+
+  /** GET /api/v1/plans/{planID}/reports — history of completed reports */
+  history: (planId: string) =>
+    apiClient.get<Report[]>(`/plans/${planId}/reports`).then((r) => r.data),
+}
+
+// ── AI ────────────────────────────────────────────────────────────────────────
+// Both routes return 501 until Sprint C implements them.
+// The frontend should catch errors and display "AI unavailable" gracefully.
+
+export const aiApi = {
+  /** POST /api/v1/ai/draft — requires planner or org_admin */
+  draft: (payload: AiDraftRequest) =>
+    apiClient.post<AiDraftResponse>('/ai/draft', payload).then((r) => r.data),
+
+  /** POST /api/v1/ai/summary — requires planner or org_admin */
+  summary: (payload: AiSummaryRequest) =>
+    apiClient.post<AiSummaryResponse>('/ai/summary', payload).then((r) => r.data),
+}
+
+// ── Org / Users ───────────────────────────────────────────────────────────────
+
+export const orgApi = {
+  /** GET /api/v1/org/users — requires org_admin */
+  listUsers: () =>
+    apiClient.get<User[]>('/org/users').then((r) => r.data),
+
+  /** PATCH /api/v1/org/users/{userID} — requires org_admin */
+  updateUser: (userId: string, payload: { role?: UserRole; is_active?: boolean }) =>
+    apiClient.patch<User>(`/org/users/${userId}`, payload).then((r) => r.data),
+
+  /** GET /api/v1/org/invitations — requires org_admin */
+  listInvitations: () =>
+    apiClient.get<Invitation[]>('/org/invitations').then((r) => r.data),
+
+  /** POST /api/v1/org/invitations — requires org_admin */
+  sendInvitation: (payload: {
+    email:     string
+    role:      UserRole
+    plan_ids?: string[]  // for plan-scoped viewer invites
+  }) => apiClient.post<Invitation>('/org/invitations', payload).then((r) => r.data),
+
+  /** DELETE /api/v1/org/invitations/{invitationID} — requires org_admin */
+  cancelInvitation: (invitationId: string) =>
+    apiClient.delete(`/org/invitations/${invitationId}`).then(() => undefined as void),
+
+  /** POST /api/v1/org/invitations/{invitationID}/resend — requires org_admin */
+  resendInvitation: (invitationId: string) =>
+    apiClient.post(`/org/invitations/${invitationId}/resend`).then(() => undefined as void),
+}
+
+// ── SSO config ────────────────────────────────────────────────────────────────
+
+export const ssoApi = {
+  /** GET /api/v1/org/sso — requires org_admin. 404 if no SSO configured. */
+  getConfig: () =>
+    apiClient.get<SSOConfig>('/org/sso').then((r) => r.data),
+
+  /** PUT /api/v1/org/sso — upsert, requires org_admin */
+  upsertConfig: (payload: Partial<SSOConfig>) =>
+    apiClient.put<SSOConfig>('/org/sso', payload).then((r) => r.data),
+
+  /** DELETE /api/v1/org/sso — removes SSO, re-enables local login */
+  deleteConfig: () =>
+    apiClient.delete('/org/sso').then(() => undefined as void),
+
+  /**
+   * SSO login entry points — these are plain browser redirects, not Axios calls.
+   * Call window.location.href = ssoApi.samlLoginUrl(slug) to initiate.
+   */
+  samlMetadataUrl:  (orgSlug: string) => `/auth/saml/${orgSlug}/metadata`,
+  oidcLoginUrl:     (orgSlug: string) => `/auth/oidc/${orgSlug}/login`,
+}
+
+// ── Super Admin ───────────────────────────────────────────────────────────────
 
 export const adminApi = {
-  listOrgs:          ()                                    => apiClient.get<Organisation[]>('/admin/orgs').then((r) => r.data),
-  createOrg:         (p: Partial<Organisation>)            => apiClient.post<Organisation>('/admin/orgs', p).then((r) => r.data),
-  updateOrg:         (id: string, p: { is_active: boolean }) => apiClient.patch<Organisation>(`/admin/orgs/${id}`, p).then((r) => r.data),
-  sendOrgInvitation: (p: { email: string })                => apiClient.post<Invitation>('/admin/org-invitations', p).then((r) => r.data),
+  /** GET /api/v1/admin/orgs — super_admin or platform_support */
+  listOrgs: (params?: { active_only?: boolean; limit?: number; offset?: number }) =>
+    apiClient.get<Organisation[]>('/admin/orgs', { params }).then((r) => r.data),
+
+  /** POST /api/v1/admin/orgs — super_admin only */
+  // createOrg — remove the slug field, backend generates it server-side
+  createOrg: (payload: { name: string; locale?: string; industry?: string }) =>
+    apiClient.post<Organisation>('/admin/orgs', payload).then((r) => r.data),
+
+  // add — cross-org audit log
+  listAuditLog: (params?: {
+    org_id?: string; user_id?: string; action?: string; table_name?: string
+    from?: string; to?: string; limit?: number; offset?: number
+  }) => apiClient.get<AuditListResponse>('/admin/audit-log', { params }).then((r) => r.data),
+
+  /** PATCH /api/v1/admin/orgs/{orgID} — super_admin only */
+  updateOrg: (orgId: string, payload: { is_active: boolean }) =>
+    apiClient.patch<Organisation>(`/admin/orgs/${orgId}`, payload).then((r) => r.data),
+
+  /**
+   * POST /api/v1/admin/org-invitations — super_admin only.
+   * Invites a new org admin; creates the org on acceptance.
+   */
+  sendOrgInvitation: (payload: { email: string; org_name: string }) =>
+    apiClient.post<Invitation>('/admin/org-invitations', payload).then((r) => r.data),
 }
 
+// ── Audit log ─────────────────────────────────────────────────────────────────
+
 export const auditApi = {
-  list: (params: {
-    user_id?: string; action?: string; table_name?: string
-    from?: string; to?: string; limit?: number; offset?: number
-  } = {}) =>
-    apiClient.get('/org/audit-log', { params })
-      .then((r) => r.data as { logs: AuditLog[]; total: number; offset: number; limit: number }),
+  /**
+   * GET /api/v1/org/audit-log — requires org_admin.
+   *
+   * NOTE: this route is NOT in the current router.go. It needs to be added to
+   * the /api/v1/org group in the backend. Until then, calls will return 404.
+   * Tracked as: TODO — add GET /api/v1/org/audit-log to router.go.
+   */
+  list: (params?: {
+    user_id?:    string
+    action?:     string
+    table_name?: string
+    from?:       string
+    to?:         string
+    limit?:      number
+    offset?:     number
+  }) => apiClient.get<AuditListResponse>('/org/audit-log', { params }).then((r) => r.data),
 }

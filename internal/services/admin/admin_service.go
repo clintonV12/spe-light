@@ -339,3 +339,114 @@ func slugify(s string) string {
 	}
 	return string(result)
 }
+
+// AuditLogParams filters audit entries across all orgs (OrgID nil = every org).
+type AuditLogParams struct {
+	OrgID     *uuid.UUID
+	UserID    string
+	Action    string
+	TableName string
+	From      string
+	To        string
+	Limit     int
+	Offset    int
+}
+
+type AuditLogEntry struct {
+	models.AuditLog
+	UserName  string `json:"user_name"`
+	UserEmail string `json:"user_email"`
+	OrgName   string `json:"org_name"`
+}
+
+type AuditLogResult struct {
+	Logs   []AuditLogEntry `json:"logs"`
+	Total  int             `json:"total"`
+	Limit  int             `json:"limit"`
+	Offset int             `json:"offset"`
+}
+
+// ListAuditLog returns audit entries platform-wide (super_admin / platform_support).
+func (s *Service) ListAuditLog(ctx context.Context, params AuditLogParams) (*AuditLogResult, error) {
+	if params.Limit <= 0 {
+		params.Limit = 50
+	}
+	if params.Offset < 0 {
+		params.Offset = 0
+	}
+
+	where := `WHERE 1=1`
+	args := []any{}
+
+	if params.OrgID != nil {
+		args = append(args, *params.OrgID)
+		where += fmt.Sprintf(" AND a.org_id = $%d", len(args))
+	}
+	if params.UserID != "" {
+		if uid, err := uuid.Parse(params.UserID); err == nil {
+			args = append(args, uid)
+			where += fmt.Sprintf(" AND a.user_id = $%d", len(args))
+		}
+	}
+	if params.Action != "" {
+		args = append(args, params.Action)
+		where += fmt.Sprintf(" AND a.action = $%d", len(args))
+	}
+	if params.TableName != "" {
+		args = append(args, params.TableName)
+		where += fmt.Sprintf(" AND a.table_name = $%d", len(args))
+	}
+	if params.From != "" {
+		if from, err := time.Parse(time.RFC3339, params.From); err == nil {
+			args = append(args, from)
+			where += fmt.Sprintf(" AND a.created_at >= $%d", len(args))
+		}
+	}
+	if params.To != "" {
+		if to, err := time.Parse(time.RFC3339, params.To); err == nil {
+			args = append(args, to)
+			where += fmt.Sprintf(" AND a.created_at <= $%d", len(args))
+		}
+	}
+
+	var total int
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM audit_log a `+where, args...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count audit log: %w", err)
+	}
+
+	args = append(args, params.Limit, params.Offset)
+	query := fmt.Sprintf(
+		`SELECT a.id, a.org_id, a.user_id, a.action, a.table_name, a.record_id, a.diff, a.created_at,
+		        COALESCE(u.name, 'Unknown user') AS user_name,
+		        COALESCE(u.email, '')            AS user_email,
+		        COALESCE(o.name, 'Unknown org')  AS org_name
+		 FROM audit_log a
+		 LEFT JOIN users         u ON u.id = a.user_id
+		 LEFT JOIN organisations o ON o.id = a.org_id
+		 %s ORDER BY a.created_at DESC LIMIT $%d OFFSET $%d`,
+		where, len(args)-1, len(args),
+	)
+
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list audit log: %w", err)
+	}
+	defer rows.Close()
+
+	logs := []AuditLogEntry{}
+	for rows.Next() {
+		var e AuditLogEntry
+		if err := rows.Scan(
+			&e.ID, &e.OrgID, &e.UserID, &e.Action, &e.TableName, &e.RecordID, &e.Diff, &e.CreatedAt,
+			&e.UserName, &e.UserEmail, &e.OrgName,
+		); err != nil {
+			return nil, err
+		}
+		logs = append(logs, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &AuditLogResult{Logs: logs, Total: total, Limit: params.Limit, Offset: params.Offset}, nil
+}

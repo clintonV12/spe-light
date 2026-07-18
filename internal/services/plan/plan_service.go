@@ -274,6 +274,106 @@ func (s *Service) DeletePlan(ctx context.Context, planID, orgID, actorID uuid.UU
 	return nil
 }
 
+// DuplicatePlan creates a full copy of a plan — including all of its
+// non-deleted activities — owned by callerID. The duplicate always starts
+// in "draft" status regardless of the source plan's status. Activity links
+// are intentionally NOT copied: links reference activity IDs, and since the
+// duplicate gets fresh IDs, carrying links over would require rewriting
+// every link's source/target, which is easy to get subtly wrong. Plan
+// owners can re-run auto-link detection on the new plan instead.
+func (s *Service) DuplicatePlan(ctx context.Context, planID, orgID, callerID uuid.UUID) (*models.Plan, error) {
+	src, err := s.GetPlan(ctx, planID, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	newPlan := &models.Plan{
+		ID:          uuid.New(),
+		OrgID:       orgID,
+		Title:       src.Title + " (copy)",
+		Description: src.Description,
+		Status:      models.PlanDraft,
+		OwnerID:     callerID,
+		StartDate:   src.StartDate,
+		EndDate:     src.EndDate,
+	}
+	err = tx.QueryRow(ctx,
+		`INSERT INTO plans (id, org_id, title, description, status, owner_id, start_date, end_date)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 RETURNING created_at, updated_at`,
+		newPlan.ID, newPlan.OrgID, newPlan.Title, newPlan.Description,
+		newPlan.Status, newPlan.OwnerID, newPlan.StartDate, newPlan.EndDate,
+	).Scan(&newPlan.CreatedAt, &newPlan.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("create duplicate plan: %w", err)
+	}
+
+	rows, err := tx.Query(ctx,
+		`SELECT phase, type, title, user_order, status, content, assigned_to, due_date
+		 FROM activities WHERE plan_id = $1 AND org_id = $2 AND deleted_at IS NULL
+		 ORDER BY phase, user_order`,
+		planID, orgID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load source activities: %w", err)
+	}
+
+	type srcActivity struct {
+		phase      models.Phase
+		typ        string
+		title      string
+		userOrder  int
+		status     models.ActivityStatus
+		content    map[string]any
+		assignedTo []uuid.UUID
+		dueDate    *time.Time
+	}
+	var toCopy []srcActivity
+	for rows.Next() {
+		var a srcActivity
+		if err := rows.Scan(&a.phase, &a.typ, &a.title, &a.userOrder, &a.status, &a.content, &a.assignedTo, &a.dueDate); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		toCopy = append(toCopy, a)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, a := range toCopy {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO activities
+			 (id, plan_id, org_id, phase, type, title, user_order, status, content, assigned_to, due_date)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+			uuid.New(), newPlan.ID, orgID, a.phase, a.typ, a.title,
+			a.userOrder, a.status, a.content, a.assignedTo, a.dueDate,
+		); err != nil {
+			return nil, fmt.Errorf("copy activity: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	slog.Info("plan duplicated", "source_plan_id", planID, "new_plan_id", newPlan.ID, "org_id", orgID, "activities_copied", len(toCopy))
+	auditlog.Record(ctx, s.db, auditlog.Entry{
+		OrgID: orgID, UserID: callerID, Action: "plan.duplicated",
+		TableName: "plans", RecordID: newPlan.ID,
+		Diff: map[string]any{"source_plan_id": planID},
+	})
+
+	return newPlan, nil
+}
+
 // ── Activity CRUD ─────────────────────────────────────────────────────────
 
 // CreateActivityRequest holds the fields for creating a new activity.
@@ -359,8 +459,9 @@ func (s *Service) CreateActivity(ctx context.Context, planID, orgID, creatorID u
 }
 
 // ListActivities returns all non-deleted activities for a plan.
-// Optionally filter by phase. Results are sorted by phase then user_order.
-func (s *Service) ListActivities(ctx context.Context, planID, orgID uuid.UUID, phase *models.Phase) ([]models.Activity, error) {
+// Optionally filter by phase and/or status. Results are sorted by phase then
+// user_order.
+func (s *Service) ListActivities(ctx context.Context, planID, orgID uuid.UUID, phase *models.Phase, status *models.ActivityStatus) ([]models.Activity, error) {
 	// Verify plan access first.
 	var planExists bool
 	if err := s.db.QueryRow(ctx,
@@ -382,6 +483,10 @@ func (s *Service) ListActivities(ctx context.Context, planID, orgID uuid.UUID, p
 	if phase != nil {
 		args = append(args, *phase)
 		query += fmt.Sprintf(" AND phase = $%d", len(args))
+	}
+	if status != nil {
+		args = append(args, *status)
+		query += fmt.Sprintf(" AND status = $%d", len(args))
 	}
 	query += " ORDER BY phase, user_order"
 
@@ -477,6 +582,55 @@ func (s *Service) UpdateActivity(ctx context.Context, activityID, orgID uuid.UUI
 	}
 
 	return s.getActivity(ctx, activityID, orgID)
+}
+
+// GetActivity fetches a single activity by ID, enforcing org scope.
+// Exported for the standalone GET /api/v1/activities/{activityID} endpoint —
+// previously the frontend had to fetch the whole activity list and filter
+// client-side.
+func (s *Service) GetActivity(ctx context.Context, activityID, orgID uuid.UUID) (*models.Activity, error) {
+	return s.getActivity(ctx, activityID, orgID)
+}
+
+// DeleteActivity soft-deletes an activity and cascades the delete to any
+// activity_links that reference it as source or target, so the link graph
+// never contains a dangling reference to a deleted activity.
+func (s *Service) DeleteActivity(ctx context.Context, activityID, orgID, actorID uuid.UUID) error {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	result, err := tx.Exec(ctx,
+		`UPDATE activities SET deleted_at = NOW(), updated_at = NOW()
+		 WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
+		activityID, orgID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete activity: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("activity not found")
+	}
+
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM activity_links WHERE source_id = $1 OR target_id = $1`,
+		activityID,
+	); err != nil {
+		return fmt.Errorf("cascade delete links: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+
+	slog.Info("activity deleted", "activity_id", activityID, "org_id", orgID)
+	auditlog.Record(ctx, s.db, auditlog.Entry{
+		OrgID: orgID, UserID: actorID, Action: "activity.deleted",
+		TableName: "activities", RecordID: activityID,
+	})
+	return nil
 }
 
 // getActivity fetches a single activity by ID, enforcing org scope.
@@ -685,7 +839,7 @@ func (s *Service) CreateActivityLink(ctx context.Context, sourceID, orgID, creat
 		CreatedBy: creatorID,
 	}
 
-	err := s.db.QueryRow(ctx,
+	err = s.db.QueryRow(ctx,
 		`INSERT INTO activity_links (id, plan_id, source_id, target_id, link_type, created_by)
 		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING created_at, updated_at`,
@@ -697,4 +851,25 @@ func (s *Service) CreateActivityLink(ctx context.Context, sourceID, orgID, creat
 	}
 
 	return link, nil
+}
+
+// DeleteActivityLink removes a single activity link. activityID is accepted
+// so the handler can scope the delete to a link that actually touches that
+// activity (as source or target) — it's not enough to just check org_id,
+// since that would let any org member delete any link in the org by ID.
+func (s *Service) DeleteActivityLink(ctx context.Context, activityID, linkID, orgID uuid.UUID) error {
+	result, err := s.db.Exec(ctx,
+		`DELETE FROM activity_links
+		 WHERE id = $1
+		   AND (source_id = $2 OR target_id = $2)
+		   AND plan_id IN (SELECT id FROM plans WHERE org_id = $3)`,
+		linkID, activityID, orgID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete activity link: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("link not found")
+	}
+	return nil
 }

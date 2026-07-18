@@ -20,6 +20,84 @@ func NewOrg(svc *orgsvc.Service) *Org {
 	return &Org{svc: svc}
 }
 
+// GET /api/v1/org/me
+// Returns the currently authenticated user's profile.
+// Available to every authenticated org user — no role gate.
+// Required by LoginPage.tsx (real mode) after exchanging tokens.
+func (h *Org) GetMe(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFrom(r.Context())
+	if claims == nil {
+		response.ErrorJSON(w, "unauthenticated", http.StatusUnauthorized)
+		return
+	}
+	user, err := h.svc.GetUserByID(r.Context(), claims.UserID)
+	if err != nil {
+		response.ErrorJSON(w, "user not found", http.StatusNotFound)
+		return
+	}
+	response.JSON(w, http.StatusOK, user)
+}
+
+// GET /api/v1/org
+// Returns the organisation the caller belongs to.
+// Available to every authenticated org user — no role gate.
+// Required by LoginPage.tsx (real mode) after exchanging tokens.
+func (h *Org) GetOrg(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFrom(r.Context())
+	if claims == nil || claims.OrgID == nil {
+		response.ErrorJSON(w, "no organisation context", http.StatusForbidden)
+		return
+	}
+	org, err := h.svc.GetOrgByID(r.Context(), *claims.OrgID)
+	if err != nil {
+		response.ErrorJSON(w, "organisation not found", http.StatusNotFound)
+		return
+	}
+	response.JSON(w, http.StatusOK, org)
+}
+
+// GET /api/v1/org/audit-log
+// Returns a paginated list of audit log entries for the caller's org.
+// Requires org_admin.
+//
+// Query params:
+//
+//	user_id    — filter by actor
+//	action     — filter by action string (e.g. "plan.created")
+//	table_name — filter by affected table
+//	from       — ISO-8601 timestamp lower bound
+//	to         — ISO-8601 timestamp upper bound
+//	limit      — default 50, max 200
+//	offset     — default 0
+func (h *Org) ListAuditLog(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFrom(r.Context())
+	if claims == nil || claims.OrgID == nil {
+		response.ErrorJSON(w, "no organisation context", http.StatusForbidden)
+		return
+	}
+
+	params := orgsvc.AuditLogParams{
+		OrgID:     *claims.OrgID,
+		UserID:    r.URL.Query().Get("user_id"),
+		Action:    r.URL.Query().Get("action"),
+		TableName: r.URL.Query().Get("table_name"),
+		From:      r.URL.Query().Get("from"),
+		To:        r.URL.Query().Get("to"),
+		Limit:     parseIntQuery(r, "limit", 50),
+		Offset:    parseIntQuery(r, "offset", 0),
+	}
+	if params.Limit > 200 {
+		params.Limit = 200
+	}
+
+	result, err := h.svc.ListAuditLog(r.Context(), params)
+	if err != nil {
+		response.ErrorJSON(w, "failed to fetch audit log", http.StatusInternalServerError)
+		return
+	}
+	response.JSON(w, http.StatusOK, result)
+}
+
 // GET /api/v1/org/users
 func (h *Org) ListUsers(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFrom(r.Context())
@@ -91,7 +169,6 @@ func (h *Org) SendInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch org name and inviter name for the email
 	orgName, inviterName := h.svc.GetOrgAndUserNames(r.Context(), *claims.OrgID, claims.UserID)
 
 	inv, err := h.svc.SendUserInvite(r.Context(), orgsvc.SendInviteRequest{

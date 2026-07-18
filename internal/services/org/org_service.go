@@ -10,6 +10,8 @@
 //   - List invitations for an org
 //   - Update a user's role or active status (REQ-F-008, REQ-F-009)
 //   - List users in an org
+//   - Fetch the caller's own profile and org (GET /org/me, GET /org)
+//   - List the org's audit log (GET /org/audit-log)
 package orgsvc
 
 import (
@@ -316,6 +318,166 @@ func (s *Service) ListUsers(ctx context.Context, orgID uuid.UUID) ([]models.User
 		users = append(users, u)
 	}
 	return users, rows.Err()
+}
+
+// ── Caller profile / org lookup ───────────────────────────────────────────
+//
+// These back GET /api/v1/org/me and GET /api/v1/org, both required by
+// LoginPage.tsx (real mode) after exchanging tokens. Neither is role-gated —
+// any authenticated org user (including viewers) can read their own profile
+// and their own org's public details.
+
+// GetUserByID fetches a single user by ID with no org filter — the handler
+// derives the ID from the caller's own JWT claims, so there is no
+// cross-tenant read risk here (a user can only ever ask for themselves).
+func (s *Service) GetUserByID(ctx context.Context, userID uuid.UUID) (*models.User, error) {
+	var u models.User
+	err := s.db.QueryRow(ctx,
+		`SELECT id, org_id, email, name, role, locale, is_active, last_login_at, created_at, updated_at
+		 FROM users WHERE id = $1 AND deleted_at IS NULL`,
+		userID,
+	).Scan(&u.ID, &u.OrgID, &u.Email, &u.Name, &u.Role, &u.Locale, &u.IsActive, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt)
+	if err == pgx.ErrNoRows {
+		return nil, fmt.Errorf("user not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	return &u, nil
+}
+
+// GetOrgByID fetches an organisation's public details for display in the
+// caller's own app shell (name, logo, locale, etc).
+func (s *Service) GetOrgByID(ctx context.Context, orgID uuid.UUID) (*models.Organisation, error) {
+	var org models.Organisation
+	err := s.db.QueryRow(ctx,
+		`SELECT id, name, slug, logo_url, locale, industry, is_active, created_at, updated_at
+		 FROM organisations WHERE id = $1 AND deleted_at IS NULL`,
+		orgID,
+	).Scan(&org.ID, &org.Name, &org.Slug, &org.LogoURL, &org.Locale, &org.Industry, &org.IsActive, &org.CreatedAt, &org.UpdatedAt)
+	if err == pgx.ErrNoRows {
+		return nil, fmt.Errorf("organisation not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get organisation: %w", err)
+	}
+	return &org, nil
+}
+
+// ── Audit log ──────────────────────────────────────────────────────────────
+
+// AuditLogParams carries the filters and pagination for ListAuditLog.
+// UserID, Action, TableName, From, and To are all optional string filters —
+// empty string means "no filter" for that field. From/To are expected to be
+// ISO-8601 timestamps; invalid values are ignored rather than erroring, so a
+// malformed query param degrades to "no filter" instead of a 400.
+type AuditLogParams struct {
+	OrgID     uuid.UUID
+	UserID    string
+	Action    string
+	TableName string
+	From      string
+	To        string
+	Limit     int
+	Offset    int
+}
+
+// AuditLogEntry adds display-only fields the admin UI needs (avoids a
+// second round trip to resolve the actor's name/email per row).
+type AuditLogEntry struct {
+	models.AuditLog
+	UserName  string `json:"user_name"`
+	UserEmail string `json:"user_email"`
+}
+
+type AuditLogResult struct {
+	Logs   []AuditLogEntry `json:"logs"`
+	Total  int             `json:"total"`
+	Limit  int             `json:"limit"`
+	Offset int             `json:"offset"`
+}
+
+// ListAuditLog returns a filtered, paginated slice of audit log entries for
+// an org, newest first, along with the total matching row count (for the UI
+// to compute pagination) regardless of Limit/Offset.
+func (s *Service) ListAuditLog(ctx context.Context, params AuditLogParams) (*AuditLogResult, error) {
+	if params.Limit <= 0 {
+		params.Limit = 50
+	}
+	if params.Offset < 0 {
+		params.Offset = 0
+	}
+
+	where := `WHERE a.org_id = $1`
+	args := []any{params.OrgID}
+
+	if params.UserID != "" {
+		if uid, err := uuid.Parse(params.UserID); err == nil {
+			args = append(args, uid)
+			where += fmt.Sprintf(" AND a.user_id = $%d", len(args))
+		}
+	}
+	if params.Action != "" {
+		args = append(args, params.Action)
+		where += fmt.Sprintf(" AND a.action = $%d", len(args))
+	}
+	if params.TableName != "" {
+		args = append(args, params.TableName)
+		where += fmt.Sprintf(" AND a.table_name = $%d", len(args))
+	}
+	if params.From != "" {
+		if from, err := time.Parse(time.RFC3339, params.From); err == nil {
+			args = append(args, from)
+			where += fmt.Sprintf(" AND a.created_at >= $%d", len(args))
+		}
+	}
+	if params.To != "" {
+		if to, err := time.Parse(time.RFC3339, params.To); err == nil {
+			args = append(args, to)
+			where += fmt.Sprintf(" AND a.created_at <= $%d", len(args))
+		}
+	}
+
+	var total int
+	if err := s.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM audit_log a `+where, args...,
+	).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count audit log: %w", err)
+	}
+
+	args = append(args, params.Limit, params.Offset)
+	query := fmt.Sprintf(
+		`SELECT a.id, a.org_id, a.user_id, a.action, a.table_name, a.record_id, a.diff, a.created_at,
+		        COALESCE(u.name, 'Unknown user') AS user_name,
+		        COALESCE(u.email, '')            AS user_email
+		 FROM audit_log a
+		 LEFT JOIN users u ON u.id = a.user_id
+		 %s ORDER BY a.created_at DESC LIMIT $%d OFFSET $%d`,
+		where, len(args)-1, len(args),
+	)
+
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list audit log: %w", err)
+	}
+	defer rows.Close()
+
+	logs := []AuditLogEntry{}
+	for rows.Next() {
+		var e AuditLogEntry
+		if err := rows.Scan(
+			&e.ID, &e.OrgID, &e.UserID, &e.Action, &e.TableName, &e.RecordID, &e.Diff, &e.CreatedAt,
+			&e.UserName, &e.UserEmail,
+		); err != nil {
+			return nil, err
+		}
+		logs = append(logs, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &AuditLogResult{Logs: logs, Total: total, Limit: params.Limit, Offset: params.Offset}, nil
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
