@@ -16,7 +16,8 @@
     "plans": "Planos",
     "progress": "Progresso",
     "reports": "Relatórios",
-    "admin": "Administração"
+    "admin": "Administração",
+    "platformConsole": "Consola da plataforma"
   },
   "plan": {
     "status": {
@@ -47,5 +48,28 @@
     "retry": "Tentar novamente",
     "discard": "Descartar",
     "offline": "IA indisponível offline"
+  },
+  "auth": {
+    "tagline": "Planeamento e execução estratégica",
+    "headline1": "Da análise",
+    "headline2": "à ação,",
+    "headline3": "num só lugar.",
+    "heroDescription": "Fases P1 · P2 · P3. Rascunhos assistidos por IA. Acompanhamento de progresso criado para equipas que executam estratégia, não apenas apresentações.",
+    "selfHosted": "Auto-hospedado · A IA corre no seu servidor · Nenhum dado sai da sua infraestrutura",
+    "phaseAnalysis": "Análise",
+    "phaseAnalysisDesc": "SWOT · PESTEL · Registo de riscos",
+    "phaseStrategy": "Estratégia",
+    "phaseStrategyDesc": "Visão · OKR · Quadro de KPI",
+    "phaseOperations": "Operações",
+    "phaseOperationsDesc": "Roteiro · Orçamento · Ações",
+    "signIn": "Iniciar sessão",
+    "signInSubtitle": "Introduza o seu e-mail profissional e a palavra-passe.",
+    "email": "E-mail",
+    "emailPlaceholder": "voce@organizacao.com",
+    "password": "Palavra-passe",
+    "signInButton": "Entrar",
+    "signInError": "E-mail ou palavra-passe incorretos. Verifique os seus dados e tente novamente.",
+    "noAccount": "Não tem uma conta?",
+    "noAccountHelp": "Peça ao administrador da sua organização para lhe enviar um convite."
   }
 }

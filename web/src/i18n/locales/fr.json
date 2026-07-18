@@ -16,7 +16,8 @@
     "plans": "Plans",
     "progress": "Avancement",
     "reports": "Rapports",
-    "admin": "Administration"
+    "admin": "Administration",
+    "platformConsole": "Console plateforme"
   },
   "plan": {
     "status": {
@@ -47,5 +48,28 @@
     "retry": "Réessayer",
     "discard": "Ignorer",
     "offline": "IA indisponible hors ligne"
+  },
+  "auth": {
+    "tagline": "Planification et exécution stratégiques",
+    "headline1": "De l'analyse",
+    "headline2": "à l'action,",
+    "headline3": "en un seul endroit.",
+    "heroDescription": "Phases P1 · P2 · P3. Brouillons assistés par IA. Suivi de l'avancement conçu pour les équipes qui exécutent une stratégie, pas seulement des présentations.",
+    "selfHosted": "Auto-hébergé · L'IA fonctionne sur votre serveur · Aucune donnée ne quitte votre infrastructure",
+    "phaseAnalysis": "Analyse",
+    "phaseAnalysisDesc": "SWOT · PESTEL · Registre des risques",
+    "phaseStrategy": "Stratégie",
+    "phaseStrategyDesc": "Vision · OKR · Cadre de KPI",
+    "phaseOperations": "Opérations",
+    "phaseOperationsDesc": "Feuille de route · Budget · Actions",
+    "signIn": "Connexion",
+    "signInSubtitle": "Saisissez votre e-mail professionnel et votre mot de passe.",
+    "email": "E-mail",
+    "emailPlaceholder": "vous@organisation.com",
+    "password": "Mot de passe",
+    "signInButton": "Se connecter",
+    "signInError": "E-mail ou mot de passe incorrect. Vérifiez vos informations et réessayez.",
+    "noAccount": "Vous n'avez pas de compte ?",
+    "noAccountHelp": "Demandez à l'administrateur de votre organisation de vous envoyer une invitation."
   }
 }

@@ -16,7 +16,8 @@
     "plans": "Plans",
     "progress": "Progress",
     "reports": "Reports",
-    "admin": "Admin"
+    "admin": "Admin",
+    "platformConsole": "Platform console"
   },
   "plan": {
     "status": {
@@ -47,5 +48,28 @@
     "retry": "Retry",
     "discard": "Discard",
     "offline": "AI unavailable offline"
+  },
+  "auth": {
+    "tagline": "Strategic planning & execution",
+    "headline1": "From analysis",
+    "headline2": "to action,",
+    "headline3": "in one place.",
+    "heroDescription": "P1 · P2 · P3 phases. AI-assisted drafts. Progress tracking built for teams that ship strategy, not just slide decks.",
+    "selfHosted": "Self-hosted · AI runs on your server · No data leaves your infrastructure",
+    "phaseAnalysis": "Analysis",
+    "phaseAnalysisDesc": "SWOT · PESTLE · Risk Register",
+    "phaseStrategy": "Strategy",
+    "phaseStrategyDesc": "Vision · OKRs · KPI Framework",
+    "phaseOperations": "Operations",
+    "phaseOperationsDesc": "Roadmap · Budget · Action Items",
+    "signIn": "Sign in",
+    "signInSubtitle": "Enter your work email and password.",
+    "email": "Email",
+    "emailPlaceholder": "you@organisation.com",
+    "password": "Password",
+    "signInButton": "Sign in",
+    "signInError": "Incorrect email or password. Check your details and try again.",
+    "noAccount": "Don't have an account?",
+    "noAccountHelp": "Ask your organisation admin to send an invite."
   }
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { clsx } from 'clsx'
+import { useTranslation } from 'react-i18next'
 import {
   LayoutDashboard, FileText, BarChart2, FileOutput,
   Settings, ChevronLeft, ChevronRight, WifiOff, RefreshCw,
@@ -12,6 +13,7 @@ import { useAuthStore } from '../../store/auth'
 import { useSyncEngine } from '../../hooks'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import ToastContainer from '../ui/ToastContainer'
+import LanguageSwitcher from '../ui/LanguageSwitcher'
 import CommandPalette from './CommandPalette'
 import ShortcutsModal from './ShortcutsModal'
 import AppFooter from './AppFooter'
@@ -22,6 +24,7 @@ import { ROLE_HIERARCHY } from './ProtectedRoute'
 export const SHORTCUT_CREATE_EVENT = 'stratplan:shortcut:create'
 
 export const AppShell: React.FC = () => {
+  const { t } = useTranslation()
   const collapsed    = useUIStore((s) => s.sidebarCollapsed)
   const toggle       = useUIStore((s) => s.toggleSidebar)
   const isOnline     = useOfflineStore((s) => s.isOnline)
@@ -71,16 +74,16 @@ export const AppShell: React.FC = () => {
   const isPlatformTier = role === 'super_admin' || role === 'platform_support'
 
   const orgNavItems = [
-    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/plans',     icon: FileText,        label: 'Plans'     },
-    { to: '/progress',  icon: BarChart2,        label: 'Progress'  },
-    { to: '/reports',   icon: FileOutput,       label: 'Reports'   },
+    { to: '/dashboard', icon: LayoutDashboard, label: t('nav.dashboard') },
+    { to: '/plans',     icon: FileText,        label: t('nav.plans')     },
+    { to: '/progress',  icon: BarChart2,        label: t('nav.progress')  },
+    { to: '/reports',   icon: FileOutput,       label: t('nav.reports')   },
     ...(role && ROLE_HIERARCHY[role] >= ROLE_HIERARCHY.org_admin
-      ? [{ to: '/admin', icon: Settings, label: 'Admin' }]
+      ? [{ to: '/admin', icon: Settings, label: t('nav.admin') }]
       : []),
   ]
   const platformNavItems = [
-    { to: '/platform-admin', icon: ShieldCheck, label: 'Platform console' },
+    { to: '/platform-admin', icon: ShieldCheck, label: t('nav.platformConsole') },
   ]
   const navItems = isPlatformTier ? platformNavItems : orgNavItems
 
@@ -205,6 +208,9 @@ export const AppShell: React.FC = () => {
               {isSyncing ? 'Syncing…' : `${pendingCount} to sync`}
             </button>
           )}
+
+          {/* Language switcher */}
+          <LanguageSwitcher />
 
           {/* Shortcuts hint button in top bar */}
           <button
