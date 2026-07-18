@@ -54,7 +54,9 @@ export default function App() {
             </Route>
             {/* Platform tier — auth-gated here, role-gated inside PlatformAdminPage itself
                 (see note above re: ProtectedRoute's hierarchy semantics). */}
-            <Route path="/platform-admin" element={<Suspense fallback={<PageLoader />}><PlatformAdminPage /></Suspense>} />
+            <Route element={<ProtectedRoute minimumRole="platform_support" />}>
+              <Route path="/platform-admin" element={<Suspense fallback={<PageLoader />}><PlatformAdminPage /></Suspense>} />
+            </Route>
           </Route>
         </Route>
 

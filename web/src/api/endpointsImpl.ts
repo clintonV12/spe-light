@@ -163,6 +163,14 @@ export const adminApi = {
                        api().then((m) => m.adminApi.sendOrgInvitation(p))                    as Promise<Invitation>,
   listAuditLog: (p?: { org_id?: string; user_id?: string; action?: string; table_name?: string; from?: string; to?: string; limit?: number; offset?: number }) =>
   api().then((m) => m.adminApi.listAuditLog(p)) as Promise<AuditListResponse>,
+  listPlatformUsers:        () => api().then((m) => m.adminApi.listPlatformUsers())                as Promise<User[]>,
+  listPlatformInvitations:  () => api().then((m) => m.adminApi.listPlatformInvitations())           as Promise<Invitation[]>,
+  invitePlatformUser:       (p: { email: string; role: UserRole }) =>
+                              api().then((m) => m.adminApi.invitePlatformUser(p))                    as Promise<Invitation>,
+  cancelPlatformInvitation: (id: string) => api().then((m) => m.adminApi.cancelPlatformInvitation(id)) as Promise<void>,
+  resendPlatformInvitation: (id: string) => api().then((m) => m.adminApi.resendPlatformInvitation(id)) as Promise<void>,
+  updatePlatformUser:       (id: string, p: { role?: UserRole; is_active?: boolean }) =>
+                              api().then((m) => m.adminApi.updatePlatformUser(id, p))                 as Promise<User>,
 }
 
 // ── Audit log ─────────────────────────────────────────────────────────────────

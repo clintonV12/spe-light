@@ -2,15 +2,15 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   Building2, Plus, Mail, ShieldCheck, ShieldOff, CheckCircle2, XCircle,
   RefreshCw, Filter, ArrowDownUp, ChevronLeft, ChevronRight, Activity, X, Lock,
+  Users, Send, Clock3, Trash2, UserCog,
 } from 'lucide-react'
 import { adminApi } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
-import type { Organisation, AuditLog, AuditAction } from '../types'
+import type { Organisation, AuditLog, AuditAction, User, Invitation, UserRole } from '../types'
 
-type Tab = 'organisations' | 'audit'
+type Tab = 'organisations' | 'team' | 'audit'
 
-// ─── Audit label/colour maps — mirrors AdminPage.tsx so the two audit views
-// read consistently for anyone who uses both. ──────────────────────────────
+// ─── Shared display maps ───────────────────────────────────────────────────
 
 const ACTION_LABEL: Record<AuditAction, string> = {
   'plan.created':            'Created plan',
@@ -42,6 +42,11 @@ const ACTION_GROUPS = [
   { label: 'Invitations', value: 'invitation' },
   { label: 'Reports',     value: 'report' },
 ]
+
+const PLATFORM_ROLE_META: Record<'super_admin' | 'platform_support', { label: string; className: string }> = {
+  super_admin:      { label: 'Super admin',      className: 'bg-accent-100 text-accent-700' },
+  platform_support: { label: 'Platform support', className: 'bg-p3-light text-p3-dark' },
+}
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -82,11 +87,7 @@ function CreateOrgModal({ onCreated, onClose }: { onCreated: () => void; onClose
     setLoading(true)
     setError('')
     try {
-      await adminApi.createOrg({
-        name: name.trim(),
-        industry: industry.trim() || undefined,
-        locale,
-      })
+      await adminApi.createOrg({ name: name.trim(), industry: industry.trim() || undefined, locale })
       onCreated()
       onClose()
     } catch {
@@ -101,9 +102,7 @@ function CreateOrgModal({ onCreated, onClose }: { onCreated: () => void; onClose
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
         <div className="flex items-center justify-between mb-5">
           <h2 className="font-display text-lg font-bold text-ink-900">New organisation</h2>
-          <button onClick={onClose} className="text-ink-400 hover:text-ink-700 transition-colors">
-            <X className="size-4" />
-          </button>
+          <button onClick={onClose} className="text-ink-400 hover:text-ink-700 transition-colors"><X className="size-4" /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -146,16 +145,10 @@ function CreateOrgModal({ onCreated, onClose }: { onCreated: () => void; onClose
             The org is created active with no members. Use "Invite org admin" to onboard the first admin, or add users manually once inside the org.
           </p>
 
-          {error && (
-            <div className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-700">
-              {error}
-            </div>
-          )}
+          {error && <div className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-700">{error}</div>}
 
           <div className="flex items-center justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors">
-              Cancel
-            </button>
+            <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors">Cancel</button>
             <button
               type="submit"
               disabled={loading || !name.trim()}
@@ -200,9 +193,7 @@ function InviteOrgAdminModal({ onInvited, onClose }: { onInvited: () => void; on
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
         <div className="flex items-center justify-between mb-5">
           <h2 className="font-display text-lg font-bold text-ink-900">Invite an org admin</h2>
-          <button onClick={onClose} className="text-ink-400 hover:text-ink-700 transition-colors">
-            <X className="size-4" />
-          </button>
+          <button onClick={onClose} className="text-ink-400 hover:text-ink-700 transition-colors"><X className="size-4" /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -232,16 +223,10 @@ function InviteOrgAdminModal({ onInvited, onClose }: { onInvited: () => void; on
             person becomes org admin once they accept.
           </p>
 
-          {error && (
-            <div className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-700">
-              {error}
-            </div>
-          )}
+          {error && <div className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-700">{error}</div>}
 
           <div className="flex items-center justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors">
-              Cancel
-            </button>
+            <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors">Cancel</button>
             <button
               type="submit"
               disabled={loading || !orgName.trim() || !email.trim()}
@@ -253,6 +238,281 @@ function InviteOrgAdminModal({ onInvited, onClose }: { onInvited: () => void; on
           </div>
         </form>
       </div>
+    </div>
+  )
+}
+
+// ─── Invite platform teammate modal ─────────────────────────────────────────
+
+function InviteTeamModal({ onInvited, onClose }: { onInvited: () => void; onClose: () => void }) {
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState<'platform_support' | 'super_admin'>('platform_support')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email.trim()) return
+    setLoading(true)
+    setError('')
+    try {
+      await adminApi.invitePlatformUser({ email: email.trim(), role: role as UserRole })
+      onInvited()
+      onClose()
+    } catch {
+      setError('Could not send the invitation. They may already have a platform account.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-ink-900/40 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="font-display text-lg font-bold text-ink-900">Invite a platform teammate</h2>
+          <button onClick={onClose} className="text-ink-400 hover:text-ink-700 transition-colors"><X className="size-4" /></button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-ink-700">Email</label>
+            <input
+              autoFocus
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="teammate@yourcompany.com"
+              className="w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-ink-700">Platform role</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['platform_support', 'super_admin'] as const).map((r) => (
+                <button
+                  type="button"
+                  key={r}
+                  onClick={() => setRole(r)}
+                  className={`rounded-xl border p-3 text-left transition-colors ${
+                    role === r ? 'border-accent bg-accent-50' : 'border-ink-100 hover:border-ink-200 hover:bg-ink-50'
+                  }`}
+                >
+                  <p className={`text-sm font-semibold ${role === r ? 'text-accent' : 'text-ink-800'}`}>
+                    {PLATFORM_ROLE_META[r].label}
+                  </p>
+                  <p className="text-xs text-ink-400 mt-0.5">
+                    {r === 'platform_support' ? 'Read-only across all orgs' : 'Full cross-org access'}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-xs text-ink-400">
+            This grants cross-organisation access, not membership in any single org. A 7-day setup link is emailed to accept.
+          </p>
+
+          {error && <div className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-700">{error}</div>}
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors">Cancel</button>
+            <button
+              type="submit"
+              disabled={loading || !email.trim()}
+              className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading && <span className="size-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />}
+              Send invite
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── Platform team tab ───────────────────────────────────────────────────────
+
+function TeamTab() {
+  const currentUser = useAuthStore((s) => s.user)
+  const isSuperAdmin = currentUser?.role === 'super_admin'
+
+  const [users, setUsers] = useState<User[]>([])
+  const [invites, setInvites] = useState<Invitation[]>([])
+  const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [showInvite, setShowInvite] = useState(false)
+
+  const load = useCallback(async () => {
+    try {
+      const [u, i] = await Promise.all([adminApi.listPlatformUsers(), adminApi.listPlatformInvitations()])
+      setUsers(u)
+      setInvites(i)
+    } catch { /* keep prior state */ } finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const handleToggleActive = async (u: User) => {
+    setActionLoading(u.id)
+    try { await adminApi.updatePlatformUser(u.id, { is_active: !u.is_active }); await load() }
+    catch { } finally { setActionLoading(null) }
+  }
+
+  const handleRoleChange = async (u: User, role: UserRole) => {
+    setActionLoading(u.id)
+    try { await adminApi.updatePlatformUser(u.id, { role }); await load() }
+    catch { } finally { setActionLoading(null) }
+  }
+
+  const handleCancelInvite = async (id: string) => {
+    setActionLoading(id)
+    try { await adminApi.cancelPlatformInvitation(id); await load() }
+    catch { } finally { setActionLoading(null) }
+  }
+
+  const handleResendInvite = async (id: string) => {
+    setActionLoading(id)
+    try { await adminApi.resendPlatformInvitation(id); await load() }
+    catch { } finally { setActionLoading(null) }
+  }
+
+  const pendingInvites = invites.filter((i) => i.status === 'pending')
+
+  return (
+    <div className="space-y-6">
+      {isSuperAdmin && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => setShowInvite(true)}
+            className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors"
+          >
+            <Send className="size-4" /> Invite teammate
+          </button>
+        </div>
+      )}
+
+      {/* Members */}
+      <div>
+        <h3 className="text-sm font-semibold text-ink-800 mb-3">Platform team members</h3>
+        <div className="bg-white rounded-2xl border border-ink-100 overflow-hidden">
+          {loading ? (
+            <div className="p-6 space-y-3">{[1, 2].map((i) => <div key={i} className="h-12 bg-ink-50 rounded-xl animate-pulse" />)}</div>
+          ) : users.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Users className="size-8 text-ink-200 mb-2" />
+              <p className="text-sm font-semibold text-ink-500">No platform team members yet</p>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead className="border-b border-ink-100 bg-ink-50">
+                <tr>
+                  {['Name', 'Role', 'Status', 'Last login', ''].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-50">
+                {users.map((u) => {
+                  const meta = PLATFORM_ROLE_META[u.role as 'super_admin' | 'platform_support']
+                  const isSelf = u.id === currentUser?.id
+                  return (
+                    <tr key={u.id} className={!u.is_active ? 'opacity-60' : ''}>
+                      <td className="px-4 py-3.5">
+                        <p className="text-sm font-medium text-ink-900">{u.name} {isSelf && <span className="text-ink-400 font-normal">(you)</span>}</p>
+                        <p className="text-xs text-ink-400">{u.email}</p>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {isSuperAdmin && !isSelf ? (
+                          <select
+                            value={u.role}
+                            onChange={(e) => handleRoleChange(u, e.target.value as UserRole)}
+                            className={`text-xs font-semibold rounded-lg px-2 py-1 outline-none cursor-pointer ${meta?.className ?? 'bg-ink-100 text-ink-600'}`}
+                          >
+                            <option value="platform_support">Platform support</option>
+                            <option value="super_admin">Super admin</option>
+                          </select>
+                        ) : (
+                          <span className={`text-xs font-semibold rounded-lg px-2 py-1 ${meta?.className ?? 'bg-ink-100 text-ink-600'}`}>
+                            {meta?.label ?? u.role}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className={`flex items-center gap-1.5 text-xs font-medium ${u.is_active ? 'text-p2-dark' : 'text-ink-400'}`}>
+                          {u.is_active ? <CheckCircle2 className="size-3.5" /> : <XCircle className="size-3.5" />}
+                          {u.is_active ? 'Active' : 'Deactivated'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5"><p className="text-xs text-ink-400">{u.last_login_at ? relativeTime(u.last_login_at) : 'Never'}</p></td>
+                      <td className="px-4 py-3.5 text-right">
+                        {!isSuperAdmin || isSelf ? null : actionLoading === u.id ? (
+                          <RefreshCw className="size-4 text-ink-300 animate-spin inline-block" />
+                        ) : (
+                          <button
+                            onClick={() => handleToggleActive(u)}
+                            className={`flex items-center gap-1.5 text-xs font-semibold ml-auto ${
+                              u.is_active ? 'text-red-500 hover:text-red-700' : 'text-p2-dark hover:text-p2'
+                            }`}
+                          >
+                            {u.is_active ? <ShieldOff className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
+                            {u.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* Pending invitations */}
+      {isSuperAdmin && (
+        <div>
+          <h3 className="text-sm font-semibold text-ink-800 mb-3">Pending invitations</h3>
+          <div className="bg-white rounded-2xl border border-ink-100 overflow-hidden">
+            {loading ? null : pendingInvites.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center">
+                <Clock3 className="size-7 text-ink-200 mb-2" />
+                <p className="text-sm text-ink-500">No pending invitations</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-ink-50">
+                {pendingInvites.map((inv) => (
+                  <div key={inv.id} className="flex items-center gap-4 px-4 py-3.5">
+                    <UserCog className="size-4 text-ink-300 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-ink-800">{inv.email}</p>
+                      <p className="text-xs text-ink-400">
+                        {PLATFORM_ROLE_META[inv.role as 'super_admin' | 'platform_support']?.label ?? inv.role} · expires {new Date(inv.expires_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    {actionLoading === inv.id ? (
+                      <RefreshCw className="size-4 text-ink-300 animate-spin" />
+                    ) : (
+                      <div className="flex items-center gap-3 shrink-0">
+                        <button onClick={() => handleResendInvite(inv.id)} className="flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-700">
+                          <Send className="size-3.5" /> Resend
+                        </button>
+                        <button onClick={() => handleCancelInvite(inv.id)} className="flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-700">
+                          <Trash2 className="size-3.5" /> Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showInvite && <InviteTeamModal onInvited={load} onClose={() => setShowInvite(false)} />}
     </div>
   )
 }
@@ -297,9 +557,7 @@ function AuditLogTab({ orgs }: { orgs: Organisation[] }) {
             onChange={(e) => setActionFilter(e.target.value)}
             className="rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm text-ink-700 outline-none focus:ring-2 focus:ring-accent-400"
           >
-            {ACTION_GROUPS.map((g) => (
-              <option key={g.value} value={g.value}>{g.label}</option>
-            ))}
+            {ACTION_GROUPS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
           </select>
         </div>
 
@@ -311,9 +569,7 @@ function AuditLogTab({ orgs }: { orgs: Organisation[] }) {
             className="rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm text-ink-700 outline-none focus:ring-2 focus:ring-accent-400"
           >
             <option value="">All organisations</option>
-            {orgs.map((o) => (
-              <option key={o.id} value={o.id}>{o.name}</option>
-            ))}
+            {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         </div>
 
@@ -381,9 +637,7 @@ function AuditLogTab({ orgs }: { orgs: Organisation[] }) {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-ink-100 bg-ink-50/50">
-            <p className="text-xs text-ink-400">
-              Showing {page * limit + 1}–{Math.min((page + 1) * limit, total)} of {total}
-            </p>
+            <p className="text-xs text-ink-400">Showing {page * limit + 1}–{Math.min((page + 1) * limit, total)} of {total}</p>
             <div className="flex items-center gap-2">
               <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}
                 className="p-1.5 rounded-lg text-ink-400 hover:text-ink-700 hover:bg-ink-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
@@ -437,9 +691,7 @@ export default function PlatformAdminPage() {
       <div className="p-6 max-w-lg mx-auto text-center py-20">
         <Lock className="size-9 text-ink-200 mx-auto mb-3" />
         <h1 className="font-display text-lg font-bold text-ink-900">Platform console</h1>
-        <p className="text-sm text-ink-500 mt-1">
-          This area is restricted to platform-level administrators.
-        </p>
+        <p className="text-sm text-ink-500 mt-1">This area is restricted to platform-level administrators.</p>
       </div>
     )
   }
@@ -457,7 +709,7 @@ export default function PlatformAdminPage() {
             {!isSuperAdmin && <span className="text-ink-400"> · read-only</span>}
           </p>
         </div>
-        {isSuperAdmin && (
+        {isSuperAdmin && tab === 'organisations' && (
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowInviteOrg(true)}
@@ -479,6 +731,7 @@ export default function PlatformAdminPage() {
       <div className="flex gap-1 bg-ink-100 rounded-xl p-1 w-fit">
         {([
           { id: 'organisations' as const, label: 'Organisations' },
+          { id: 'team' as const,          label: 'Platform team' },
           { id: 'audit' as const,         label: 'Audit log' },
         ]).map(({ id, label }) => (
           <button
@@ -576,6 +829,9 @@ export default function PlatformAdminPage() {
           </div>
         </div>
       )}
+
+      {/* ── Platform team tab ── */}
+      {tab === 'team' && <TeamTab />}
 
       {/* ── Audit log tab ── */}
       {tab === 'audit' && <AuditLogTab orgs={orgs} />}

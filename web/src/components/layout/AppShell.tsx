@@ -4,28 +4,22 @@ import { clsx } from 'clsx'
 import {
   LayoutDashboard, FileText, BarChart2, FileOutput,
   Settings, ChevronLeft, ChevronRight, WifiOff, RefreshCw,
-  Menu, Search, Keyboard,
+  Menu, Search, Keyboard, ShieldCheck,
 } from 'lucide-react'
 import { useUIStore } from '../../store/ui'
 import { useOfflineStore } from '../../store/offline'
+import { useAuthStore } from '../../store/auth'
 import { useSyncEngine } from '../../hooks'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import ToastContainer from '../ui/ToastContainer'
 import CommandPalette from './CommandPalette'
 import ShortcutsModal from './ShortcutsModal'
 import AppFooter from './AppFooter'
+import { ROLE_HIERARCHY } from './ProtectedRoute'
 
 // Custom event dispatched by AppShell when the user presses 'c'.
 // Pages listen for this and open their own create modal.
 export const SHORTCUT_CREATE_EVENT = 'stratplan:shortcut:create'
-
-const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/plans',     icon: FileText,        label: 'Plans'     },
-  { to: '/progress',  icon: BarChart2,        label: 'Progress'  },
-  { to: '/reports',   icon: FileOutput,       label: 'Reports'   },
-  { to: '/admin',     icon: Settings,         label: 'Admin'     },
-]
 
 export const AppShell: React.FC = () => {
   const collapsed    = useUIStore((s) => s.sidebarCollapsed)
@@ -34,6 +28,8 @@ export const AppShell: React.FC = () => {
   const pendingCount = useOfflineStore((s) => s.pendingCount)
   const isSyncing    = useOfflineStore((s) => s.isSyncing)
   const { sync }     = useSyncEngine()
+
+  const role = useAuthStore((s) => s.user?.role)
 
   const [searchOpen,    setSearchOpen]    = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
@@ -68,6 +64,26 @@ export const AppShell: React.FC = () => {
     onOpenHelp:    () => setShortcutsOpen((v) => !v),
   })
 
+  // ── Role-based navigation ────────────────────────────────────────────────
+  // Platform-tier users (super_admin, platform_support) have no org and no
+  // access to Plans/Progress/Reports/org-Admin per the SRS permission
+  // matrix — they get a single link to their own console instead.
+  const isPlatformTier = role === 'super_admin' || role === 'platform_support'
+
+  const orgNavItems = [
+    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/plans',     icon: FileText,        label: 'Plans'     },
+    { to: '/progress',  icon: BarChart2,        label: 'Progress'  },
+    { to: '/reports',   icon: FileOutput,       label: 'Reports'   },
+    ...(role && ROLE_HIERARCHY[role] >= ROLE_HIERARCHY.org_admin
+      ? [{ to: '/admin', icon: Settings, label: 'Admin' }]
+      : []),
+  ]
+  const platformNavItems = [
+    { to: '/platform-admin', icon: ShieldCheck, label: 'Platform console' },
+  ]
+  const navItems = isPlatformTier ? platformNavItems : orgNavItems
+
   return (
     <div className="flex h-screen overflow-hidden bg-ink-50">
 
@@ -78,17 +94,16 @@ export const AppShell: React.FC = () => {
       )}>
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 h-16 border-b border-ink-700">
-          <div className="size-8 rounded-lg bg-accent flex items-center justify-center shrink-0 overflow-hidden">
-            {/* StratPlan SVG logo mark — three phase bars + rising arrow */}
-            <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <rect x="4" y="8"  width="9"  height="2.5" rx="1.25" fill="white" opacity="0.65"/>
-              <rect x="4" y="13" width="14" height="2.5" rx="1.25" fill="white" opacity="0.82"/>
-              <rect x="4" y="18" width="18" height="2.5" rx="1.25" fill="white"/>
-              <path d="M18 10 L24 5 L24 11" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.90"/>
-            </svg>
-          </div>
+          <img
+            src="/logo.jpg"
+            alt="StratPlan"
+            className="size-8 rounded-lg shrink-0 object-contain"
+          />
+
           {!collapsed && (
-            <span className="font-display font-bold text-base tracking-tight">StratPlan</span>
+            <span className="font-display font-bold text-base tracking-tight">
+              StratPlan
+            </span>
           )}
         </div>
 

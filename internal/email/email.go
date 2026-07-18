@@ -144,6 +144,16 @@ func (s *Service) deliver(to, subject, htmlBody string) error {
 	return c.DialAndSend(m)
 }
 
+// SendPlatformUserInvite invites a new platform-tier teammate (super_admin or platform_support).
+func (s *Service) SendPlatformUserInvite(to, role, inviterName, inviteLink string) {
+	s.send(to, "You have been invited to join the StratPlan platform team", "platform_user_invite", map[string]any{
+		"Role":        role,
+		"InviterName": inviterName,
+		"InviteLink":  inviteLink,
+		"ExpiryDays":  7,
+	})
+}
+
 func truncate(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
@@ -202,6 +212,15 @@ const allTemplates = `
 <!DOCTYPE html><html><body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
 <h2>Your role has been updated</h2>
 <p>Your role in <strong>{{.OrgName}}</strong> on StratPlan has been updated to <strong>{{.NewRole}}</strong>.</p>
+</body></html>
+{{end}}
+
+{{define "platform_user_invite"}}
+<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+<h2>You're invited to the StratPlan platform team</h2>
+<p><strong>{{.InviterName}}</strong> has invited you to join the StratPlan platform team as <strong>{{.Role}}</strong>. This grants cross-organisation access rather than membership in a single organisation.</p>
+<p><a href="{{.InviteLink}}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block">Accept invitation</a></p>
+<p style="color:#6b7280;font-size:14px">This link expires in {{.ExpiryDays}} days. If you did not expect this invitation, you can ignore this email.</p>
 </body></html>
 {{end}}
 `

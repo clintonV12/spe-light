@@ -384,6 +384,19 @@ export const adminApi = {
    */
   sendOrgInvitation: (payload: { email: string; org_name: string }) =>
     apiClient.post<Invitation>('/admin/org-invitations', payload).then((r) => r.data),
+
+  listPlatformUsers: () =>
+    apiClient.get<User[]>('/admin/platform-users').then((r) => r.data),
+  listPlatformInvitations: () =>
+    apiClient.get<Invitation[]>('/admin/platform-users/invitations').then((r) => r.data),
+  invitePlatformUser: (payload: { email: string; role: UserRole }) =>
+    apiClient.post<Invitation>('/admin/platform-users/invitations', payload).then((r) => r.data),
+  cancelPlatformInvitation: (id: string) =>
+    apiClient.delete(`/admin/platform-users/invitations/${id}`).then(() => undefined),
+  resendPlatformInvitation: (id: string) =>
+    apiClient.post(`/admin/platform-users/invitations/${id}/resend`).then(() => undefined),
+  updatePlatformUser: (id: string, payload: { role?: UserRole; is_active?: boolean }) =>
+    apiClient.patch<User>(`/admin/platform-users/${id}`, payload).then((r) => r.data),
 }
 
 // ── Audit log ─────────────────────────────────────────────────────────────────

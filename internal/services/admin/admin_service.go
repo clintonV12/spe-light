@@ -450,3 +450,226 @@ func (s *Service) ListAuditLog(ctx context.Context, params AuditLogParams) (*Aud
 
 	return &AuditLogResult{Logs: logs, Total: total, Limit: params.Limit, Offset: params.Offset}, nil
 }
+
+// ── Platform user management ─────────────────────────────────────────────
+//
+// Platform-tier users (super_admin, platform_support) have org_id = NULL
+// (migration 003). Invitations for them reuse the invitations table with
+// org_id left genuinely NULL — distinct from the org-onboarding invite
+// above, which always sets org_id to the newly-created pending org.
+// authsvc.AcceptInvite already branches correctly on inv.OrgID == nil
+// (it only activates an org when inv.OrgID != nil), so no changes were
+// needed there.
+
+// InvitePlatformUserRequest invites a new platform-tier teammate.
+type InvitePlatformUserRequest struct {
+	Email       string      `json:"email"`
+	Role        models.Role `json:"role"` // must be super_admin or platform_support
+	InviterID   uuid.UUID   // set by the handler from JWT claims
+	InviterName string      // looked up by the handler
+}
+
+// InvitePlatformUser sends a platform-team invite. Only callable by
+// super_admin — enforced at the router level, checked again here as
+// defense in depth since granting platform access is high-privilege.
+func (s *Service) InvitePlatformUser(ctx context.Context, req InvitePlatformUserRequest) (*models.Invitation, error) {
+	if req.Email == "" {
+		return nil, fmt.Errorf("email is required")
+	}
+	if !req.Role.IsPlatformRole() {
+		return nil, fmt.Errorf("role must be super_admin or platform_support")
+	}
+
+	// Refuse if an active platform-tier account already exists for this email.
+	var exists bool
+	_ = s.db.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND org_id IS NULL AND deleted_at IS NULL)`,
+		req.Email,
+	).Scan(&exists)
+	if exists {
+		return nil, fmt.Errorf("a platform account already exists for this email")
+	}
+
+	plaintext, hash, err := auth.GenerateInviteToken()
+	if err != nil {
+		return nil, err
+	}
+
+	inv := &models.Invitation{
+		ID:        uuid.New(),
+		OrgID:     nil, // genuinely NULL — platform-tier, not org-onboarding
+		Email:     req.Email,
+		Role:      req.Role,
+		TokenHash: hash,
+		InvitedBy: req.InviterID,
+		ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+		Status:    models.InvitePending,
+	}
+
+	if _, err = s.db.Exec(ctx,
+		`INSERT INTO invitations (id, org_id, email, role, token_hash, invited_by, expires_at, status)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		inv.ID, inv.OrgID, inv.Email, inv.Role,
+		inv.TokenHash, inv.InvitedBy, inv.ExpiresAt, inv.Status,
+	); err != nil {
+		return nil, fmt.Errorf("insert platform invitation: %w", err)
+	}
+
+	inviteLink := fmt.Sprintf("%s/invitations/accept?token=%s", s.cfg.AppURL, plaintext)
+	s.email.SendPlatformUserInvite(req.Email, string(req.Role), req.InviterName, inviteLink)
+
+	slog.Info("platform user invited", "email", req.Email, "role", req.Role, "invited_by", req.InviterID)
+	return inv, nil
+}
+
+// ListPlatformUsers returns every platform-tier user (org_id IS NULL).
+func (s *Service) ListPlatformUsers(ctx context.Context) ([]models.User, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT id, org_id, email, name, role, locale, is_active, last_login_at, created_at, updated_at
+		 FROM users WHERE org_id IS NULL AND deleted_at IS NULL ORDER BY created_at`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list platform users: %w", err)
+	}
+	defer rows.Close()
+
+	users := []models.User{}
+	for rows.Next() {
+		var u models.User
+		if err := rows.Scan(&u.ID, &u.OrgID, &u.Email, &u.Name, &u.Role,
+			&u.Locale, &u.IsActive, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+// ListPlatformInvitations returns invitations for platform-tier accounts
+// (pending, accepted, cancelled, expired — the console filters by status).
+func (s *Service) ListPlatformInvitations(ctx context.Context) ([]models.Invitation, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT id, org_id, email, role, invited_by, expires_at, accepted_at, status, created_at, updated_at
+		 FROM invitations WHERE org_id IS NULL ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list platform invitations: %w", err)
+	}
+	defer rows.Close()
+
+	invs := []models.Invitation{}
+	for rows.Next() {
+		var inv models.Invitation
+		if err := rows.Scan(&inv.ID, &inv.OrgID, &inv.Email, &inv.Role, &inv.InvitedBy,
+			&inv.ExpiresAt, &inv.AcceptedAt, &inv.Status, &inv.CreatedAt, &inv.UpdatedAt); err != nil {
+			return nil, err
+		}
+		invs = append(invs, inv)
+	}
+	return invs, rows.Err()
+}
+
+// CancelPlatformInvitation cancels a pending platform-tier invitation.
+func (s *Service) CancelPlatformInvitation(ctx context.Context, invID uuid.UUID) error {
+	result, err := s.db.Exec(ctx,
+		`UPDATE invitations SET status = 'cancelled', updated_at = NOW()
+		 WHERE id = $1 AND org_id IS NULL AND status = 'pending'`,
+		invID,
+	)
+	if err != nil {
+		return fmt.Errorf("cancel platform invitation: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("no pending platform invitation found")
+	}
+	return nil
+}
+
+// ResendPlatformInvitation issues a fresh token and expiry for an existing
+// platform invitation (pending, cancelled, or expired) and re-sends the email.
+func (s *Service) ResendPlatformInvitation(ctx context.Context, invID uuid.UUID, inviterName string) error {
+	var email string
+	var role models.Role
+	err := s.db.QueryRow(ctx,
+		`SELECT email, role FROM invitations WHERE id = $1 AND org_id IS NULL`,
+		invID,
+	).Scan(&email, &role)
+	if err == pgx.ErrNoRows {
+		return fmt.Errorf("platform invitation not found")
+	}
+	if err != nil {
+		return fmt.Errorf("fetch invitation: %w", err)
+	}
+
+	plaintext, hash, err := auth.GenerateInviteToken()
+	if err != nil {
+		return err
+	}
+
+	if _, err = s.db.Exec(ctx,
+		`UPDATE invitations
+		 SET token_hash = $1, expires_at = $2, status = 'pending', updated_at = NOW()
+		 WHERE id = $3`,
+		hash, time.Now().Add(7*24*time.Hour), invID,
+	); err != nil {
+		return fmt.Errorf("update invitation: %w", err)
+	}
+
+	inviteLink := fmt.Sprintf("%s/invitations/accept?token=%s", s.cfg.AppURL, plaintext)
+	s.email.SendPlatformUserInvite(email, string(role), inviterName, inviteLink)
+	return nil
+}
+
+// UpdatePlatformUserRequest carries mutable fields for a platform-tier user.
+type UpdatePlatformUserRequest struct {
+	Role     *models.Role `json:"role,omitempty"`
+	IsActive *bool        `json:"is_active,omitempty"`
+}
+
+// UpdatePlatformUser changes a platform-tier user's role or active status.
+// A user may not target themselves — prevents a super_admin from locking
+// themselves out or self-demoting with nobody left to reverse it.
+func (s *Service) UpdatePlatformUser(ctx context.Context, userID, actorID uuid.UUID, req UpdatePlatformUserRequest) (*models.User, error) {
+	if req.Role == nil && req.IsActive == nil {
+		return nil, fmt.Errorf("nothing to update")
+	}
+	if userID == actorID {
+		return nil, fmt.Errorf("cannot change your own platform role or active status")
+	}
+	if req.Role != nil && !req.Role.IsPlatformRole() {
+		return nil, fmt.Errorf("role must be super_admin or platform_support")
+	}
+
+	if req.Role != nil {
+		if _, err := s.db.Exec(ctx,
+			`UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2 AND org_id IS NULL`,
+			*req.Role, userID); err != nil {
+			return nil, fmt.Errorf("update role: %w", err)
+		}
+	}
+	if req.IsActive != nil {
+		if _, err := s.db.Exec(ctx,
+			`UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2 AND org_id IS NULL`,
+			*req.IsActive, userID); err != nil {
+			return nil, fmt.Errorf("update is_active: %w", err)
+		}
+		if !*req.IsActive {
+			if _, err := s.db.Exec(ctx,
+				`UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`,
+				userID); err != nil {
+				slog.Error("revoke sessions on platform user deactivation", "user_id", userID, "err", err)
+			}
+		}
+	}
+
+	var u models.User
+	err := s.db.QueryRow(ctx,
+		`SELECT id, org_id, email, name, role, locale, is_active, last_login_at, created_at, updated_at
+		 FROM users WHERE id = $1 AND org_id IS NULL`,
+		userID,
+	).Scan(&u.ID, &u.OrgID, &u.Email, &u.Name, &u.Role, &u.Locale, &u.IsActive, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("reload platform user: %w", err)
+	}
+	return &u, nil
+}

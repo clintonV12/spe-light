@@ -36,9 +36,15 @@ export default function LoginPage() {
         const { data: user } = await apiClient.get('/org/me', {
           headers: { Authorization: `Bearer ${tokens.access_token}` },
         })
-        const { data: org } = await apiClient.get('/org', {
-          headers: { Authorization: `Bearer ${tokens.access_token}` },
-        })
+        // Platform-tier users (super_admin, platform_support) have no org_id —
+        // /org correctly 403s for them, so only fetch it when there's an org to fetch.
+        let org = null
+        if (user.org_id) {
+          const { data: orgData } = await apiClient.get('/org', {
+            headers: { Authorization: `Bearer ${tokens.access_token}` },
+          })
+          org = orgData
+        }
         setAuth(user, org, tokens.access_token, tokens.refresh_token)
       }
       navigate(from, { replace: true })

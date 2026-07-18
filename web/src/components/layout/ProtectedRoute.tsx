@@ -7,7 +7,7 @@ interface ProtectedRouteProps {
   minimumRole?: UserRole
 }
 
-const ROLE_HIERARCHY: Record<UserRole, number> = {
+export const ROLE_HIERARCHY: Record<UserRole, number> = {
   super_admin: 100,
   platform_support: 80,
   org_admin: 60,

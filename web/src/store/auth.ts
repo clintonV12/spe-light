@@ -39,7 +39,7 @@ interface AuthState {
    */
   setAuth: (
     user:         User,
-    org:          Organisation,
+    org:          Organisation | null,
     accessToken:  string,
     refreshToken: string,
   ) => void

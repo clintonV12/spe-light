@@ -126,9 +126,15 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 			r.Use(middleware.RequireRole(models.RoleSuperAdmin, models.RolePlatformSupport))
 			r.Get("/orgs", adminH.ListOrgs)
 			r.Get("/audit-log", adminH.ListAuditLog)
+			r.Get("/platform-users", adminH.ListPlatformUsers)
+			r.Get("/platform-users/invitations", adminH.ListPlatformInvitations)
 			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Post("/orgs", adminH.CreateOrg)
 			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Patch("/orgs/{orgID}", adminH.UpdateOrg)
 			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Post("/org-invitations", adminH.SendOrgInvitation)
+			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Post("/platform-users/invitations", adminH.InvitePlatformUser)
+			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Delete("/platform-users/invitations/{invitationID}", adminH.CancelPlatformInvitation)
+			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Post("/platform-users/invitations/{invitationID}/resend", adminH.ResendPlatformInvitation)
+			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Patch("/platform-users/{userID}", adminH.UpdatePlatformUser)
 		})
 
 		// ── Plans ──────────────────────────────────────────────────
