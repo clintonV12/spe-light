@@ -78,6 +78,7 @@ function CreateOrgModal({ onCreated, onClose }: { onCreated: () => void; onClose
   const [name, setName] = useState('')
   const [industry, setIndustry] = useState('')
   const [locale, setLocale] = useState('en')
+  const [adminEmail, setAdminEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -87,11 +88,20 @@ function CreateOrgModal({ onCreated, onClose }: { onCreated: () => void; onClose
     setLoading(true)
     setError('')
     try {
-      await adminApi.createOrg({ name: name.trim(), industry: industry.trim() || undefined, locale })
+      await adminApi.createOrg({
+        name: name.trim(),
+        industry: industry.trim() || undefined,
+        locale,
+        admin_email: adminEmail.trim() || undefined,
+      })
       onCreated()
       onClose()
     } catch {
-      setError('Could not create the organisation. Check the details and try again.')
+      setError(
+        adminEmail.trim()
+          ? 'Organisation may have been created, but the admin invite failed to send. Check the "Invite org admin" list and try again from there.'
+          : 'Could not create the organisation. Check the details and try again.',
+      )
     } finally {
       setLoading(false)
     }
@@ -141,8 +151,21 @@ function CreateOrgModal({ onCreated, onClose }: { onCreated: () => void; onClose
             </div>
           </div>
 
+          <div className="space-y-1.5 pt-1 border-t border-ink-100">
+            <label className="block text-sm font-medium text-ink-700 pt-3">Invite admin now (optional)</label>
+            <input
+              type="email"
+              value={adminEmail}
+              onChange={(e) => setAdminEmail(e.target.value)}
+              placeholder="admin@acme.com"
+              className="w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent"
+            />
+          </div>
+
           <p className="text-xs text-ink-400">
-            The org is created active with no members. Use "Invite org admin" to onboard the first admin, or add users manually once inside the org.
+            {adminEmail.trim()
+              ? 'The org is created active, and an invite emails immediately to make this person its org admin.'
+              : 'The org is created active with no members. Leave this blank and use "Invite org admin" later to onboard the first admin.'}
           </p>
 
           {error && <div className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-700">{error}</div>}
@@ -165,20 +188,23 @@ function CreateOrgModal({ onCreated, onClose }: { onCreated: () => void; onClose
 }
 
 // ─── Invite org admin modal ─────────────────────────────────────────────────
+//
+// Targets an existing organisation — orgs must be created first (via
+// CreateOrgModal) so this can never fabricate a new org from typed text.
 
-function InviteOrgAdminModal({ onInvited, onClose }: { onInvited: () => void; onClose: () => void }) {
-  const [orgName, setOrgName] = useState('')
+function InviteOrgAdminModal({ orgs, onInvited, onClose }: { orgs: Organisation[]; onInvited: () => void; onClose: () => void }) {
+  const [orgId, setOrgId] = useState(orgs[0]?.id ?? '')
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!orgName.trim() || !email.trim()) return
+    if (!orgId || !email.trim()) return
     setLoading(true)
     setError('')
     try {
-      await adminApi.sendOrgInvitation({ email: email.trim(), org_name: orgName.trim() })
+      await adminApi.sendOrgInvitation({ email: email.trim(), org_id: orgId })
       onInvited()
       onClose()
     } catch {
@@ -196,47 +222,55 @@ function InviteOrgAdminModal({ onInvited, onClose }: { onInvited: () => void; on
           <button onClick={onClose} className="text-ink-400 hover:text-ink-700 transition-colors"><X className="size-4" /></button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-ink-700">New organisation name</label>
-            <input
-              autoFocus
-              value={orgName}
-              onChange={(e) => setOrgName(e.target.value)}
-              placeholder="Acme Strategy Group"
-              className="w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-ink-700">Admin contact email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@acme.com"
-              className="w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent"
-            />
-          </div>
-
-          <p className="text-xs text-ink-400">
-            This creates a pending organisation and emails a 7-day setup link. The org activates and this
-            person becomes org admin once they accept.
+        {orgs.length === 0 ? (
+          <p className="text-sm text-ink-500">
+            No organisations exist yet. Create one first with "New organisation", then invite its admin from here.
           </p>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-ink-700">Organisation</label>
+              <select
+                autoFocus
+                value={orgId}
+                onChange={(e) => setOrgId(e.target.value)}
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-900 outline-none focus:ring-2 focus:ring-accent-400"
+              >
+                {orgs.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name}{!o.is_active ? ' (inactive)' : ''}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-ink-700">Admin contact email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin@acme.com"
+                className="w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent"
+              />
+            </div>
 
-          {error && <div className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-700">{error}</div>}
+            <p className="text-xs text-ink-400">
+              Emails a 7-day invite link for the selected organisation. This person becomes its org admin once they accept.
+            </p>
 
-          <div className="flex items-center justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors">Cancel</button>
-            <button
-              type="submit"
-              disabled={loading || !orgName.trim() || !email.trim()}
-              className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading && <span className="size-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />}
-              Send invite
-            </button>
-          </div>
-        </form>
+            {error && <div className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-700">{error}</div>}
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors">Cancel</button>
+              <button
+                type="submit"
+                disabled={loading || !orgId || !email.trim()}
+                className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading && <span className="size-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />}
+                Send invite
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   )
@@ -837,7 +871,7 @@ export default function PlatformAdminPage() {
       {tab === 'audit' && <AuditLogTab orgs={orgs} />}
 
       {showCreateOrg && <CreateOrgModal onCreated={loadOrgs} onClose={() => setShowCreateOrg(false)} />}
-      {showInviteOrg && <InviteOrgAdminModal onInvited={loadOrgs} onClose={() => setShowInviteOrg(false)} />}
+      {showInviteOrg && <InviteOrgAdminModal orgs={orgs} onInvited={loadOrgs} onClose={() => setShowInviteOrg(false)} />}
     </div>
   )
 }

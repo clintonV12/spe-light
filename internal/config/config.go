@@ -33,6 +33,9 @@ type Config struct {
 	SMTPUser     string
 	SMTPPassword string
 	SMTPFrom     string
+
+	// Logging
+	LogFilePath string
 }
 
 // Load reads .env (if present) then environment variables. Shell env takes priority.
@@ -51,6 +54,7 @@ func Load() (*Config, error) {
 		SMTPFrom:     getEnv("SMTP_FROM", "noreply@stratplan.local"),
 		SMTPUser:     getEnv("SMTP_USER", ""),
 		SMTPPassword: getEnv("SMTP_PASSWORD", ""),
+		LogFilePath:  getEnv("LOG_FILE_PATH", "logs/stratplan.log"),
 	}
 
 	// Required fields.

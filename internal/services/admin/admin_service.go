@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"spe-light/internal/auditlog"
@@ -92,14 +93,31 @@ func (s *Service) ListOrgs(ctx context.Context, req ListOrgsRequest) ([]models.O
 
 // CreateOrgRequest holds the fields for creating a new organisation directly
 // (without the invitation flow).
+//
+// AdminEmail is optional. If set, CreateOrg sends an org_admin invitation
+// for this org in the same call — this is the "create the org, then invite
+// its admin" path in one step. InviterID/InviterName are only used when
+// AdminEmail is set, and are populated by the handler from JWT claims (not
+// client-supplied).
 type CreateOrgRequest struct {
-	Name     string  `json:"name"`
-	Industry *string `json:"industry,omitempty"`
-	Locale   string  `json:"locale,omitempty"`
+	Name        string  `json:"name"`
+	Industry    *string `json:"industry,omitempty"`
+	Locale      string  `json:"locale,omitempty"`
+	AdminEmail  *string `json:"admin_email,omitempty"`
+	InviterID   uuid.UUID
+	InviterName string
 }
 
-// CreateOrg creates a new, active organisation. Use this when the super admin
-// wants to create an org and manually add users, rather than sending an invite.
+// CreateOrg creates a new, active organisation. If req.AdminEmail is set, it
+// also sends an org_admin invitation for the new org via InviteOrgAdmin —
+// this is the only place an org and its admin invite can be created
+// together; InviteOrgAdmin on its own always requires an existing org_id,
+// so an invite can never spin up an org from arbitrary typed text anymore.
+//
+// Note: this is not wrapped in a DB transaction. If the invite step fails,
+// the organisation still exists (created, active, no admin yet) — the error
+// is returned so the caller knows to retry the invite via
+// POST /api/v1/admin/org-invitations rather than assuming nothing happened.
 func (s *Service) CreateOrg(ctx context.Context, req CreateOrgRequest) (*models.Organisation, error) {
 	if req.Name == "" {
 		return nil, fmt.Errorf("organisation name is required")
@@ -132,6 +150,21 @@ func (s *Service) CreateOrg(ctx context.Context, req CreateOrgRequest) (*models.
 	}
 
 	slog.Info("organisation created", "org_id", org.ID, "name", org.Name)
+
+	if req.AdminEmail != nil {
+		email := strings.TrimSpace(*req.AdminEmail)
+		if email != "" {
+			if _, err := s.InviteOrgAdmin(ctx, InviteOrgAdminRequest{
+				OrgID:       org.ID,
+				Email:       email,
+				InviterID:   req.InviterID,
+				InviterName: req.InviterName,
+			}); err != nil {
+				return org, fmt.Errorf("organisation created, but admin invite failed: %w", err)
+			}
+		}
+	}
+
 	return org, nil
 }
 
@@ -242,7 +275,7 @@ func (s *Service) deactivateOrgSessions(ctx context.Context, orgID uuid.UUID) {
 
 	// Notify org admins.
 	rows, err := s.db.Query(ctx,
-		`SELECT u.email, o.name FROM users u
+		`SELECT u.id, u.email, o.name FROM users u
 		 JOIN organisations o ON o.id = u.org_id
 		 WHERE u.org_id = $1 AND u.role = 'org_admin' AND u.deleted_at IS NULL`,
 		orgID,
@@ -253,41 +286,50 @@ func (s *Service) deactivateOrgSessions(ctx context.Context, orgID uuid.UUID) {
 	}
 	defer rows.Close()
 	for rows.Next() {
+		var adminID uuid.UUID
 		var adminEmail, orgName string
-		if err := rows.Scan(&adminEmail, &orgName); err == nil {
-			s.email.SendOrgDeactivated(adminEmail, orgName)
+		if err := rows.Scan(&adminID, &adminEmail, &orgName); err == nil {
+			s.email.SendOrgDeactivated(adminEmail, orgName, orgID, adminID)
 		}
 	}
 }
 
-// ── Org invitation ────────────────────────────────────────────────────────
+// ── Org admin invitation ─────────────────────────────────────────────────
 
-// SendOrgInviteRequest holds the details for a platform-level org invitation.
-type SendOrgInviteRequest struct {
+// InviteOrgAdminRequest holds the details for inviting an admin to an
+// organisation that already exists. OrgID is required and must reference a
+// real, non-deleted organisation — this method never creates one. Create
+// the org first via CreateOrg (optionally passing AdminEmail there to do
+// both steps in one call), then use this to (re-)invite an admin for it.
+type InviteOrgAdminRequest struct {
+	OrgID       uuid.UUID `json:"org_id"`
 	Email       string    `json:"email"`
-	OrgName     string    `json:"org_name"`
 	InviterID   uuid.UUID // set by the handler from JWT claims
 	InviterName string    // looked up by the handler
 }
 
-// SendOrgInvite creates a pending (inactive) organisation, generates an
-// invitation token, and emails the link to the designated org admin contact.
-// The recipient clicks the link to complete org setup (REQ-F-005).
-func (s *Service) SendOrgInvite(ctx context.Context, req SendOrgInviteRequest) (*models.Invitation, error) {
-	if req.Email == "" || req.OrgName == "" {
-		return nil, fmt.Errorf("email and org_name are required")
+// InviteOrgAdmin sends an org_admin invitation for an existing organisation.
+// Unlike the old SendOrgInvite, this cannot spin up a new organisation from
+// arbitrary typed text — OrgID must match a real row, so admins can only
+// ever be invited into an org a super_admin has deliberately created.
+func (s *Service) InviteOrgAdmin(ctx context.Context, req InviteOrgAdminRequest) (*models.Invitation, error) {
+	if req.Email == "" {
+		return nil, fmt.Errorf("email is required")
+	}
+	if req.OrgID == uuid.Nil {
+		return nil, fmt.Errorf("org_id is required")
 	}
 
-	// Create the org in an inactive state; it activates when the invite is accepted.
-	orgID := uuid.New()
-	slug := slugify(req.OrgName) + "-" + orgID.String()[:8]
-
-	if _, err := s.db.Exec(ctx,
-		`INSERT INTO organisations (id, name, slug, locale, is_active)
-		 VALUES ($1, $2, $3, 'en', false)`,
-		orgID, req.OrgName, slug,
-	); err != nil {
-		return nil, fmt.Errorf("create pending org: %w", err)
+	var orgName string
+	err := s.db.QueryRow(ctx,
+		`SELECT name FROM organisations WHERE id = $1 AND deleted_at IS NULL`,
+		req.OrgID,
+	).Scan(&orgName)
+	if err == pgx.ErrNoRows {
+		return nil, fmt.Errorf("organisation not found — create it first via POST /api/v1/admin/orgs")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fetch organisation: %w", err)
 	}
 
 	plaintext, hash, err := auth.GenerateInviteToken()
@@ -297,7 +339,7 @@ func (s *Service) SendOrgInvite(ctx context.Context, req SendOrgInviteRequest) (
 
 	inv := &models.Invitation{
 		ID:        uuid.New(),
-		OrgID:     &orgID,
+		OrgID:     &req.OrgID,
 		Email:     req.Email,
 		Role:      models.RoleOrgAdmin,
 		TokenHash: hash,
@@ -312,13 +354,17 @@ func (s *Service) SendOrgInvite(ctx context.Context, req SendOrgInviteRequest) (
 		inv.ID, inv.OrgID, inv.Email, inv.Role,
 		inv.TokenHash, inv.InvitedBy, inv.ExpiresAt, inv.Status,
 	); err != nil {
-		return nil, fmt.Errorf("insert org invitation: %w", err)
+		return nil, fmt.Errorf("insert org admin invitation: %w", err)
 	}
 
-	inviteLink := fmt.Sprintf("%s/setup-org?token=%s", s.cfg.AppURL, plaintext)
-	s.email.SendOrgInvite(req.Email, req.OrgName, req.InviterName, inviteLink)
+	// Same invite-accept flow every other user invite uses (POST
+	// /invitations/accept) — no separate "/setup-org" path needed since the
+	// org already exists and is already active; AcceptInvite's activation
+	// step is a harmless no-op here (WHERE is_active = false matches nothing).
+	inviteLink := fmt.Sprintf("%s/invitations/accept?token=%s", s.cfg.AppURL, plaintext)
+	s.email.SendUserInvite(req.Email, orgName, req.InviterName, string(models.RoleOrgAdmin), inviteLink, req.OrgID)
 
-	slog.Info("org invite sent", "email", req.Email, "org_id", orgID, "org_name", req.OrgName)
+	slog.Info("org admin invited", "email", req.Email, "org_id", req.OrgID, "org_name", orgName)
 	return inv, nil
 }
 

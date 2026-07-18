@@ -203,11 +203,12 @@ func (s *Service) Logout(ctx context.Context, plaintextToken string) error {
 // cannot be tampered with in transit.
 func (s *Service) RequestPasswordReset(ctx context.Context, emailAddr string) error {
 	var userID uuid.UUID
+	var orgID *uuid.UUID
 	err := s.db.QueryRow(ctx,
-		`SELECT id FROM users
+		`SELECT id, org_id FROM users
 		 WHERE email = $1 AND deleted_at IS NULL AND is_active = true`,
 		emailAddr,
-	).Scan(&userID)
+	).Scan(&userID, &orgID)
 	if err == pgx.ErrNoRows {
 		return nil // silent — don't reveal whether the email exists
 	}
@@ -232,7 +233,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, emailAddr string) er
 	// GAP 2.7 FIX: sign the token so the link URL cannot be tampered with.
 	sig := auth.SignLink(s.cfg.JWTSecret, plaintext)
 	resetLink := fmt.Sprintf("%s/auth/reset-password?token=%s&sig=%s", s.cfg.AppURL, plaintext, sig)
-	s.email.SendPasswordReset(emailAddr, resetLink)
+	s.email.SendPasswordReset(emailAddr, resetLink, orgID, userID)
 	return nil
 }
 

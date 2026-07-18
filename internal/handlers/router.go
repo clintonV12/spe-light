@@ -11,6 +11,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"spe-light/internal/config"
@@ -31,7 +32,13 @@ import (
 )
 
 // NewRouter builds and returns the fully configured HTTP handler tree.
-func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
+//
+// Returns an error if any service fails to construct — most notably the
+// email service, whose template parsing can fail. Previously that error was
+// discarded by the caller, so a bad template would boot the server fine and
+// then panic with a nil-pointer dereference on the first email send. Now it
+// fails fast at startup instead.
+func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 	r := chi.NewRouter()
 
 	// ── Global middleware ─────────────────────────────────────────────
@@ -49,7 +56,13 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 	}))
 
 	// ── Service construction ──────────────────────────────────────────
-	emailSvc, _ := newEmailService(cfg)
+	// db is threaded into the email service so send() can persist delivery
+	// outcomes to notification_log — previously a failed/successful send was
+	// only ever slog'd, with no durable, queryable record of it.
+	emailSvc, err := newEmailService(cfg, db)
+	if err != nil {
+		return nil, fmt.Errorf("init email service: %w", err)
+	}
 	authService := authsvc.New(db, cfg, emailSvc)
 	orgService := orgsvc.New(db, cfg, emailSvc)
 	adminService := adminsvc.New(db, cfg, emailSvc)
@@ -218,7 +231,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) http.Handler {
 		r.Get("/api/v1/reports/{jobID}", notImplemented)
 	})
 
-	return r
+	return r, nil
 }
 
 func notImplemented(w http.ResponseWriter, r *http.Request) {

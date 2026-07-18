@@ -168,6 +168,14 @@ func (h *Org) SendInvitation(w http.ResponseWriter, r *http.Request) {
 	if !response.DecodeJSON(w, r, &body) {
 		return
 	}
+	if body.Email == "" {
+		response.ErrorJSON(w, "email is required", http.StatusBadRequest)
+		return
+	}
+	if body.Role == "" {
+		response.ErrorJSON(w, "role is required", http.StatusBadRequest)
+		return
+	}
 
 	orgName, inviterName := h.svc.GetOrgAndUserNames(r.Context(), *claims.OrgID, claims.UserID)
 

@@ -110,7 +110,7 @@ func (s *Service) SendUserInvite(ctx context.Context, req SendInviteRequest) (*m
 	}
 
 	inviteLink := fmt.Sprintf("%s/accept-invite?token=%s", s.cfg.AppURL, plaintext)
-	s.email.SendUserInvite(req.Email, req.OrgName, req.InviterName, string(req.Role), inviteLink)
+	s.email.SendUserInvite(req.Email, req.OrgName, req.InviterName, string(req.Role), inviteLink, req.OrgID)
 
 	slog.Info("user invite sent", "email", req.Email, "org_id", req.OrgID, "role", req.Role)
 	return inv, nil
@@ -200,7 +200,7 @@ func (s *Service) ResendInvitation(ctx context.Context, inviteID, orgID uuid.UUI
 	}
 
 	inviteLink := fmt.Sprintf("%s/accept-invite?token=%s", s.cfg.AppURL, plaintext)
-	s.email.SendUserInvite(inv.Email, orgName, inviterName, string(inv.Role), inviteLink)
+	s.email.SendUserInvite(inv.Email, orgName, inviterName, string(inv.Role), inviteLink, orgID)
 	return nil
 }
 
@@ -230,12 +230,14 @@ func (s *Service) UpdateUser(ctx context.Context, userID, orgID, actorID uuid.UU
 		return nil, fmt.Errorf("cannot assign platform roles via org admin")
 	}
 
-	// Capture prior state for the audit diff.
+	// Capture prior state for the audit diff, and the user's email for the
+	// role-changed notification below.
 	var priorRole models.Role
 	var priorActive bool
+	var userEmail string
 	_ = s.db.QueryRow(ctx,
-		`SELECT role, is_active FROM users WHERE id = $1 AND org_id = $2`,
-		userID, orgID).Scan(&priorRole, &priorActive)
+		`SELECT role, is_active, email FROM users WHERE id = $1 AND org_id = $2`,
+		userID, orgID).Scan(&priorRole, &priorActive, &userEmail)
 
 	if req.Role != nil {
 		result, err := s.db.Exec(ctx,
@@ -254,6 +256,10 @@ func (s *Service) UpdateUser(ctx context.Context, userID, orgID, actorID uuid.UU
 			TableName: "users", RecordID: userID,
 			Diff: map[string]any{"role": map[string]string{"from": string(priorRole), "to": string(*req.Role)}},
 		})
+		if userEmail != "" {
+			orgName, _ := s.GetOrgAndUserNames(ctx, orgID, userID)
+			s.email.SendRoleChanged(userEmail, orgName, string(*req.Role), orgID, userID)
+		}
 	}
 
 	if req.IsActive != nil {

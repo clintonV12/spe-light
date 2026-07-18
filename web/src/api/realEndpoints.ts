@@ -363,9 +363,12 @@ export const adminApi = {
   listOrgs: (params?: { active_only?: boolean; limit?: number; offset?: number }) =>
     apiClient.get<Organisation[]>('/admin/orgs', { params }).then((r) => r.data),
 
-  /** POST /api/v1/admin/orgs — super_admin only */
-  // createOrg — remove the slug field, backend generates it server-side
-  createOrg: (payload: { name: string; locale?: string; industry?: string }) =>
+  /**
+   * POST /api/v1/admin/orgs — super_admin only.
+   * admin_email is optional — if set, invites that org's first admin in the
+   * same call instead of requiring a separate sendOrgInvitation call.
+   */
+  createOrg: (payload: { name: string; locale?: string; industry?: string; admin_email?: string }) =>
     apiClient.post<Organisation>('/admin/orgs', payload).then((r) => r.data),
 
   // add — cross-org audit log
@@ -380,9 +383,11 @@ export const adminApi = {
 
   /**
    * POST /api/v1/admin/org-invitations — super_admin only.
-   * Invites a new org admin; creates the org on acceptance.
+   * Invites an org_admin for an *existing* organisation — org_id must
+   * reference a real org (create one first via createOrg). This no longer
+   * creates an organisation from typed text.
    */
-  sendOrgInvitation: (payload: { email: string; org_name: string }) =>
+  sendOrgInvitation: (payload: { email: string; org_id: string }) =>
     apiClient.post<Invitation>('/admin/org-invitations', payload).then((r) => r.data),
 
   listPlatformUsers: () =>

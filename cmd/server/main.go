@@ -14,10 +14,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -32,10 +34,9 @@ import (
 
 func main() {
 	// ── Structured JSON logging (REQ-NF-056) ──────────────────────────
-	// The default slog handler emits human-readable text, which is
-	// convenient locally but machine-unfriendly in any log aggregator
-	// (Loki, Datadog, CloudWatch, etc.). Swap it for JSON before anything
-	// else so every log line — including startup errors — is structured.
+	// Bootstrap with a stdout-only JSON handler first, since config.Load()
+	// itself can fail and we want that error logged somewhere before we
+	// know the configured log file path.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})))
@@ -45,6 +46,23 @@ func main() {
 	if err != nil {
 		slog.Error("load config", "err", err)
 		os.Exit(1)
+	}
+
+	// Upgrade logging to stdout+file now that we know LOG_FILE_PATH. This is
+	// what makes errors (failed emails, failed migrations, panics, etc.)
+	// traceable after the fact instead of only visible in a live stdout
+	// stream. A logging misconfiguration is never fatal — if the file can't
+	// be opened we fall back to stdout-only and say why.
+	//
+	// Note: this appends indefinitely and does not rotate. Pair it with an
+	// OS-level tool like logrotate (copytruncate mode works fine against an
+	// append-only file handle) for long-running production deployments.
+	logFile, err := setupFileLogging(cfg.LogFilePath)
+	if err != nil {
+		slog.Warn("could not open log file — logging to stdout only", "path", cfg.LogFilePath, "err", err)
+	} else {
+		defer logFile.Close()
+		slog.Info("file logging enabled", "path", cfg.LogFilePath)
 	}
 
 	// ── Migrations (REQ-NF-052/053) ───────────────────────────────────
@@ -69,7 +87,16 @@ func main() {
 	slog.Info("database connected")
 
 	// ── HTTP server ───────────────────────────────────────────────────
-	router := handlers.NewRouter(cfg, db)
+	// NewRouter can fail now — most notably if the email service's
+	// templates fail to parse. Previously that error was silently
+	// discarded, which meant the server would boot fine and then panic
+	// on the first invite/reset/notification email with no clear cause
+	// in the logs. Failing fast here surfaces it immediately at startup.
+	router, err := handlers.NewRouter(cfg, db)
+	if err != nil {
+		slog.Error("build router", "err", err)
+		os.Exit(1)
+	}
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.Port),
 		Handler:      router,
@@ -119,4 +146,30 @@ func runMigrations(databaseURL string) error {
 	version, dirty, _ := m.Version()
 	slog.Info("migrations up to date", "schema_version", version, "dirty", dirty)
 	return nil
+}
+
+// setupFileLogging reconfigures the default slog logger to write structured
+// JSON to both stdout and a log file (REQ-NF-056), creating the parent
+// directory if it doesn't exist yet. Returns the open file handle so main
+// can close it on shutdown, or an error if the path is empty or the file
+// couldn't be opened — callers should treat that as non-fatal and continue
+// with stdout-only logging.
+func setupFileLogging(path string) (*os.File, error) {
+	if path == "" {
+		return nil, fmt.Errorf("no log file path configured")
+	}
+	if dir := filepath.Dir(path); dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("create log directory: %w", err)
+		}
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("open log file: %w", err)
+	}
+	writer := io.MultiWriter(os.Stdout, f)
+	slog.SetDefault(slog.New(slog.NewJSONHandler(writer, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+	return f, nil
 }

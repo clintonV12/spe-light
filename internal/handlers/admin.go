@@ -49,11 +49,16 @@ func (h *Admin) ListOrgs(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/v1/admin/orgs
+// Body may optionally include admin_email to invite that org's first admin
+// in the same call (see adminsvc.CreateOrg).
 func (h *Admin) CreateOrg(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFrom(r.Context())
 	var req adminsvc.CreateOrgRequest
 	if !response.DecodeJSON(w, r, &req) {
 		return
 	}
+	req.InviterID = claims.UserID
+	req.InviterName = claims.Email
 	org, err := h.svc.CreateOrg(r.Context(), req)
 	if err != nil {
 		response.ErrorJSON(w, err.Error(), http.StatusBadRequest)
@@ -83,24 +88,26 @@ func (h *Admin) UpdateOrg(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/v1/admin/org-invitations
+// Invites an org_admin for an organisation that already exists — org_id
+// must reference a real org (create one first via POST /api/v1/admin/orgs).
 func (h *Admin) SendOrgInvitation(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFrom(r.Context())
 
 	var body struct {
-		Email   string `json:"email"`
-		OrgName string `json:"org_name"`
+		Email string    `json:"email"`
+		OrgID uuid.UUID `json:"org_id"`
 	}
 	if !response.DecodeJSON(w, r, &body) {
 		return
 	}
-	if body.Email == "" || body.OrgName == "" {
-		response.ErrorJSON(w, "email and org_name are required", http.StatusBadRequest)
+	if body.Email == "" || body.OrgID == uuid.Nil {
+		response.ErrorJSON(w, "email and org_id are required", http.StatusBadRequest)
 		return
 	}
 
-	inv, err := h.svc.SendOrgInvite(r.Context(), adminsvc.SendOrgInviteRequest{
+	inv, err := h.svc.InviteOrgAdmin(r.Context(), adminsvc.InviteOrgAdminRequest{
+		OrgID:       body.OrgID,
 		Email:       body.Email,
-		OrgName:     body.OrgName,
 		InviterID:   claims.UserID,
 		InviterName: claims.Email, // best effort; name lookup not critical here
 	})
