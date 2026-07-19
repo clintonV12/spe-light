@@ -22,6 +22,7 @@ import (
 	"spe-light/internal/models"
 	"spe-light/internal/response"
 	adminsvc "spe-light/internal/services/admin"
+	aisvc "spe-light/internal/services/ai"
 	authsvc "spe-light/internal/services/auth"
 	milestonesvc "spe-light/internal/services/milestone"
 	orgsvc "spe-light/internal/services/org"
@@ -71,6 +72,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 	adminService := adminsvc.New(db, cfg, emailSvc)
 	planService := plansvc.New(db, cfg)
 	milestoneService := milestonesvc.New(db)
+	aiService := aisvc.New(db, cfg) // Sprint C — Ollama-backed AI draft/summary
 	ssoConfigService := ssosvc.New(db)
 	ssoAuthService := ssosvc.NewAuth(db, cfg, ssoConfigService) // Sprint A SSO flows
 
@@ -80,6 +82,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 	adminH := NewAdmin(adminService)
 	planH := NewPlan(planService)
 	milestoneH := NewMilestone(milestoneService)
+	aiH := NewAI(aiService)
 	ssoH := NewSSO(ssoConfigService)
 	ssoAuthH := NewSSOAuth(ssoAuthService, cfg.FrontendURL, cfg.JWTSecret) // Sprint A SSO flows
 
@@ -229,10 +232,10 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 		r.Route("/api/v1/ai", func(r chi.Router) {
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/draft", notImplemented)
+			)).Post("/draft", aiH.Draft)
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/summary", notImplemented)
+			)).Post("/summary", aiH.Summary)
 		})
 
 		// ── Reports (Sprint D) ─────────────────────────────────────

@@ -17,7 +17,7 @@ import type { KpiRow } from '../components/activities/editors/KpiEditor'
 import RiskRegisterEditor from '../components/activities/editors/RiskRegisterEditor'
 import type { RiskRow } from '../components/activities/editors/RiskRegisterEditor'
 import GenericEditor from '../components/activities/editors/GenericEditor'
-import type { Activity, ActivityStatus, Phase, ActivityLink } from '../types'
+import type { Activity, ActivityStatus, ActivityType, Phase, ActivityLink } from '../types'
 
 const STATUS_COLORS: Record<ActivityStatus, string> = {
   not_started:  'bg-ink-100 text-ink-600',
@@ -351,7 +351,11 @@ export default function ActivityEditorPage() {
         <AiDraftPanel
           planId={planId}
           phase={activity.phase}
-          activityType={activity.type}
+          // activity.type is `string` on the backend model (it's not a DB-level
+          // enum) — but in practice it's always one of the fixed ActivityType
+          // picker values from CreateActivityModal, which is what AiDraftPanel
+          // expects. Assert that instead of widening AiDraftPanel's prop type.
+          activityType={activity.type as ActivityType}
           onAccept={handleAiAccept}
           isOffline={!isOnline}
         />
