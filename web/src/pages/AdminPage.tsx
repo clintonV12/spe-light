@@ -70,10 +70,10 @@ const ACTION_GROUPS = [
 ]
 
 function diffLabel(diff: AuditLog['diff']): string | null {
-  const keys = Object.keys(diff)
+  const keys = Object.keys(diff ?? {})
   if (keys.length === 0) return null
   return keys.map((k) => {
-    const { from, to } = diff[k]
+    const { from, to } = diff![k]
     const fromStr = from === null ? 'none' : String(from)
     const toStr   = to   === null ? 'none' : String(to)
     return `${k}: ${fromStr} → ${toStr}`
@@ -225,25 +225,30 @@ function AuditLogTab({ users }: { users: User[] }) {
             {logs.map((log) => {
               const actionColor = ACTION_COLOR[log.action] ?? 'text-ink-700'
               const change = diffLabel(log.diff)
+              // Some audit actions (e.g. invitation.accepted) aren't
+              // guaranteed to have a denormalised user_name/record_label
+              // from the backend yet — fall back rather than crash.
+              const userName    = log.user_name || 'Unknown user'
+              const recordLabel = log.record_label || '—'
               return (
                 <div key={log.id} className="flex items-start gap-4 px-5 py-4 hover:bg-ink-50/50 transition-colors">
                   {/* Avatar */}
                   <div className="size-8 rounded-full bg-accent-100 flex items-center justify-center shrink-0 mt-0.5">
                     <span className="text-xs font-bold text-accent">
-                      {log.user_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                      {userName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
                     </span>
                   </div>
 
                   <div className="flex-1 min-w-0">
                     {/* Action line */}
                     <p className="text-sm text-ink-800">
-                      <span className="font-semibold">{log.user_name}</span>
+                      <span className="font-semibold">{userName}</span>
                       {' '}
                       <span className={`font-medium ${actionColor}`}>
                         {ACTION_LABEL[log.action] ?? log.action}
                       </span>
                       {' '}
-                      <span className="text-ink-500 italic truncate">"{log.record_label}"</span>
+                      <span className="text-ink-500 italic truncate">"{recordLabel}"</span>
                     </p>
 
                     {/* Diff / change detail */}

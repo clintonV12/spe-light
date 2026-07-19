@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"time"
 
+	"spe-light/internal/auditlog"
 	"spe-light/internal/auth"
 	"spe-light/internal/config"
 	"spe-light/internal/email"
@@ -369,10 +370,22 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*T
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 
-	if _, err = tx.Exec(ctx,
-		`UPDATE invitations SET status = 'accepted', accepted_at = NOW() WHERE id = $1`,
-		inv.ID); err != nil {
+	// Consume the invitation atomically: the earlier SELECT's 'pending' check
+	// is not itself exclusive under READ COMMITTED, so two concurrent accepts
+	// of the same valid token could both pass it before either commits. Guard
+	// here with WHERE status = 'pending' and check RowsAffected — if another
+	// transaction already consumed it, tag.RowsAffected() is 0 and we abort
+	// (the users.email uniqueness constraint would also catch a duplicate
+	// insert, but this fails fast with a clearer error before that point).
+	tag, err := tx.Exec(ctx,
+		`UPDATE invitations SET status = 'accepted', accepted_at = NOW()
+		 WHERE id = $1 AND status = 'pending'`,
+		inv.ID)
+	if err != nil {
 		return nil, fmt.Errorf("update invitation: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, fmt.Errorf("invitation is no longer valid — it may have already been accepted")
 	}
 
 	// GAP 2.1 FIX: if this is a platform org-onboarding invite, the org was
@@ -411,7 +424,30 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*T
 		return nil, err
 	}
 
-	slog.Info("invitation accepted", "user_id", user.ID, "email", user.Email, "role", user.Role)
+	// Audit log entry — account creation via invite is a security-relevant
+	// event (who, what role, what org, when) and belongs in the durable,
+	// queryable audit trail, not just the application log.
+	//
+	// Only written for org-scoped invites: audit_log.org_id is NOT NULL
+	// (unlike notification_log, which migration 005 made nullable for
+	// exactly this reason), so a platform-tier invite (inv.OrgID == nil,
+	// e.g. a new super_admin/platform_support accepting) has no org to
+	// attribute the row to and is skipped here — only slog'd below. If
+	// platform-tier actions need to appear in the queryable audit log too,
+	// audit_log.org_id needs the same nullable treatment notification_log
+	// got, which hasn't been done yet.
+	if inv.OrgID != nil {
+		auditlog.Record(ctx, s.db, auditlog.Entry{
+			OrgID: *inv.OrgID, UserID: user.ID, Action: "invitation.accepted",
+			TableName: "users", RecordID: user.ID,
+			Diff: map[string]any{
+				"email": map[string]string{"to": user.Email},
+				"role":  map[string]string{"to": string(user.Role)},
+			},
+		})
+	}
+
+	slog.Info("invitation accepted", "user_id", user.ID, "email", user.Email, "role", user.Role, "org_id", inv.OrgID)
 	return s.issueTokenPair(ctx, &user)
 }
 

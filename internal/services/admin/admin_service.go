@@ -357,12 +357,12 @@ func (s *Service) InviteOrgAdmin(ctx context.Context, req InviteOrgAdminRequest)
 		return nil, fmt.Errorf("insert org admin invitation: %w", err)
 	}
 
-	// Same invite-accept flow every other user invite uses (the /accept-invite
-	// SPA route, which itself calls POST /invitations/accept) — no separate
-	// "/setup-org" path needed since the org already exists and is already
-	// active; AcceptInvite's activation step is a harmless no-op here
-	// (WHERE is_active = false matches nothing).
-	inviteLink := fmt.Sprintf("%s/accept-invite?token=%s", s.cfg.FrontendURL, plaintext)
+	// Same invite-accept flow every other user invite uses (the
+	// /invitations/accept SPA route, which POSTs to the same-named backend
+	// endpoint) — no separate "/setup-org" path needed since the org
+	// already exists and is already active; AcceptInvite's activation step
+	// is a harmless no-op here (WHERE is_active = false matches nothing).
+	inviteLink := fmt.Sprintf("%s/invitations/accept?token=%s", s.cfg.FrontendURL, plaintext)
 	s.email.SendUserInvite(req.Email, orgName, req.InviterName, string(models.RoleOrgAdmin), inviteLink, req.OrgID)
 
 	slog.Info("org admin invited", "email", req.Email, "org_id", req.OrgID, "org_name", orgName)
@@ -562,7 +562,7 @@ func (s *Service) InvitePlatformUser(ctx context.Context, req InvitePlatformUser
 		return nil, fmt.Errorf("insert platform invitation: %w", err)
 	}
 
-	inviteLink := fmt.Sprintf("%s/accept-invite?token=%s", s.cfg.FrontendURL, plaintext)
+	inviteLink := fmt.Sprintf("%s/invitations/accept?token=%s", s.cfg.FrontendURL, plaintext)
 	s.email.SendPlatformUserInvite(req.Email, string(req.Role), req.InviterName, inviteLink)
 
 	slog.Info("platform user invited", "email", req.Email, "role", req.Role, "invited_by", req.InviterID)
@@ -662,7 +662,7 @@ func (s *Service) ResendPlatformInvitation(ctx context.Context, invID uuid.UUID,
 		return fmt.Errorf("update invitation: %w", err)
 	}
 
-	inviteLink := fmt.Sprintf("%s/accept-invite?token=%s", s.cfg.FrontendURL, plaintext)
+	inviteLink := fmt.Sprintf("%s/invitations/accept?token=%s", s.cfg.FrontendURL, plaintext)
 	s.email.SendPlatformUserInvite(email, string(role), inviterName, inviteLink)
 	return nil
 }

@@ -297,10 +297,15 @@ function ActivityFeed() {
                     const display = ACTION_DISPLAY[log.action] ?? DEFAULT_DISPLAY
                     const verb = VERB_MAP[log.action] ?? log.action.replace('.', ' ')
                     const clickable = ['plans', 'activities'].includes(log.table_name)
-                    const firstName = log.user_name.split(' ')[0]
-                    const subject = log.record_label.length > 38
-                      ? log.record_label.slice(0, 36) + '…'
-                      : log.record_label
+                    // Some audit actions (e.g. invitation.accepted) aren't
+                    // guaranteed to have a denormalised label/name from the
+                    // backend yet — fall back rather than crash the feed.
+                    const userName = log.user_name || 'Someone'
+                    const firstName = userName.split(' ')[0]
+                    const recordLabel = log.record_label || '—'
+                    const subject = recordLabel.length > 38
+                      ? recordLabel.slice(0, 36) + '…'
+                      : recordLabel
 
                     return (
                       <div
@@ -323,7 +328,7 @@ function ActivityFeed() {
                               "{subject}"
                             </span>
                           </p>
-                          {Object.keys(log.diff).length > 0 && (
+                          {Object.keys(log.diff ?? {}).length > 0 && (
                             <div className="mt-1"><DiffPill diff={log.diff} /></div>
                           )}
                           <p className="text-[10px] text-ink-300 mt-1">{relativeTime(log.created_at)}</p>

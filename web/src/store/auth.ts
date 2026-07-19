@@ -23,6 +23,8 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { tokenStore } from '../api/client'
+import { useOfflineStore } from './offline'
+import { useUIStore } from './ui'
 import type { User, Organisation } from '../types'
 
 // ── State shape ───────────────────────────────────────────────────────────────
@@ -61,11 +63,23 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
 
       setAuth: (user, org, accessToken, refreshToken) => {
+        // Clear any state left over from a previous identity in this browser
+        // before establishing the new one. Without this, e.g. accepting an
+        // invite as a new org_admin in a tab that was already signed in as a
+        // platform admin (or a different org's user) could leave stale
+        // offline-queued mutations or toasts from the old session attached
+        // to the new one — a cross-tenant bleed risk, not just a cosmetic
+        // one, since a queued offline write could later sync under the new
+        // identity's permissions against data it was never meant to touch.
+        useOfflineStore.getState().clearQueue()
+        useUIStore.setState({ toasts: [] })
         tokenStore.setTokens(accessToken, refreshToken)
         set({ user, org, isAuthenticated: true })
       },
 
       clearAuth: () => {
+        useOfflineStore.getState().clearQueue()
+        useUIStore.setState({ toasts: [] })
         tokenStore.clear()
         set({ user: null, org: null, isAuthenticated: false })
       },

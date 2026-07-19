@@ -13,7 +13,10 @@
  *   POST  /auth/saml/{orgSlug}/acs              → handled by browser redirect
  *   GET   /auth/oidc/{orgSlug}/login            → ssoApi.oidcLogin (redirect only)
  *   GET   /auth/oidc/{orgSlug}/callback         → handled by browser redirect
- *   POST  /invitations/accept                   → invitationsApi.accept
+ *
+ * PUBLIC — under /api/v1 (no Bearer token, but namespaced to avoid
+ * colliding with the SPA's own page routes — see /invitations/accept below)
+ *   POST  /api/v1/invitations/accept            → invitationsApi.accept
  *
  * AUTHENTICATED — Org admin
  *   GET   /api/v1/org/users                     → orgApi.listUsers
@@ -113,9 +116,15 @@ export const authApi = {
 // ── Invitations (public) ──────────────────────────────────────────────────────
 
 export const invitationsApi = {
-  /** POST /invitations/accept — public, no Bearer required */
+  /**
+   * POST /api/v1/invitations/accept — public, no Bearer required.
+   * Namespaced under /api/v1 (apiClient's default baseURL, so no override
+   * needed here) to avoid colliding with the SPA's own /invitations/accept
+   * page route — a bare /invitations/accept proxy rule can't tell "GET the
+   * page" apart from "POST to the API" at the same path.
+   */
   accept: (payload: { token: string; name: string; password: string }) =>
-    apiClient.post<AuthTokens>('/invitations/accept', payload, { baseURL: '/' }).then((r) => r.data),
+    apiClient.post<AuthTokens>('/invitations/accept', payload).then((r) => r.data),
 }
 
 // ── Plans ─────────────────────────────────────────────────────────────────────

@@ -24,6 +24,7 @@ export default function AcceptInvitePage() {
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [isPlatformTier, setIsPlatformTier] = useState(false)
 
   useEffect(() => {
     if (!token) {
@@ -41,21 +42,31 @@ export default function AcceptInvitePage() {
     setError('')
     try {
       const tokens = await invitationsApi.accept({ token, name, password })
+      let user
       if (import.meta.env.VITE_MOCK === 'true') {
         const { mockAuth } = await import('../mocks/handlers')
-        const user = await mockAuth.me()
+        user = await mockAuth.me()
         const org  = await mockAuth.org()
         setAuth(user, org, tokens.access_token, tokens.refresh_token)
       } else {
         const apiClient = (await import('../api/client')).default
-        const { data: user } = await apiClient.get('/org/me', {
+        const { data: fetchedUser } = await apiClient.get('/org/me', {
           headers: { Authorization: `Bearer ${tokens.access_token}` },
         })
-        const { data: org } = await apiClient.get('/org', {
-          headers: { Authorization: `Bearer ${tokens.access_token}` },
-        })
+        user = fetchedUser
+        // Platform-tier invitees (super_admin, platform_support) have no
+        // org_id — /org correctly 403s for them, same as LoginPage's real-mode
+        // branch, so only fetch it when there's actually an org to fetch.
+        let org = null
+        if (user.org_id) {
+          const { data: orgData } = await apiClient.get('/org', {
+            headers: { Authorization: `Bearer ${tokens.access_token}` },
+          })
+          org = orgData
+        }
         setAuth(user, org, tokens.access_token, tokens.refresh_token)
       }
+      setIsPlatformTier(user.role === 'super_admin' || user.role === 'platform_support')
       setStep('success')
     } catch {
       setError(t('acceptInvite.invalidLink'))
@@ -90,7 +101,7 @@ export default function AcceptInvitePage() {
               </p>
             </div>
             <button
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate(isPlatformTier ? '/platform-admin' : '/dashboard')}
               className="w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent-600 transition-colors"
             >
               {t('acceptInvite.goToDashboard')} <ArrowRight className="size-4" />

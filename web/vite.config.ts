@@ -4,6 +4,11 @@
  * VITE_MOCK=true   → all API calls go to the in-memory mock layer (no proxy needed)
  * VITE_MOCK unset  → calls are proxied to VITE_API_URL (default: http://localhost:8080)
  *
+ * Deliberately NOT proxied: /invitations. That path is the SPA's own page
+ * route (AcceptInvitePage). The corresponding API call now lives under
+ * /api/v1/invitations/accept, which the /api/v1 rule below already covers —
+ * see realEndpoints.ts and router.go for the full fix.
+ *
  * .env.local (git-ignored) for live backend development:
  *   VITE_MOCK=
  *   VITE_API_URL=http://localhost:8080
@@ -48,12 +53,13 @@ export default defineConfig(({ mode }) => {
               changeOrigin: true,
               secure:       false,
             },
-            // /invitations/accept — public invite acceptance
-            '/invitations': {
-              target:       apiTarget,
-              changeOrigin: true,
-              secure:       false,
-            },
+            // NOTE: no /invitations proxy rule. Invite acceptance is a POST
+            // to /api/v1/invitations/accept (already covered by the /api/v1
+            // rule above) — bare /invitations is the SPA's own page route
+            // (AcceptInvitePage, mounted at /invitations/accept in App.tsx)
+            // and must NOT be proxied to the backend, or GET requests for
+            // the page itself get swallowed and 405 before React Router
+            // ever sees them.
             // /health — Go health check
             '/health': {
               target:       apiTarget,

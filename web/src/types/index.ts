@@ -256,13 +256,17 @@ export interface AuditLog {
   id:           string
   org_id:       string
   user_id:      string
-  user_name:    string     // denormalised by the Go service for display
-  user_email:   string
+  /** Denormalised by the Go service for display. Not populated for every
+   *  action type (e.g. invitation.accepted) — guard before use. */
+  user_name?:   string
+  user_email?:  string
   action:       AuditAction
   table_name:   string
   record_id:    string
-  record_label: string     // denormalised for display
-  diff:         Record<string, { from: unknown; to: unknown }>
+  /** Denormalised for display. Not populated for every action type — guard
+   *  before use (see user_name above). */
+  record_label?: string
+  diff?:        Record<string, { from: unknown; to: unknown }>
   created_at:   string
 }
 

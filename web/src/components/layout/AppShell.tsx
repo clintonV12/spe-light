@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useTranslation } from 'react-i18next'
 import {
   LayoutDashboard, FileText, BarChart2, FileOutput,
   Settings, ChevronLeft, ChevronRight, WifiOff, RefreshCw,
-  Menu, Search, Keyboard, ShieldCheck,
+  Menu, Search, Keyboard, ShieldCheck, LogOut,
 } from 'lucide-react'
 import { useUIStore } from '../../store/ui'
 import { useOfflineStore } from '../../store/offline'
 import { useAuthStore } from '../../store/auth'
 import { useSyncEngine } from '../../hooks'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
+import { authApi } from '../../api/endpoints'
+import { tokenStore } from '../../api/client'
 import ToastContainer from '../ui/ToastContainer'
 import LanguageSwitcher from '../ui/LanguageSwitcher'
 import CommandPalette from './CommandPalette'
@@ -33,6 +35,29 @@ export const AppShell: React.FC = () => {
   const { sync }     = useSyncEngine()
 
   const role = useAuthStore((s) => s.user?.role)
+  const user = useAuthStore((s) => s.user)
+  const clearAuth = useAuthStore((s) => s.clearAuth)
+  const navigate = useNavigate()
+
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  // Revokes the refresh token server-side (best-effort — logout still
+  // proceeds locally even if this fails, e.g. offline or token already
+  // expired) before clearing local auth state and returning to /login.
+  // clearAuth() also resets the offline queue and toasts, so a stale
+  // session's queued mutations can't bleed into whoever logs in next in
+  // this browser.
+  const handleLogout = useCallback(async () => {
+    setLoggingOut(true)
+    try {
+      await authApi.logout(tokenStore.getRefresh())
+    } catch {
+      // best-effort — proceed with local logout regardless
+    } finally {
+      clearAuth()
+      navigate('/login', { replace: true })
+    }
+  }, [clearAuth, navigate])
 
   const [searchOpen,    setSearchOpen]    = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
@@ -142,6 +167,40 @@ export const AppShell: React.FC = () => {
             </button>
           </div>
         )}
+
+        {/* Current user + logout */}
+        <div className="px-2 pb-2 border-t border-ink-700 pt-2">
+          {!collapsed ? (
+            <div className="flex items-center gap-2 px-1">
+              <div className="size-8 rounded-full bg-ink-700 flex items-center justify-center shrink-0 text-xs font-semibold text-white uppercase">
+                {(user?.name || user?.email || '?').charAt(0)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-white truncate">{user?.name || user?.email}</p>
+                <p className="text-[10px] text-ink-400 truncate capitalize">{role?.replace('_', ' ')}</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                disabled={loggingOut}
+                title={t('nav.logout', 'Log out')}
+                aria-label={t('nav.logout', 'Log out')}
+                className="shrink-0 p-1.5 rounded-lg text-ink-400 hover:text-white hover:bg-ink-800 transition-colors disabled:opacity-50"
+              >
+                <LogOut className="size-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              title={t('nav.logout', 'Log out')}
+              aria-label={t('nav.logout', 'Log out')}
+              className="w-full flex items-center justify-center p-2 rounded-lg text-ink-400 hover:text-white hover:bg-ink-800 transition-colors disabled:opacity-50"
+            >
+              <LogOut className="size-4" />
+            </button>
+          )}
+        </div>
 
         {/* Collapse toggle */}
         <div className="p-2 border-t border-ink-700">

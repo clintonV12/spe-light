@@ -109,7 +109,7 @@ func (s *Service) SendUserInvite(ctx context.Context, req SendInviteRequest) (*m
 		return nil, fmt.Errorf("insert invitation: %w", err)
 	}
 
-	inviteLink := fmt.Sprintf("%s/accept-invite?token=%s", s.cfg.FrontendURL, plaintext)
+	inviteLink := fmt.Sprintf("%s/invitations/accept?token=%s", s.cfg.FrontendURL, plaintext)
 	s.email.SendUserInvite(req.Email, req.OrgName, req.InviterName, string(req.Role), inviteLink, req.OrgID)
 
 	slog.Info("user invite sent", "email", req.Email, "org_id", req.OrgID, "role", req.Role)
@@ -199,7 +199,7 @@ func (s *Service) ResendInvitation(ctx context.Context, inviteID, orgID uuid.UUI
 		return fmt.Errorf("update invitation: %w", err)
 	}
 
-	inviteLink := fmt.Sprintf("%s/accept-invite?token=%s", s.cfg.FrontendURL, plaintext)
+	inviteLink := fmt.Sprintf("%s/invitations/accept?token=%s", s.cfg.FrontendURL, plaintext)
 	s.email.SendUserInvite(inv.Email, orgName, inviterName, string(inv.Role), inviteLink, orgID)
 	return nil
 }

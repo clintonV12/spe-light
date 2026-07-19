@@ -7,7 +7,10 @@
 //   - ssosvc.NewAuth wired into service construction.
 //
 // Full route layout — see Sprint A router.go header for the complete table.
-// Only the SSO auth routes are new; everything else is unchanged.
+// Only the SSO auth routes are new; everything else is unchanged, except
+// invitation acceptance, which moved from bare /invitations/accept to
+// /api/v1/invitations/accept to stop colliding with the SPA's own
+// /invitations/accept page route (see realEndpoints.ts).
 package handlers
 
 import (
@@ -103,7 +106,12 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 		r.Get("/oidc/{orgSlug}/callback", ssoAuthH.OIDCCallback)
 	})
 
-	r.Post("/invitations/accept", authH.AcceptInvitation)
+	// Namespaced under /api/v1 (rather than bare /invitations/accept) so this
+	// never collides with the SPA's own /invitations/accept page route. Public
+	// endpoint — no auth middleware — the invitee doesn't have a token yet.
+	r.Route("/api/v1/invitations", func(r chi.Router) {
+		r.Post("/accept", authH.AcceptInvitation)
+	})
 
 	// ── Authenticated routes ──────────────────────────────────────────
 	r.Group(func(r chi.Router) {
