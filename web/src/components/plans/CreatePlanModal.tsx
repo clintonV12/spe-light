@@ -3,7 +3,6 @@ import { X } from 'lucide-react'
 import { Button, Input } from '../ui'
 import { plansApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
-import type { PlanStatus } from '../../types'
 
 interface CreatePlanModalProps {
   onCreated: () => void
@@ -25,7 +24,6 @@ export const CreatePlanModal: React.FC<CreatePlanModalProps> = ({ onCreated, onC
       await plansApi.create({
         title: title.trim(),
         description: description.trim() || undefined,
-        status: 'draft' as PlanStatus,
         start_date: startDate || undefined,
         end_date: endDate || undefined,
       })

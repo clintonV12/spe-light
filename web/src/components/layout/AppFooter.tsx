@@ -160,7 +160,7 @@ export default function AppFooter() {
           style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}
         >
           <p className="text-white/30 text-xs">
-            © {new Date().getFullYear()} DGRV360COOP · StratPlan. All rights reserved.
+            © {new Date().getFullYear()} DGRV360COOP · SPE-Lite. All rights reserved.
           </p>
           <div className="flex items-center gap-5">
             {[

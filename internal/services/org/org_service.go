@@ -87,6 +87,17 @@ func (s *Service) SendUserInvite(ctx context.Context, req SendInviteRequest) (*m
 		return nil, err
 	}
 
+	// plan_ids is a NOT NULL uuid[] column. req.PlanIDs is nil for every
+	// invite that isn't a plan-scoped viewer (org_admin, planner,
+	// contributor, or a viewer with org-wide access) — pgx encodes a nil
+	// Go slice as SQL NULL rather than an empty array, which the NOT NULL
+	// constraint rejects. Normalise to an empty, non-nil slice so the
+	// column always gets '{}' instead.
+	planIDs := req.PlanIDs
+	if planIDs == nil {
+		planIDs = []uuid.UUID{}
+	}
+
 	inv := &models.Invitation{
 		ID:        uuid.New(),
 		OrgID:     &req.OrgID,
@@ -96,7 +107,7 @@ func (s *Service) SendUserInvite(ctx context.Context, req SendInviteRequest) (*m
 		InvitedBy: req.InviterID,
 		ExpiresAt: time.Now().Add(72 * time.Hour),
 		Status:    models.InvitePending,
-		PlanIDs:   req.PlanIDs,
+		PlanIDs:   planIDs,
 	}
 
 	_, err = s.db.Exec(ctx,

@@ -69,7 +69,6 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
         type,
         title: title.trim(),
         due_date: dueDate || undefined,
-        status: 'not_started',
         content: {},
       })
       success('Activity created')

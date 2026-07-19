@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus, Search, SlidersHorizontal, ChevronUp, ChevronDown,
@@ -38,18 +39,58 @@ function PlanRowMenu({ onArchive, onDuplicate, onDelete }: {
   onDelete: () => void
 }) {
   const [open, setOpen] = useState(false)
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const MENU_WIDTH = 176 // w-44
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      // Position below the button, right-aligned to it — same visual spot
+      // the old `absolute right-0` version aimed for, just computed in
+      // viewport coordinates so a portal can render it outside the table.
+      setCoords({
+        top: rect.bottom + 4,
+        left: Math.max(8, rect.right - MENU_WIDTH),
+      })
+    }
+    setOpen((v) => !v)
+  }
+
+  // The table wrapper's overflow-hidden (needed for its rounded corners)
+  // clips any absolutely-positioned dropdown that tries to render past its
+  // edge — that's what caused the menu to expand then immediately get cut
+  // off. Rendering through a portal into document.body with `fixed`
+  // coordinates sidesteps that clipping entirely. Close on scroll/resize so
+  // a stale, no-longer-aligned menu can't linger.
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [open])
+
   return (
     <div className="relative">
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
+        ref={btnRef}
+        onClick={toggle}
         className="p-1.5 rounded-lg text-ink-300 hover:text-ink-700 hover:bg-ink-50 transition-colors"
       >
         <MoreHorizontal className="size-4" />
       </button>
-      {open && (
+      {open && coords && createPortal(
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-20 mt-1 w-44 rounded-xl border border-ink-100 bg-white shadow-lg py-1">
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div
+            className="fixed z-50 w-44 rounded-xl border border-ink-100 bg-white shadow-lg py-1"
+            style={{ top: coords.top, left: coords.left }}
+          >
             <button onClick={(e) => { e.stopPropagation(); onDuplicate(); setOpen(false) }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-ink-700 hover:bg-ink-50">
               <Copy className="size-4 text-ink-400" /> Duplicate
             </button>
@@ -61,7 +102,8 @@ function PlanRowMenu({ onArchive, onDuplicate, onDelete }: {
               <Trash2 className="size-4" /> Delete
             </button>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   )
@@ -153,7 +195,7 @@ export default function PlansPage() {
       if (sortKey === 'title')      { av = a.title; bv = b.title }
       if (sortKey === 'status')     { av = a.status; bv = b.status }
       if (sortKey === 'updated_at') { av = a.updated_at; bv = b.updated_at }
-      if (sortKey === 'progress')   { av = a.progress?.overall_percent ?? 0; bv = b.progress?.overall_percent ?? 0 }
+      if (sortKey === 'progress')   { av = a.progress?.overall.percent_complete ?? 0; bv = b.progress?.overall.percent_complete ?? 0 }
       if (av < bv) return sortDir === 'asc' ? -1 : 1
       if (av > bv) return sortDir === 'asc' ? 1 : -1
       return 0
@@ -330,8 +372,8 @@ export default function PlansPage() {
             <tbody className="divide-y divide-ink-50">
               {filtered.map((plan) => {
                 const meta = STATUS_META[plan.status]
-                const overallPct = plan.progress?.overall_percent ?? 0
-                const overdue = plan.progress?.overdue_count ?? 0
+                const overallPct = plan.progress?.overall.percent_complete ?? 0
+                const overdue = plan.progress?.overall.overdue ?? 0
                 const isSelected = selected.has(plan.id)
 
                 return (

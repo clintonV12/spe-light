@@ -70,10 +70,10 @@ export default function LoginPage() {
           <div className="flex items-center gap-3">
             <img
               src="/logo.jpg"
-              alt="StratPlan"
+              alt="SPE-Lite"
               className="size-9 rounded-xl shrink-0 object-contain"
             />
-            <span className="font-display font-bold text-white text-lg tracking-tight">StratPlan</span>
+            <span className="font-display font-bold text-white text-lg tracking-tight">SPE-Lite</span>
           </div>
           <LanguageSwitcher dark compact />
         </div>
@@ -125,10 +125,10 @@ export default function LoginPage() {
             <div className="flex items-center gap-2">
               <img
                 src="/logo.jpg"
-                alt="StratPlan"
+                alt="SPE-Lite"
                 className="size-8 rounded-lg shrink-0 object-contain"
               />
-              <span className="font-display font-bold text-ink-900 text-base">StratPlan</span>
+              <span className="font-display font-bold text-ink-900 text-base">SPE-Lite</span>
             </div>
             <LanguageSwitcher compact />
           </div>

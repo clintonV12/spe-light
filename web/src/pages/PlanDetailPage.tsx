@@ -10,7 +10,7 @@ import { usePermission } from '../hooks'
 import { ProgressBar, EmptyState } from '../components/ui'
 import CreateActivityModal from '../components/activities/CreateActivityModal'
 import { SHORTCUT_CREATE_EVENT } from '../components/layout/AppShell'
-import type { Plan, Activity, Phase, ActivityStatus } from '../types'
+import type { Plan, Activity, Phase, ActivityStatus, PlanStatus } from '../types'
 
 const PHASES: Phase[] = ['P1', 'P2', 'P3']
 
@@ -18,6 +18,84 @@ const PHASE_META: Record<Phase, { label: string; desc: string; color: string; bg
   P1: { label: 'Analysis',    desc: 'Understand the current state', color: 'text-p1-dark', bg: 'bg-p1-light', border: 'border-p1' },
   P2: { label: 'Strategy',    desc: 'Define the desired future',    color: 'text-p2-dark', bg: 'bg-p2-light', border: 'border-p2' },
   P3: { label: 'Operations',  desc: 'Plan how to get there',        color: 'text-p3-dark', bg: 'bg-p3-light', border: 'border-p3' },
+}
+
+const PLAN_STATUS_OPTIONS: { value: PlanStatus; label: string }[] = [
+  { value: 'draft',     label: 'Draft' },
+  { value: 'active',    label: 'Active' },
+  { value: 'review',    label: 'Review' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'archived',  label: 'Archived' },
+]
+
+const PLAN_STATUS_DOT: Record<PlanStatus, string> = {
+  draft:     'bg-ink-300',
+  active:    'bg-p2',
+  review:    'bg-p1',
+  completed: 'bg-green-500',
+  archived:  'bg-ink-400',
+}
+
+const PLAN_STATUS_LABEL: Record<PlanStatus, string> = {
+  draft:     'Draft',
+  active:    'Active',
+  review:    'Review',
+  completed: 'Completed',
+  archived:  'Archived',
+}
+
+// ─── Plan status picker ─────────────────────────────────────────────────────
+function PlanStatusPicker({
+  status, onChange, loading, disabled,
+}: {
+  status: PlanStatus
+  onChange: (s: PlanStatus) => void
+  loading: boolean
+  disabled: boolean
+}) {
+  const [open, setOpen] = useState(false)
+
+  if (disabled) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-600">
+        <span className={`size-2 rounded-full shrink-0 ${PLAN_STATUS_DOT[status]}`} />
+        {PLAN_STATUS_LABEL[status]}
+      </span>
+    )
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={loading}
+        className="flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-700 hover:bg-ink-50 transition-colors disabled:opacity-50"
+      >
+        <span className={`size-2 rounded-full shrink-0 ${PLAN_STATUS_DOT[status]}`} />
+        {PLAN_STATUS_LABEL[status]}
+        <ChevronDown className="size-3.5" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-20 mt-1 w-40 rounded-xl border border-ink-100 bg-white shadow-lg py-1">
+            {PLAN_STATUS_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                onClick={() => { onChange(o.value); setOpen(false) }}
+                disabled={o.value === status}
+                className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-ink-700 hover:bg-ink-50 disabled:opacity-40 disabled:cursor-default"
+              >
+                <span className={`size-2 rounded-full shrink-0 ${PLAN_STATUS_DOT[o.value]}`} />
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {loading && <span className="ml-2 size-4 animate-spin rounded-full border-2 border-accent border-t-transparent inline-block align-middle" />}
+    </div>
+  )
 }
 
 const STATUS_OPTIONS: { value: ActivityStatus; label: string }[] = [
@@ -167,6 +245,9 @@ export default function PlanDetailPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
 
+  // ── Plan status ─────────────────────────────────────────────────────────
+  const [planStatusLoading, setPlanStatusLoading] = useState(false)
+
   const load = async () => {
     if (!planId) return
     try {
@@ -220,6 +301,15 @@ export default function PlanDetailPage() {
     } catch { } finally { setBulkLoading(false) }
   }
 
+  const handlePlanStatusChange = async (status: PlanStatus) => {
+    if (!planId) return
+    setPlanStatusLoading(true)
+    try {
+      const updated = await plansApi.update(planId, { status })
+      setPlan(updated)
+    } catch { } finally { setPlanStatusLoading(false) }
+  }
+
   if (loading) {
     return (
       <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -249,6 +339,12 @@ export default function PlanDetailPage() {
             {plan.description && <p className="text-ink-500 text-sm mt-0.5">{plan.description}</p>}
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <PlanStatusPicker
+              status={plan.status}
+              onChange={handlePlanStatusChange}
+              loading={planStatusLoading}
+              disabled={!can.createPlan}
+            />
             <button
               onClick={() => navigate(`/progress?plan=${plan.id}`)}
               className="flex items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors"
@@ -272,7 +368,7 @@ export default function PlanDetailPage() {
         {PHASES.map((phase) => {
           const phData = plan.progress?.phases.find((p) => p.phase === phase)
           const meta = PHASE_META[phase]
-          const pct = phData?.percent ?? 0
+          const pct = phData?.percent_complete ?? 0
           return (
             <button
               key={phase}

@@ -64,8 +64,8 @@ const STATUS_PILL: Record<PlanStatus, { label: string; cls: string }> = {
 
 function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
   const progress   = plan.progress
-  const overallPct = progress?.overall_percent ?? 0
-  const overdue    = progress?.overdue_count ?? 0
+  const overallPct = progress?.overall.percent_complete ?? 0
+  const overdue    = progress?.overall.overdue ?? 0
   const pill       = STATUS_PILL[plan.status]
 
   return (
@@ -107,11 +107,11 @@ function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
                       : g.bar === 'p2' ? 'from-emerald-400 to-emerald-500'
                       : 'from-violet-400 to-violet-500'
                     }`}
-                    style={{ width: `${Math.max(0, Math.min(100, p.percent))}%` }}
+                    style={{ width: `${Math.max(0, Math.min(100, p.percent_complete))}%` }}
                   />
                 </div>
                 <span className="text-[10px] text-ink-400 tabular-nums w-7 text-right shrink-0">
-                  {Math.round(p.percent)}%
+                  {Math.round(p.percent_complete)}%
                 </span>
               </div>
             )
@@ -391,9 +391,9 @@ export default function DashboardPage() {
   }, [])
 
   const activePlans  = plans.filter((p) => p.status === 'active').length
-  const totalOverdue = plans.reduce((s, p) => s + (p.progress?.overdue_count ?? 0), 0)
+  const totalOverdue = plans.reduce((s, p) => s + (p.progress?.overall.overdue ?? 0), 0)
   const avgProgress  = plans.length
-    ? Math.round(plans.reduce((s, p) => s + (p.progress?.overall_percent ?? 0), 0) / plans.length) : 0
+    ? Math.round(plans.reduce((s, p) => s + (p.progress?.overall.percent_complete ?? 0), 0) / plans.length) : 0
   const recentPlans  = [...plans]
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
     .slice(0, 6)

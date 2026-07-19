@@ -92,25 +92,31 @@ type CandidateLink struct {
 // autoLinkRules defines which source activity types naturally lead to which
 // target types. REQ-F-040: "auto-identifies candidate links based on activity
 // type pairs (e.g. SWOT threats → Risk Register → P3 mitigation tasks)."
+//
+// These strings must match the ActivityType values in the frontend's
+// types/index.ts (CreateActivityModal's PHASE_ACTIVITY_TYPES) exactly — an
+// activity's type is only ever set from that fixed picker, so any rule using
+// a value outside that set can never match a real activity and silently
+// never fires.
 var autoLinkRules = []struct {
 	from, to, reason string
 }{
 	{"swot", "risk_register", "SWOT threats feed into the Risk Register"},
 	{"swot", "strategic_objectives", "SWOT outcomes inform Strategic Objectives"},
-	{"swot", "okr", "SWOT analysis contextualises OKR definition"},
+	{"swot", "okr_balanced_scorecard", "SWOT analysis contextualises OKR definition"},
 	{"pestle", "risk_register", "PESTLE factors are a primary risk source"},
 	{"pestle", "strategic_objectives", "PESTLE environment shapes strategy"},
-	{"risk_register", "roadmap", "Risk mitigations belong in the Operational Roadmap"},
-	{"strategic_objectives", "okr", "Strategic Objectives are operationalised as OKRs"},
-	{"strategic_objectives", "kpi", "Strategic Objectives drive KPI selection"},
-	{"okr", "roadmap", "OKRs define goals the Roadmap must deliver"},
-	{"okr", "action_items", "OKRs decompose into concrete Action Items"},
-	{"vision", "strategic_objectives", "Vision sets the destination for Strategic Objectives"},
+	{"risk_register", "operational_roadmap", "Risk mitigations belong in the Operational Roadmap"},
+	{"strategic_objectives", "okr_balanced_scorecard", "Strategic Objectives are operationalised as OKRs"},
+	{"strategic_objectives", "kpi_framework", "Strategic Objectives drive KPI selection"},
+	{"okr_balanced_scorecard", "operational_roadmap", "OKRs define goals the Roadmap must deliver"},
+	{"okr_balanced_scorecard", "action_items", "OKRs decompose into concrete Action Items"},
+	{"vision_mission", "strategic_objectives", "Vision sets the destination for Strategic Objectives"},
 	{"business_model_canvas", "strategic_objectives", "Canvas gaps drive Strategic Objectives"},
 	{"competitive_analysis", "strategic_objectives", "Competitive positioning informs strategy"},
-	{"kpi", "roadmap", "KPIs need to be trackable via Roadmap milestones"},
-	{"roadmap", "budget", "Roadmap drives Budget Allocation"},
-	{"roadmap", "resource_plan", "Roadmap activities require a Resource Plan"},
+	{"kpi_framework", "operational_roadmap", "KPIs need to be trackable via Roadmap milestones"},
+	{"operational_roadmap", "budget_allocation", "Roadmap drives Budget Allocation"},
+	{"operational_roadmap", "resource_plan", "Roadmap activities require a Resource Plan"},
 }
 
 // AutoDetectLinks scans a plan's activities and returns candidate links that

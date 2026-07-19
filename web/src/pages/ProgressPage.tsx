@@ -33,12 +33,12 @@ function PlanProgressCard({ plan }: { plan: Plan }) {
           )}
         </div>
         <div className="text-right">
-          <p className="text-2xl font-bold text-ink-900">{Math.round(progress.overall_percent)}%</p>
+          <p className="text-2xl font-bold text-ink-900">{Math.round(progress.overall.percent_complete)}%</p>
           <p className="text-xs text-ink-400">{t('progressPage.overall')}</p>
         </div>
       </div>
 
-      <ProgressBar value={progress.overall_percent} className="mb-5" />
+      <ProgressBar value={progress.overall.percent_complete} className="mb-5" />
 
       <div className="space-y-3">
         {progress.phases.map((p) => {
@@ -57,10 +57,10 @@ function PlanProgressCard({ plan }: { plan: Plan }) {
                 </div>
                 <div className="flex items-center gap-3 text-xs text-ink-400">
                   <span>{t('progressPage.done', { complete: p.complete, total: p.total })}</span>
-                  <span className={`font-semibold ${meta.color}`}>{Math.round(p.percent)}%</span>
+                  <span className={`font-semibold ${meta.color}`}>{Math.round(p.percent_complete)}%</span>
                 </div>
               </div>
-              <ProgressBar value={p.percent} variant={meta.bar} />
+              <ProgressBar value={p.percent_complete} variant={meta.bar} />
             </div>
           )
         })}
@@ -75,10 +75,10 @@ function PlanProgressCard({ plan }: { plan: Plan }) {
           <TrendingUp className="size-3.5 text-accent" />
           {progress.phases.reduce((s, p) => s + p.in_progress, 0)} {t('progressPage.inProgress')}
         </div>
-        {progress.overdue_count > 0 && (
+        {progress.overall.overdue > 0 && (
           <div className="flex items-center gap-1.5 text-xs text-red-500 font-medium ml-auto">
             <AlertTriangle className="size-3.5" />
-            {t('progressPage.overdueCount', { count: progress.overdue_count })}
+            {t('progressPage.overdueCount', { count: progress.overall.overdue })}
           </div>
         )}
       </div>
@@ -88,7 +88,7 @@ function PlanProgressCard({ plan }: { plan: Plan }) {
 
 export default function ProgressPage() {
   const { t } = useTranslation()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
   const filterPlan = searchParams.get('plan')
 
   const [plans, setPlans] = useState<Plan[]>([])
@@ -102,12 +102,26 @@ export default function ProgressPage() {
 
   useEffect(() => {
     plansApi.list()
-      .then((data) => {
+      .then(async (data) => {
         const active = data.filter((p) => p.status === 'active' || p.status === 'review')
         const visible = filterPlan ? active.filter((p) => p.id === filterPlan) : active
-        setPlans(visible)
-        if (visible.length > 0 && !networkPlanId) {
-          setNetworkPlanId(visible[0].id)
+        // Plan.progress is not part of the list response (see the type's
+        // own doc comment) — it only comes back from GET /plans/{id}/progress.
+        // Fetch it per plan and merge it in, or every card below has nothing
+        // to render and silently returns null.
+        const withProgress = await Promise.all(
+          visible.map(async (p) => {
+            try {
+              const progress = await plansApi.progress(p.id)
+              return { ...p, progress }
+            } catch {
+              return p
+            }
+          })
+        )
+        setPlans(withProgress)
+        if (withProgress.length > 0 && !networkPlanId) {
+          setNetworkPlanId(withProgress[0].id)
         }
       })
       .catch(() => {})
@@ -134,9 +148,9 @@ export default function ProgressPage() {
 
   const totalActivities = plans.reduce((s, p) => s + (p.progress?.phases.reduce((ps, ph) => ps + ph.total, 0) ?? 0), 0)
   const totalComplete = plans.reduce((s, p) => s + (p.progress?.phases.reduce((ps, ph) => ps + ph.complete, 0) ?? 0), 0)
-  const totalOverdue = plans.reduce((s, p) => s + (p.progress?.overdue_count ?? 0), 0)
+  const totalOverdue = plans.reduce((s, p) => s + (p.progress?.overall.overdue ?? 0), 0)
   const avgProgress = plans.length
-    ? Math.round(plans.reduce((s, p) => s + (p.progress?.overall_percent ?? 0), 0) / plans.length)
+    ? Math.round(plans.reduce((s, p) => s + (p.progress?.overall.percent_complete ?? 0), 0) / plans.length)
     : 0
 
   return (
@@ -194,57 +208,63 @@ export default function ProgressPage() {
         </div>
       )}
 
-      {/* Trans-Phase Network Diagram */}
-      {!loading && plans.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <GitBranch className="size-4 text-ink-400" />
-              <h2 className="font-display text-sm font-bold text-ink-800">{t('progressPage.dependencyNetwork')}</h2>
+      {/* Selected plan detail — one plan at a time via the selector below,
+          rather than rendering every plan's card in a row. With more than a
+          handful of plans a full list gets long fast; this keeps the page a
+          fixed height and reuses one selector for both the progress card and
+          the dependency network instead of the two disconnected pickers this
+          page used to have. */}
+      {!loading && plans.length > 0 && (() => {
+        const selectedPlan = plans.find((p) => p.id === networkPlanId) ?? plans[0]
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-sm font-bold text-ink-800">{t('progressPage.perPlanDetail')}</h2>
+              {plans.length > 1 && (
+                <select
+                  value={networkPlanId}
+                  onChange={(e) => setNetworkPlanId(e.target.value)}
+                  className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs text-ink-700 outline-none focus:ring-2 focus:ring-accent-400"
+                >
+                  {plans.map((p) => (
+                    <option key={p.id} value={p.id}>{p.title}</option>
+                  ))}
+                </select>
+              )}
             </div>
-            {plans.length > 1 && (
-              <select
-                value={networkPlanId}
-                onChange={(e) => {
-                  setNetworkPlanId(e.target.value)
-                  setSearchParams({ plan: e.target.value })
-                }}
-                className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs text-ink-700 outline-none focus:ring-2 focus:ring-accent-400"
-              >
-                {plans.map((p) => (
-                  <option key={p.id} value={p.id}>{p.title}</option>
-                ))}
-              </select>
-            )}
+
+            {selectedPlan && <PlanProgressCard plan={selectedPlan} />}
+
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <GitBranch className="size-4 text-ink-400" />
+                <h3 className="font-display text-sm font-bold text-ink-800">{t('progressPage.dependencyNetwork')}</h3>
+              </div>
+              {networkLoading ? (
+                <div className="h-[560px] bg-ink-100 rounded-2xl animate-pulse" />
+              ) : (
+                <TransPhaseNetwork
+                  activities={networkActivities}
+                  links={networkLinks}
+                  planId={networkPlanId}
+                />
+              )}
+            </div>
           </div>
+        )
+      })()}
 
-          {networkLoading ? (
-            <div className="h-[560px] bg-ink-100 rounded-2xl animate-pulse" />
-          ) : (
-            <TransPhaseNetwork
-              activities={networkActivities}
-              links={networkLinks}
-              planId={networkPlanId}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Per-plan cards */}
-      {loading ? (
-        <div className="space-y-4">
-          {[1, 2].map((i) => <div key={i} className="h-48 bg-ink-100 rounded-2xl animate-pulse" />)}
-        </div>
-      ) : plans.length === 0 ? (
+      {!loading && plans.length === 0 && (
         <div className="text-center py-16">
           <TrendingUp className="size-10 text-ink-200 mx-auto mb-3" />
           <h3 className="text-sm font-semibold text-ink-600">{t('progressPage.emptyTitle')}</h3>
           <p className="text-xs text-ink-400 mt-1">{t('progressPage.emptyDesc')}</p>
         </div>
-      ) : (
+      )}
+
+      {loading && (
         <div className="space-y-4">
-          <h2 className="font-display text-sm font-bold text-ink-800">{t('progressPage.perPlanDetail')}</h2>
-          {plans.map((plan) => <PlanProgressCard key={plan.id} plan={plan} />)}
+          {[1, 2].map((i) => <div key={i} className="h-48 bg-ink-100 rounded-2xl animate-pulse" />)}
         </div>
       )}
     </div>

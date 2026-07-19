@@ -124,13 +124,13 @@ export const AppShell: React.FC = () => {
         <div className="flex items-center gap-3 px-4 h-16 border-b border-ink-700">
           <img
             src="/logo.jpg"
-            alt="StratPlan"
+            alt="SPE-Lite"
             className="size-8 rounded-lg shrink-0 object-contain"
           />
 
           {!collapsed && (
             <span className="font-display font-bold text-base tracking-tight">
-              StratPlan
+              SPE-Lite
             </span>
           )}
         </div>

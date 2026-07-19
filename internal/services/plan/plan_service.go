@@ -45,10 +45,10 @@ func New(db *pgxpool.Pool, cfg *config.Config) *Service {
 
 // CreatePlanRequest holds the fields required to create a new plan.
 type CreatePlanRequest struct {
-	Title       string     `json:"title"`
-	Description *string    `json:"description,omitempty"`
-	StartDate   *time.Time `json:"start_date,omitempty"`
-	EndDate     *time.Time `json:"end_date,omitempty"`
+	Title       string    `json:"title"`
+	Description *string   `json:"description,omitempty"`
+	StartDate   *FlexDate `json:"start_date,omitempty"`
+	EndDate     *FlexDate `json:"end_date,omitempty"`
 }
 
 // CreatePlan creates a new plan in draft status for the given org and owner.
@@ -64,8 +64,8 @@ func (s *Service) CreatePlan(ctx context.Context, orgID, ownerID uuid.UUID, req 
 		Description: req.Description,
 		Status:      models.PlanDraft,
 		OwnerID:     ownerID,
-		StartDate:   req.StartDate,
-		EndDate:     req.EndDate,
+		StartDate:   req.StartDate.ToTimePtr(),
+		EndDate:     req.EndDate.ToTimePtr(),
 	}
 
 	err := s.db.QueryRow(ctx,
@@ -161,8 +161,8 @@ type UpdatePlanRequest struct {
 	Title       *string            `json:"title,omitempty"`
 	Description *string            `json:"description,omitempty"`
 	Status      *models.PlanStatus `json:"status,omitempty"`
-	StartDate   *time.Time         `json:"start_date,omitempty"`
-	EndDate     *time.Time         `json:"end_date,omitempty"`
+	StartDate   *FlexDate          `json:"start_date,omitempty"`
+	EndDate     *FlexDate          `json:"end_date,omitempty"`
 }
 
 // UpdatePlan applies a partial update to a plan and returns the updated record.
@@ -218,14 +218,14 @@ func (s *Service) UpdatePlan(ctx context.Context, planID, orgID uuid.UUID, req U
 	if req.StartDate != nil {
 		if _, err := s.db.Exec(ctx,
 			`UPDATE plans SET start_date = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
-			*req.StartDate, planID, orgID); err != nil {
+			req.StartDate.Time, planID, orgID); err != nil {
 			return nil, fmt.Errorf("update start_date: %w", err)
 		}
 	}
 	if req.EndDate != nil {
 		if _, err := s.db.Exec(ctx,
 			`UPDATE plans SET end_date = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
-			*req.EndDate, planID, orgID); err != nil {
+			req.EndDate.Time, planID, orgID); err != nil {
 			return nil, fmt.Errorf("update end_date: %w", err)
 		}
 	}
@@ -383,7 +383,7 @@ type CreateActivityRequest struct {
 	Title      string         `json:"title"`
 	Content    map[string]any `json:"content,omitempty"`
 	AssignedTo []uuid.UUID    `json:"assigned_to,omitempty"`
-	DueDate    *time.Time     `json:"due_date,omitempty"`
+	DueDate    *FlexDate      `json:"due_date,omitempty"`
 }
 
 // CreateActivity adds a new activity to a plan. The user_order is set to
@@ -439,7 +439,7 @@ func (s *Service) CreateActivity(ctx context.Context, planID, orgID, creatorID u
 		Status:     models.ActivityNotStarted,
 		Content:    content,
 		AssignedTo: assignedTo,
-		DueDate:    req.DueDate,
+		DueDate:    req.DueDate.ToTimePtr(),
 	}
 
 	err = s.db.QueryRow(ctx,
@@ -518,7 +518,7 @@ type UpdateActivityRequest struct {
 	Status     *models.ActivityStatus `json:"status,omitempty"`
 	Content    map[string]any         `json:"content,omitempty"`
 	AssignedTo []uuid.UUID            `json:"assigned_to,omitempty"`
-	DueDate    *time.Time             `json:"due_date,omitempty"`
+	DueDate    *FlexDate              `json:"due_date,omitempty"`
 }
 
 // UpdateActivity applies a partial update to an activity.
@@ -576,7 +576,7 @@ func (s *Service) UpdateActivity(ctx context.Context, activityID, orgID uuid.UUI
 	if req.DueDate != nil {
 		if _, err := s.db.Exec(ctx,
 			`UPDATE activities SET due_date = $1, updated_at = NOW() WHERE id = $2`,
-			*req.DueDate, activityID); err != nil {
+			req.DueDate.Time, activityID); err != nil {
 			return nil, fmt.Errorf("update due_date: %w", err)
 		}
 	}

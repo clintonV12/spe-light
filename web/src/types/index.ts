@@ -24,6 +24,37 @@ export type Phase = 'P1' | 'P2' | 'P3'
 
 export type ActivityStatus = 'not_started' | 'in_progress' | 'under_review' | 'complete'
 
+// Activity type values offered by the "new activity" picker (CreateActivityModal).
+// Not a backend-enforced enum — internal/models/models.go stores Activity.Type
+// as a plain string — but exported here so the modal (and anything else that
+// needs to enumerate the fixed P1/P2/P3 activity type options) gets proper
+// typing instead of falling back to `string`.
+export type ActivityType =
+  // P1 — Analysis
+  | 'swot'
+  | 'pestle'
+  | 'business_model_canvas'
+  | 'stakeholder_map'
+  | 'competitive_analysis'
+  | 'risk_register'
+  | 'market_analysis'
+  // P2 — Strategy
+  | 'vision_mission'
+  | 'strategic_objectives'
+  | 'kpi_framework'
+  | 'okr_balanced_scorecard'
+  | 'theory_of_change'
+  | 'value_proposition'
+  | 'strategic_initiatives'
+  // P3 — Operations
+  | 'financial_projections'
+  | 'budget_allocation'
+  | 'operational_roadmap'
+  | 'resource_plan'
+  | 'action_items'
+  | 'implementation_timeline'
+  | 'procurement_plan'
+
 export type ActivityLinkType = 'auto' | 'manual' | 'ai_suggested'
 
 export type InviteStatus = 'pending' | 'accepted' | 'cancelled' | 'expired'
@@ -139,21 +170,40 @@ export interface Plan {
 }
 
 // ── Plan progress ─────────────────────────────────────────────────────────────
+//
+// Matches internal/services/plan/plan_service.go's PlanProgress/PhaseProgress
+// exactly (these are response DTOs, not persisted models, so they live in
+// plan_service.go rather than models.go — but the same "field names must
+// match the Go json tags exactly" rule applies). In particular: there is no
+// flat `overall_percent`/`overdue_count` on PlanProgress, and no `percent` on
+// PhaseProgress — the backend nests overall stats under `overall` (same shape
+// as each phase) and calls the percentage field `percent_complete`.
 
-export interface PhaseProgress {
-  phase:       Phase
-  total:       number
-  complete:    number
-  in_progress: number
-  overdue:     number
-  percent:     number
+export interface ProgressStats {
+  total:            number
+  complete:         number
+  in_progress:      number
+  overdue:          number
+  percent_complete: number
+}
+
+export interface PhaseProgress extends ProgressStats {
+  phase: Phase
+}
+
+export interface MilestoneStats {
+  total:   number
+  reached: number
+  missed:  number
+  pending: number
 }
 
 export interface PlanProgress {
-  plan_id:         string
-  overall_percent: number
-  overdue_count:   number
-  phases:          PhaseProgress[]
+  plan_id:    string
+  status:     PlanStatus
+  phases:     PhaseProgress[]
+  overall:    ProgressStats
+  milestones: MilestoneStats
 }
 
 // ── Activity ──────────────────────────────────────────────────────────────────
