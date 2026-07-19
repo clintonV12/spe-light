@@ -232,7 +232,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, emailAddr string) er
 
 	// GAP 2.7 FIX: sign the token so the link URL cannot be tampered with.
 	sig := auth.SignLink(s.cfg.JWTSecret, plaintext)
-	resetLink := fmt.Sprintf("%s/auth/reset-password?token=%s&sig=%s", s.cfg.AppURL, plaintext, sig)
+	resetLink := fmt.Sprintf("%s/auth/reset-password?token=%s&sig=%s", s.cfg.FrontendURL, plaintext, sig)
 	s.email.SendPasswordReset(emailAddr, resetLink, orgID, userID)
 	return nil
 }

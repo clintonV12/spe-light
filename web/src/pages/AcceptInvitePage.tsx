@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Eye, EyeOff, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react'
 import { invitationsApi } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
+import LanguageSwitcher from '../components/ui/LanguageSwitcher'
 
 type Step = 'form' | 'success'
 
 export default function AcceptInvitePage() {
+  const { t } = useTranslation()
   const [params] = useSearchParams()
   const token = params.get('token') ?? ''
   const prefillEmail = params.get('email') ?? ''
@@ -55,7 +58,7 @@ export default function AcceptInvitePage() {
       }
       setStep('success')
     } catch {
-      setError('This invite link is invalid or has expired. Ask your admin to resend it.')
+      setError(t('acceptInvite.invalidLink'))
     } finally {
       setLoading(false)
     }
@@ -64,12 +67,15 @@ export default function AcceptInvitePage() {
   return (
     <div className="min-h-screen bg-ink-50 flex items-center justify-center p-6">
       <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="flex items-center gap-2.5 mb-10">
-          <div className="size-9 rounded-xl bg-ink-900 flex items-center justify-center">
-            <span className="font-display font-bold text-white text-sm">SP</span>
+        {/* Logo + language */}
+        <div className="flex items-center justify-between gap-2.5 mb-10">
+          <div className="flex items-center gap-2.5">
+            <div className="size-9 rounded-xl bg-ink-900 flex items-center justify-center">
+              <span className="font-display font-bold text-white text-sm">SP</span>
+            </div>
+            <span className="font-display font-bold text-ink-900 text-lg tracking-tight">StratPlan</span>
           </div>
-          <span className="font-display font-bold text-ink-900 text-lg tracking-tight">StratPlan</span>
+          <LanguageSwitcher compact />
         </div>
 
         {step === 'success' ? (
@@ -78,25 +84,25 @@ export default function AcceptInvitePage() {
               <CheckCircle className="size-7 text-p2-dark" />
             </div>
             <div>
-              <h2 className="font-display text-xl font-bold text-ink-900">You're in</h2>
+              <h2 className="font-display text-xl font-bold text-ink-900">{t('acceptInvite.successTitle')}</h2>
               <p className="text-ink-500 text-sm mt-1">
-                Your account is set up and ready. Head to your dashboard to get started.
+                {t('acceptInvite.successDesc')}
               </p>
             </div>
             <button
               onClick={() => navigate('/dashboard')}
               className="w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent-600 transition-colors"
             >
-              Go to dashboard <ArrowRight className="size-4" />
+              {t('acceptInvite.goToDashboard')} <ArrowRight className="size-4" />
             </button>
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-ink-100 shadow-sm p-8">
             <div className="mb-7">
-              <h2 className="font-display text-2xl font-bold text-ink-900">Accept your invitation</h2>
+              <h2 className="font-display text-2xl font-bold text-ink-900">{t('acceptInvite.title')}</h2>
               {prefillEmail && (
                 <p className="text-ink-500 text-sm mt-1.5">
-                  Creating account for <span className="font-medium text-ink-700">{prefillEmail}</span>
+                  {t('acceptInvite.creatingFor')} <span className="font-medium text-ink-700">{prefillEmail}</span>
                 </p>
               )}
             </div>
@@ -105,7 +111,7 @@ export default function AcceptInvitePage() {
               {/* Name */}
               <div className="space-y-1.5">
                 <label htmlFor="name" className="block text-sm font-medium text-ink-700">
-                  Your name
+                  {t('acceptInvite.yourName')}
                 </label>
                 <input
                   id="name"
@@ -122,7 +128,7 @@ export default function AcceptInvitePage() {
               {/* Password */}
               <div className="space-y-1.5">
                 <label htmlFor="password" className="block text-sm font-medium text-ink-700">
-                  Choose a password
+                  {t('acceptInvite.choosePassword')}
                 </label>
                 <div className="relative">
                   <input
@@ -131,7 +137,7 @@ export default function AcceptInvitePage() {
                     autoComplete="new-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 8 characters"
+                    placeholder={t('acceptInvite.passwordHint')}
                     className="w-full rounded-xl border border-ink-200 bg-white px-4 py-3 pr-11 text-sm text-ink-900 placeholder:text-ink-400 outline-none transition-all focus:ring-2 focus:ring-accent-400 focus:border-transparent"
                   />
                   <button
@@ -162,7 +168,7 @@ export default function AcceptInvitePage() {
               {/* Confirm */}
               <div className="space-y-1.5">
                 <label htmlFor="confirm" className="block text-sm font-medium text-ink-700">
-                  Confirm password
+                  {t('acceptInvite.confirmPassword')}
                 </label>
                 <input
                   id="confirm"
@@ -170,13 +176,13 @@ export default function AcceptInvitePage() {
                   autoComplete="new-password"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
-                  placeholder="Same password again"
+                  placeholder={t('acceptInvite.confirmPasswordHint')}
                   className={`w-full rounded-xl border bg-white px-4 py-3 text-sm text-ink-900 placeholder:text-ink-400 outline-none transition-all focus:ring-2 focus:ring-accent-400 focus:border-transparent ${
                     confirm.length > 0 && !passwordsMatch ? 'border-red-300' : 'border-ink-200'
                   }`}
                 />
                 {confirm.length > 0 && !passwordsMatch && (
-                  <p className="text-xs text-red-500">Passwords don't match</p>
+                  <p className="text-xs text-red-500">{t('acceptInvite.passwordMismatch')}</p>
                 )}
               </div>
 
@@ -196,7 +202,7 @@ export default function AcceptInvitePage() {
                 {loading ? (
                   <span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                 ) : (
-                  <>Create account <ArrowRight className="size-4" /></>
+                  <>{t('acceptInvite.createAccount')} <ArrowRight className="size-4" /></>
                 )}
               </button>
             </form>

@@ -48,7 +48,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.CleanPath)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173", cfg.AppURL},
+		AllowedOrigins:   []string{cfg.FrontendURL},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"},
 		AllowCredentials: true,
@@ -78,7 +78,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 	planH := NewPlan(planService)
 	milestoneH := NewMilestone(milestoneService)
 	ssoH := NewSSO(ssoConfigService)
-	ssoAuthH := NewSSOAuth(ssoAuthService, cfg.AppURL, cfg.JWTSecret) // Sprint A SSO flows
+	ssoAuthH := NewSSOAuth(ssoAuthService, cfg.FrontendURL, cfg.JWTSecret) // Sprint A SSO flows
 
 	// ── Public routes ─────────────────────────────────────────────────
 	r.Get("/health", Health)

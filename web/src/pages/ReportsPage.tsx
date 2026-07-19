@@ -1,17 +1,12 @@
 import { useEffect, useState, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FileOutput, FileText, FileSpreadsheet, Clock, CheckCircle2, Loader, Plus, Download } from 'lucide-react'
 import { plansApi, reportsApi } from '../api/endpoints'
 import { useToast } from '../hooks'
 import type { Plan, Report, ReportType, ReportFormat } from '../types'
 
-const REPORT_TYPES: { value: ReportType; label: string; desc: string }[] = [
-  { value: 'full_plan',        label: 'Full plan',         desc: 'All phases, all activities' },
-  { value: 'executive_summary',label: 'Executive summary', desc: 'High-level narrative for leadership' },
-  { value: 'per_phase',        label: 'Per-phase report',  desc: 'Detailed breakdown by P1/P2/P3' },
-  { value: 'progress_status',  label: 'Progress status',   desc: 'KPIs, completion %, overdue items' },
-  { value: 'activity_detail',  label: 'Activity detail',   desc: 'Every activity with full content' },
-]
-
+// File-format names (PDF/Word/Excel) are conventionally left untranslated —
+// they're product/format names, not descriptive UI copy.
 const FORMAT_META: Record<ReportFormat, { label: string; icon: React.ReactNode; ext: string }> = {
   pdf:  { label: 'PDF',   icon: <FileText className="size-4" />,        ext: '.pdf' },
   docx: { label: 'Word',  icon: <FileOutput className="size-4" />,      ext: '.docx' },
@@ -29,7 +24,17 @@ interface Job {
 }
 
 export default function ReportsPage() {
+  const { t, i18n } = useTranslation()
   const { success, error: toastError } = useToast()
+
+  const REPORT_TYPES: { value: ReportType; label: string; desc: string }[] = [
+    { value: 'full_plan',         label: t('reportsPage.types.fullPlan.label'),         desc: t('reportsPage.types.fullPlan.desc') },
+    { value: 'executive_summary', label: t('reportsPage.types.executiveSummary.label'), desc: t('reportsPage.types.executiveSummary.desc') },
+    { value: 'per_phase',         label: t('reportsPage.types.perPhase.label'),         desc: t('reportsPage.types.perPhase.desc') },
+    { value: 'progress_status',   label: t('reportsPage.types.progressStatus.label'),   desc: t('reportsPage.types.progressStatus.desc') },
+    { value: 'activity_detail',   label: t('reportsPage.types.activityDetail.label'),   desc: t('reportsPage.types.activityDetail.desc') },
+  ]
+
   const [plans, setPlans] = useState<Plan[]>([])
   const [history, setHistory] = useState<Report[]>([])
   const [loadingPlans, setLoadingPlans] = useState(true)
@@ -73,13 +78,13 @@ export default function ReportsPage() {
                 ? { ...j, status: 'complete', fileUrl: result.file_url }
                 : j
             ))
-            success(`Report ready — ${job.planTitle}`)
+            success(t('reportsPage.toastReportReady', { title: job.planTitle }))
           }
         } catch { /* keep polling */ }
       }
     }, 1500)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [jobs])
+  }, [jobs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGenerate = async () => {
     if (!selectedPlan) return
@@ -96,7 +101,7 @@ export default function ReportsPage() {
         status: 'processing',
       }, ...prev])
     } catch {
-      toastError('Failed to start report generation.')
+      toastError(t('reportsPage.toastGenerateFailed'))
     } finally {
       setGenerating(false)
     }
@@ -113,17 +118,17 @@ export default function ReportsPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-8">
       <div>
-        <h1 className="font-display text-2xl font-bold text-ink-900">Reports</h1>
-        <p className="text-ink-500 text-sm mt-0.5">Generate PDF, Word, or Excel reports from your plans.</p>
+        <h1 className="font-display text-2xl font-bold text-ink-900">{t('reportsPage.title')}</h1>
+        <p className="text-ink-500 text-sm mt-0.5">{t('reportsPage.subtitle')}</p>
       </div>
 
       {/* Generator card */}
       <div className="bg-white rounded-2xl border border-ink-100 p-6 space-y-6">
-        <h2 className="font-display text-base font-bold text-ink-800">Generate a new report</h2>
+        <h2 className="font-display text-base font-bold text-ink-800">{t('reportsPage.generateNew')}</h2>
 
         {/* Plan selector */}
         <div className="space-y-1.5">
-          <label className="text-sm font-medium text-ink-700">Plan</label>
+          <label className="text-sm font-medium text-ink-700">{t('reportsPage.plan')}</label>
           {loadingPlans ? (
             <div className="h-10 bg-ink-50 rounded-xl animate-pulse" />
           ) : (
@@ -141,7 +146,7 @@ export default function ReportsPage() {
 
         {/* Report type */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-ink-700">Report type</label>
+          <label className="text-sm font-medium text-ink-700">{t('reportsPage.reportType')}</label>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {REPORT_TYPES.map((rt) => (
               <button
@@ -164,7 +169,7 @@ export default function ReportsPage() {
 
         {/* Format picker */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-ink-700">Format</label>
+          <label className="text-sm font-medium text-ink-700">{t('reportsPage.format')}</label>
           <div className="flex gap-2">
             {(Object.entries(FORMAT_META) as [ReportFormat, typeof FORMAT_META[ReportFormat]][]).map(([fmt, meta]) => (
               <button
@@ -188,15 +193,15 @@ export default function ReportsPage() {
           className="flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {generating
-            ? <><span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Queuing…</>
-            : <><Plus className="size-4" /> Generate report</>}
+            ? <><span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> {t('reportsPage.queuing')}</>
+            : <><Plus className="size-4" /> {t('reportsPage.generateReport')}</>}
         </button>
       </div>
 
       {/* Active jobs */}
       {jobs.length > 0 && (
         <div className="space-y-3">
-          <h2 className="font-display text-sm font-bold text-ink-800">In progress</h2>
+          <h2 className="font-display text-sm font-bold text-ink-800">{t('reportsPage.inProgress')}</h2>
           {jobs.map((job) => {
             const fmtMeta = FORMAT_META[job.format]
             const rtLabel = REPORT_TYPES.find((r) => r.value === job.type)?.label ?? job.type
@@ -218,15 +223,15 @@ export default function ReportsPage() {
                 <div className="text-right shrink-0">
                   {job.status === 'processing' ? (
                     <p className="text-xs text-ink-400 flex items-center gap-1">
-                      <Clock className="size-3.5" /> Generating…
+                      <Clock className="size-3.5" /> {t('reportsPage.generating')}
                     </p>
                   ) : (
                     <a
                       href={job.fileUrl ?? '#'}
                       className="flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent-700"
-                      onClick={(e) => { if (!job.fileUrl || job.fileUrl.startsWith('/mock')) { e.preventDefault(); success('(Mock) file download simulated') } }}
+                      onClick={(e) => { if (!job.fileUrl || job.fileUrl.startsWith('/mock')) { e.preventDefault(); success(t('reportsPage.toastMockDownload')) } }}
                     >
-                      <Download className="size-3.5" /> Download{fmtMeta.ext}
+                      <Download className="size-3.5" /> {t('reportsPage.download')}{fmtMeta.ext}
                     </a>
                   )}
                 </div>
@@ -239,21 +244,21 @@ export default function ReportsPage() {
       {/* History */}
       <div className="space-y-3">
         <h2 className="font-display text-sm font-bold text-ink-800">
-          Previous reports {selectedPlan && plans.find((p) => p.id === selectedPlan)
+          {t('reportsPage.previousReports')} {selectedPlan && plans.find((p) => p.id === selectedPlan)
             ? `— ${plans.find((p) => p.id === selectedPlan)?.title}`
             : ''}
         </h2>
         {history.length === 0 ? (
           <div className="text-center py-10 bg-white rounded-2xl border border-ink-100">
             <FileOutput className="size-8 text-ink-200 mx-auto mb-2" />
-            <p className="text-sm text-ink-500">No reports generated yet for this plan.</p>
+            <p className="text-sm text-ink-500">{t('reportsPage.noReports')}</p>
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-ink-100 overflow-hidden">
             <table className="w-full">
               <thead className="border-b border-ink-100 bg-ink-50">
                 <tr>
-                  {['Type', 'Format', 'Generated', ''].map((h) => (
+                  {[t('reportsPage.colType'), t('reportsPage.colFormat'), t('reportsPage.colGenerated'), ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -274,17 +279,17 @@ export default function ReportsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-xs text-ink-400">
-                          {new Date(r.generated_at).toLocaleDateString(undefined, {
+                          {new Date(r.generated_at).toLocaleDateString(i18n.language, {
                             day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
                           })}
                         </p>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button
-                          onClick={() => success('(Mock) file download simulated')}
+                          onClick={() => success(t('reportsPage.toastMockDownload'))}
                           className="flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent-700 ml-auto"
                         >
-                          <Download className="size-3.5" /> Download
+                          <Download className="size-3.5" /> {t('reportsPage.download')}
                         </button>
                       </td>
                     </tr>

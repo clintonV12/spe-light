@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   ArrowLeft, Sparkles, Clock, User, AlertTriangle, ChevronDown,
 } from 'lucide-react'
@@ -18,13 +19,6 @@ import type { RiskRow } from '../components/activities/editors/RiskRegisterEdito
 import GenericEditor from '../components/activities/editors/GenericEditor'
 import type { Activity, ActivityStatus, Phase, ActivityLink } from '../types'
 
-const STATUS_OPTIONS: { value: ActivityStatus; label: string }[] = [
-  { value: 'not_started',  label: 'Not started' },
-  { value: 'in_progress',  label: 'In progress' },
-  { value: 'under_review', label: 'Under review' },
-  { value: 'complete',     label: 'Complete' },
-]
-
 const STATUS_COLORS: Record<ActivityStatus, string> = {
   not_started:  'bg-ink-100 text-ink-600',
   in_progress:  'bg-p2-light text-p2-dark',
@@ -38,17 +32,6 @@ const PHASE_COLOR: Record<Phase, string> = {
   P3: 'text-p3-dark bg-p3-light',
 }
 
-const GENERIC_SECTIONS: Record<string, { key: string; label: string; placeholder?: string }[]> = {
-  vision_mission:       [{ key: 'vision', label: 'Vision' }, { key: 'mission', label: 'Mission' }, { key: 'values', label: 'Core values' }],
-  strategic_objectives: [{ key: 'objectives', label: 'Strategic objectives' }, { key: 'rationale', label: 'Rationale' }],
-  pestle:               [{ key: 'political', label: 'Political' }, { key: 'economic', label: 'Economic' }, { key: 'social', label: 'Social' }, { key: 'technological', label: 'Technological' }, { key: 'legal', label: 'Legal' }, { key: 'environmental', label: 'Environmental' }],
-  stakeholder_map:      [{ key: 'internal', label: 'Internal stakeholders' }, { key: 'external', label: 'External stakeholders' }, { key: 'strategy', label: 'Engagement strategy' }],
-  competitive_analysis: [{ key: 'competitors', label: 'Key competitors' }, { key: 'positioning', label: 'Market positioning' }, { key: 'differentiators', label: 'Our differentiators' }],
-  value_proposition:    [{ key: 'customer', label: 'Target customer' }, { key: 'problem', label: 'Problem solved' }, { key: 'solution', label: 'Our solution' }, { key: 'differentiator', label: 'Why us' }],
-  operational_roadmap:  [{ key: 'q1', label: 'Q1 milestones' }, { key: 'q2', label: 'Q2 milestones' }, { key: 'q3', label: 'Q3 milestones' }, { key: 'q4', label: 'Q4 milestones' }],
-  action_items:         [{ key: 'actions', label: 'Action items' }, { key: 'owners', label: 'Owners' }, { key: 'blockers', label: 'Blockers' }],
-}
-
 // ─── Type-routed editor ───────────────────────────────────────────────────────
 
 function ActivityEditor({ activity, onChange, readOnly }: {
@@ -56,8 +39,58 @@ function ActivityEditor({ activity, onChange, readOnly }: {
   onChange: (content: Record<string, unknown>) => void
   readOnly: boolean
 }) {
+  const { t } = useTranslation()
   const content = activity.content ?? {}
   const type = activity.type
+
+  // Built inside the component (not module scope) so labels re-translate
+  // whenever the active language changes.
+  const genericSections: Record<string, { key: string; label: string; placeholder?: string }[]> = {
+    vision_mission: [
+      { key: 'vision', label: t('activityEditor.sections.vision') },
+      { key: 'mission', label: t('activityEditor.sections.mission') },
+      { key: 'values', label: t('activityEditor.sections.coreValues') },
+    ],
+    strategic_objectives: [
+      { key: 'objectives', label: t('activityEditor.sections.strategicObjectives') },
+      { key: 'rationale', label: t('activityEditor.sections.rationale') },
+    ],
+    pestle: [
+      { key: 'political', label: t('activityEditor.sections.political') },
+      { key: 'economic', label: t('activityEditor.sections.economic') },
+      { key: 'social', label: t('activityEditor.sections.social') },
+      { key: 'technological', label: t('activityEditor.sections.technological') },
+      { key: 'legal', label: t('activityEditor.sections.legal') },
+      { key: 'environmental', label: t('activityEditor.sections.environmental') },
+    ],
+    stakeholder_map: [
+      { key: 'internal', label: t('activityEditor.sections.internalStakeholders') },
+      { key: 'external', label: t('activityEditor.sections.externalStakeholders') },
+      { key: 'strategy', label: t('activityEditor.sections.engagementStrategy') },
+    ],
+    competitive_analysis: [
+      { key: 'competitors', label: t('activityEditor.sections.keyCompetitors') },
+      { key: 'positioning', label: t('activityEditor.sections.marketPositioning') },
+      { key: 'differentiators', label: t('activityEditor.sections.ourDifferentiators') },
+    ],
+    value_proposition: [
+      { key: 'customer', label: t('activityEditor.sections.targetCustomer') },
+      { key: 'problem', label: t('activityEditor.sections.problemSolved') },
+      { key: 'solution', label: t('activityEditor.sections.ourSolution') },
+      { key: 'differentiator', label: t('activityEditor.sections.whyUs') },
+    ],
+    operational_roadmap: [
+      { key: 'q1', label: t('activityEditor.sections.q1Milestones') },
+      { key: 'q2', label: t('activityEditor.sections.q2Milestones') },
+      { key: 'q3', label: t('activityEditor.sections.q3Milestones') },
+      { key: 'q4', label: t('activityEditor.sections.q4Milestones') },
+    ],
+    action_items: [
+      { key: 'actions', label: t('activityEditor.sections.actionItems') },
+      { key: 'owners', label: t('activityEditor.sections.owners') },
+      { key: 'blockers', label: t('activityEditor.sections.blockers') },
+    ],
+  }
 
   if (type === 'swot') {
     return (
@@ -87,9 +120,9 @@ function ActivityEditor({ activity, onChange, readOnly }: {
     )
   }
 
-  const sections = GENERIC_SECTIONS[type] ?? [
-    { key: 'content', label: 'Content', placeholder: 'Enter content for this activity…' },
-    { key: 'notes', label: 'Notes' },
+  const sections = genericSections[type] ?? [
+    { key: 'content', label: t('activityEditor.sections.content'), placeholder: t('activityEditor.sections.contentPlaceholder') },
+    { key: 'notes', label: t('activityEditor.sections.notes') },
   ]
   return (
     <GenericEditor
@@ -104,10 +137,18 @@ function ActivityEditor({ activity, onChange, readOnly }: {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ActivityEditorPage() {
+  const { t, i18n } = useTranslation()
   const { planId, activityId } = useParams<{ planId: string; activityId: string }>()
   const navigate = useNavigate()
   const { can } = usePermission()
   const isOnline = useOfflineStore((s) => s.isOnline)
+
+  const STATUS_OPTIONS: { value: ActivityStatus; label: string }[] = [
+    { value: 'not_started',  label: t('activity.status.not_started') },
+    { value: 'in_progress',  label: t('activity.status.in_progress') },
+    { value: 'under_review', label: t('activity.status.under_review') },
+    { value: 'complete',     label: t('activity.status.complete') },
+  ]
 
   const [activity, setActivity] = useState<Activity | null>(null)
   const [content, setContent] = useState<Record<string, unknown>>({})
@@ -125,8 +166,8 @@ export default function ActivityEditorPage() {
   // ── Data fetching ───────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!activityId) return
-    activitiesApi.get(activityId)
+    if (!planId || !activityId) return
+    activitiesApi.get(planId, activityId)
       .then((a) => {
         setActivity(a)
         setContent(a.content ?? {})
@@ -222,7 +263,7 @@ export default function ActivityEditorPage() {
         onClick={() => navigate(`/plans/${planId}`)}
         className="flex items-center gap-1.5 text-sm text-ink-400 hover:text-ink-700 transition-colors"
       >
-        <ArrowLeft className="size-4" /> Back to plan
+        <ArrowLeft className="size-4" /> {t('activityEditor.backToPlan')}
       </button>
 
       {/* Header */}
@@ -237,7 +278,7 @@ export default function ActivityEditorPage() {
             </span>
             {overdue && (
               <span className="flex items-center gap-1 text-xs text-red-500 font-medium">
-                <AlertTriangle className="size-3" /> Overdue
+                <AlertTriangle className="size-3" /> {t('activityEditor.overdue')}
               </span>
             )}
           </div>
@@ -246,7 +287,7 @@ export default function ActivityEditorPage() {
             {activity.due_date && (
               <span className="flex items-center gap-1">
                 <Clock className="size-3.5" />
-                Due {new Date(activity.due_date).toLocaleDateString(undefined, {
+                {new Date(activity.due_date).toLocaleDateString(i18n.language, {
                   day: 'numeric', month: 'long', year: 'numeric',
                 })}
               </span>
@@ -254,7 +295,7 @@ export default function ActivityEditorPage() {
             {activity.assigned_to && activity.assigned_to.length > 0 && (
               <span className="flex items-center gap-1">
                 <User className="size-3.5" />
-                {activity.assigned_to.length} assigned
+                {t('activityEditor.assigned', { count: activity.assigned_to.length })}
               </span>
             )}
           </div>
@@ -291,7 +332,7 @@ export default function ActivityEditorPage() {
                 showAi ? 'bg-accent text-white' : 'border border-ink-200 bg-white text-ink-600 hover:bg-ink-50'
               }`}
             >
-              <Sparkles className="size-4" /> AI draft
+              <Sparkles className="size-4" /> {t('activityEditor.aiDraft')}
             </button>
           )}
         </div>
@@ -301,7 +342,7 @@ export default function ActivityEditorPage() {
       {!isOnline && saveState === 'pending' && (
         <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-sm text-amber-800">
           <span className="size-2 rounded-full bg-amber-400 shrink-0 animate-pulse" />
-          You're offline. Changes will be saved automatically when reconnected.
+          {t('activityEditor.offlineNotice')}
         </div>
       )}
 

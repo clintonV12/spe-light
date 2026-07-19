@@ -13,7 +13,7 @@
 // Post-login redirect:
 //
 //	On success both SAML and OIDC redirect the browser to:
-//	  {APP_URL}/auth/callback?access_token=...&refresh_token=...&expires_at=...
+//	  {FRONTEND_URL}/auth/callback?access_token=...&refresh_token=...&expires_at=...
 //	The React SPA reads these params, stores the tokens, and navigates to the
 //	dashboard. To use httpOnly cookies instead, replace redirectWithTokens().
 //
@@ -45,14 +45,14 @@ import (
 
 // SSOAuth groups the SSO authentication HTTP handlers.
 type SSOAuth struct {
-	svc    *ssosvc.AuthService
-	appURL string
-	secret string // JWT secret — used to HMAC-sign the OIDC state cookie
+	svc         *ssosvc.AuthService
+	frontendURL string // SPA base URL — where the post-login redirect lands
+	secret      string // JWT secret — used to HMAC-sign the OIDC state cookie
 }
 
 // NewSSOAuth creates an SSOAuth handler group.
-func NewSSOAuth(svc *ssosvc.AuthService, appURL, jwtSecret string) *SSOAuth {
-	return &SSOAuth{svc: svc, appURL: appURL, secret: jwtSecret}
+func NewSSOAuth(svc *ssosvc.AuthService, frontendURL, jwtSecret string) *SSOAuth {
+	return &SSOAuth{svc: svc, frontendURL: frontendURL, secret: jwtSecret}
 }
 
 // ── SAML ──────────────────────────────────────────────────────────────────
@@ -161,7 +161,7 @@ func (h *SSOAuth) SAMLAssertionConsumer(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	redirectWithTokens(w, r, h.appURL, tokens)
+	redirectWithTokens(w, r, h.frontendURL, tokens)
 }
 
 // ── OIDC ──────────────────────────────────────────────────────────────────
@@ -270,7 +270,7 @@ func (h *SSOAuth) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	redirectWithTokens(w, r, h.appURL, tokens)
+	redirectWithTokens(w, r, h.frontendURL, tokens)
 }
 
 // ── Cookie helpers ────────────────────────────────────────────────────────
@@ -365,16 +365,16 @@ func clearOIDCStateCookie(w http.ResponseWriter) {
 
 // ── Post-login redirect ───────────────────────────────────────────────────
 
-// redirectWithTokens sends the browser to {APP_URL}/auth/callback with the
+// redirectWithTokens sends the browser to {FRONTEND_URL}/auth/callback with the
 // StratPlan token pair in the query string. The React SPA reads these, stores
 // them, and navigates to the dashboard.
 //
 // To switch to httpOnly cookie delivery instead, replace this function body —
 // the callers don't care about the delivery mechanism.
-func redirectWithTokens(w http.ResponseWriter, r *http.Request, appURL string, tokens *ssosvc.TokenResponse) {
-	dest, err := url.Parse(appURL + "/auth/callback")
+func redirectWithTokens(w http.ResponseWriter, r *http.Request, frontendURL string, tokens *ssosvc.TokenResponse) {
+	dest, err := url.Parse(frontendURL + "/auth/callback")
 	if err != nil {
-		response.ErrorJSON(w, "invalid APP_URL configuration", http.StatusInternalServerError)
+		response.ErrorJSON(w, "invalid FRONTEND_URL configuration", http.StatusInternalServerError)
 		return
 	}
 	q := dest.Query()

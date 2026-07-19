@@ -15,6 +15,14 @@ type Config struct {
 	AppEnv string
 	AppURL string
 
+	// FrontendURL is the SPA's public base URL. Every link the backend emails
+	// out (invite accept, password reset, SSO post-login redirect) must point
+	// here, not at AppURL — AppURL is the API's own address (e.g.
+	// localhost:8080), which nothing renders a page at. Separated from AppURL
+	// so dev (frontend on :5173, API on :8080) and prod (often same origin
+	// behind a reverse proxy) both work by changing one env var.
+	FrontendURL string
+
 	// Database
 	DatabaseURL string
 
@@ -47,6 +55,7 @@ func Load() (*Config, error) {
 		Port:         getEnv("PORT", "8080"),
 		AppEnv:       getEnv("APP_ENV", "development"),
 		AppURL:       getEnv("APP_URL", "http://localhost:8080"),
+		FrontendURL:  getEnv("FRONTEND_URL", "http://localhost:5173"),
 		DatabaseURL:  getEnv("DATABASE_URL", "postgres://stratplan:stratplan@localhost:5432/stratplan?sslmode=disable"),
 		OllamaURL:    getEnv("OLLAMA_URL", "http://localhost:11434"),
 		OllamaModel:  getEnv("OLLAMA_MODEL", "llama3"),
