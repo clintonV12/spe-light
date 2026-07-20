@@ -17,6 +17,17 @@ import type { KpiRow } from '../components/activities/editors/KpiEditor'
 import RiskRegisterEditor from '../components/activities/editors/RiskRegisterEditor'
 import type { RiskRow } from '../components/activities/editors/RiskRegisterEditor'
 import GenericEditor from '../components/activities/editors/GenericEditor'
+import BusinessModelCanvasEditor from '../components/activities/editors/BusinessModelCanvasEditor'
+import PestleEditor from '../components/activities/editors/PestleEditor'
+import ValuePropositionEditor from '../components/activities/editors/ValuePropositionEditor'
+import StakeholderMapEditor from '../components/activities/editors/StakeholderMapEditor'
+import CompetitiveAnalysisEditor from '../components/activities/editors/CompetitiveAnalysisEditor'
+import VisionMissionEditor from '../components/activities/editors/VisionMissionEditor'
+import ObjectivesEditor from '../components/activities/editors/ObjectivesEditor'
+import TheoryOfChangeEditor from '../components/activities/editors/TheoryOfChangeEditor'
+import RoadmapEditor from '../components/activities/editors/RoadmapEditor'
+import TableEditor from '../components/activities/editors/TableEditor'
+import type { TableColumn, ChartConfig, TableRow } from '../components/activities/editors/TableEditor'
 import type { Activity, ActivityStatus, ActivityType, Phase, ActivityLink } from '../types'
 
 const STATUS_COLORS: Record<ActivityStatus, string> = {
@@ -32,6 +43,111 @@ const PHASE_COLOR: Record<Phase, string> = {
   P3: 'text-p3-dark bg-p3-light',
 }
 
+// ─── Table-shaped activity types ───────────────────────────────────────────────
+//
+// Types that are naturally a list of records (budget lines, procurement
+// items, timeline phases, etc.) are routed through the shared TableEditor
+// instead of stacked free-text fields. Each gets a column layout and an
+// optional chart config — the chart is a frontend-only view over the current
+// rows and is never written back to `content`; only the rows are persisted.
+// This mirrors how kpi_framework/risk_register already store `{ rows }`.
+
+const TABLE_CONFIGS: Record<string, { columns: TableColumn[]; chart?: ChartConfig; addLabel?: string }> = {
+  market_analysis: {
+    addLabel: 'Add market segment',
+    columns: [
+      { key: 'segment', label: 'Market Segment', type: 'text', width: 'min-w-40' },
+      { key: 'market_size', label: 'Market Size ($M)', type: 'number', width: 'min-w-28' },
+      { key: 'growth_rate', label: 'Growth Rate (%)', type: 'number', width: 'min-w-28' },
+      { key: 'notes', label: 'Notes', type: 'text', width: 'min-w-48' },
+    ],
+    chart: {
+      labelColumn: 'segment',
+      series: [
+        { key: 'market_size', label: 'Market Size ($M)', color: '#3b82f6' },
+        { key: 'growth_rate', label: 'Growth Rate (%)', color: '#10b981' },
+      ],
+    },
+  },
+  strategic_initiatives: {
+    addLabel: 'Add initiative',
+    columns: [
+      { key: 'initiative', label: 'Initiative', type: 'text', width: 'min-w-48' },
+      { key: 'priority', label: 'Priority', type: 'select', options: ['High', 'Medium', 'Low'], width: 'min-w-28' },
+      { key: 'owner', label: 'Owner', type: 'text', width: 'min-w-32' },
+      { key: 'timeline', label: 'Target Timeframe', type: 'text', width: 'min-w-32' },
+    ],
+    chart: { labelColumn: 'initiative', groupByColumn: 'priority' },
+  },
+  financial_projections: {
+    addLabel: 'Add period',
+    columns: [
+      { key: 'period', label: 'Period', type: 'text', placeholder: 'e.g. Q1 2026', width: 'min-w-28' },
+      { key: 'revenue', label: 'Revenue ($)', type: 'number', width: 'min-w-28' },
+      { key: 'costs', label: 'Costs ($)', type: 'number', width: 'min-w-28' },
+      { key: 'profit', label: 'Profit ($)', type: 'number', width: 'min-w-28' },
+    ],
+    chart: {
+      labelColumn: 'period',
+      enableLine: true,
+      series: [
+        { key: 'revenue', label: 'Revenue', color: '#3b82f6' },
+        { key: 'costs', label: 'Costs', color: '#f43f5e' },
+        { key: 'profit', label: 'Profit', color: '#10b981' },
+      ],
+    },
+  },
+  budget_allocation: {
+    addLabel: 'Add budget line',
+    columns: [
+      { key: 'category', label: 'Category', type: 'text', width: 'min-w-40' },
+      { key: 'amount', label: 'Amount ($)', type: 'number', width: 'min-w-28' },
+      { key: 'notes', label: 'Notes', type: 'text', width: 'min-w-48' },
+    ],
+    chart: { labelColumn: 'category', series: [{ key: 'amount', label: 'Amount ($)', color: '#3b82f6' }] },
+  },
+  resource_plan: {
+    addLabel: 'Add resource',
+    columns: [
+      { key: 'resource', label: 'Resource', type: 'text', width: 'min-w-40' },
+      { key: 'type', label: 'Type', type: 'text', placeholder: 'People / Budget / Equipment', width: 'min-w-40' },
+      { key: 'allocation_pct', label: 'Allocation (%)', type: 'number', width: 'min-w-28' },
+      { key: 'notes', label: 'Notes', type: 'text', width: 'min-w-48' },
+    ],
+    chart: { labelColumn: 'resource', series: [{ key: 'allocation_pct', label: 'Allocation (%)', color: '#8b5cf6' }] },
+  },
+  action_items: {
+    addLabel: 'Add action item',
+    columns: [
+      { key: 'action', label: 'Action', type: 'text', width: 'min-w-48' },
+      { key: 'owner', label: 'Owner', type: 'text', width: 'min-w-32' },
+      { key: 'status', label: 'Status', type: 'select', options: ['Open', 'In Progress', 'Blocked', 'Done'], width: 'min-w-32' },
+    ],
+    chart: { labelColumn: 'action', groupByColumn: 'status' },
+  },
+  implementation_timeline: {
+    addLabel: 'Add phase',
+    columns: [
+      { key: 'phase', label: 'Phase', type: 'text', width: 'min-w-40' },
+      { key: 'start_date', label: 'Start', type: 'date', width: 'min-w-32' },
+      { key: 'end_date', label: 'End', type: 'date', width: 'min-w-32' },
+      { key: 'status', label: 'Status', type: 'select', options: ['Not started', 'In progress', 'Complete', 'Delayed'], width: 'min-w-32' },
+    ],
+    chart: { labelColumn: 'phase', groupByColumn: 'status' },
+  },
+  procurement_plan: {
+    addLabel: 'Add item',
+    columns: [
+      { key: 'item', label: 'Item', type: 'text', width: 'min-w-40' },
+      { key: 'quantity', label: 'Quantity', type: 'number', width: 'min-w-24' },
+      { key: 'estimated_cost', label: 'Estimated Cost ($)', type: 'number', width: 'min-w-28' },
+      { key: 'vendor', label: 'Vendor', type: 'text', width: 'min-w-32' },
+      { key: 'status', label: 'Status', type: 'select', options: ['Pending', 'Ordered', 'Received', 'Cancelled'], width: 'min-w-28' },
+    ],
+    chart: { labelColumn: 'item', series: [{ key: 'estimated_cost', label: 'Estimated Cost ($)', color: '#f59e0b' }] },
+  },
+}
+
 // ─── Type-routed editor ───────────────────────────────────────────────────────
 
 function ActivityEditor({ activity, onChange, readOnly }: {
@@ -42,55 +158,6 @@ function ActivityEditor({ activity, onChange, readOnly }: {
   const { t } = useTranslation()
   const content = activity.content ?? {}
   const type = activity.type
-
-  // Built inside the component (not module scope) so labels re-translate
-  // whenever the active language changes.
-  const genericSections: Record<string, { key: string; label: string; placeholder?: string }[]> = {
-    vision_mission: [
-      { key: 'vision', label: t('activityEditor.sections.vision') },
-      { key: 'mission', label: t('activityEditor.sections.mission') },
-      { key: 'values', label: t('activityEditor.sections.coreValues') },
-    ],
-    strategic_objectives: [
-      { key: 'objectives', label: t('activityEditor.sections.strategicObjectives') },
-      { key: 'rationale', label: t('activityEditor.sections.rationale') },
-    ],
-    pestle: [
-      { key: 'political', label: t('activityEditor.sections.political') },
-      { key: 'economic', label: t('activityEditor.sections.economic') },
-      { key: 'social', label: t('activityEditor.sections.social') },
-      { key: 'technological', label: t('activityEditor.sections.technological') },
-      { key: 'legal', label: t('activityEditor.sections.legal') },
-      { key: 'environmental', label: t('activityEditor.sections.environmental') },
-    ],
-    stakeholder_map: [
-      { key: 'internal', label: t('activityEditor.sections.internalStakeholders') },
-      { key: 'external', label: t('activityEditor.sections.externalStakeholders') },
-      { key: 'strategy', label: t('activityEditor.sections.engagementStrategy') },
-    ],
-    competitive_analysis: [
-      { key: 'competitors', label: t('activityEditor.sections.keyCompetitors') },
-      { key: 'positioning', label: t('activityEditor.sections.marketPositioning') },
-      { key: 'differentiators', label: t('activityEditor.sections.ourDifferentiators') },
-    ],
-    value_proposition: [
-      { key: 'customer', label: t('activityEditor.sections.targetCustomer') },
-      { key: 'problem', label: t('activityEditor.sections.problemSolved') },
-      { key: 'solution', label: t('activityEditor.sections.ourSolution') },
-      { key: 'differentiator', label: t('activityEditor.sections.whyUs') },
-    ],
-    operational_roadmap: [
-      { key: 'q1', label: t('activityEditor.sections.q1Milestones') },
-      { key: 'q2', label: t('activityEditor.sections.q2Milestones') },
-      { key: 'q3', label: t('activityEditor.sections.q3Milestones') },
-      { key: 'q4', label: t('activityEditor.sections.q4Milestones') },
-    ],
-    action_items: [
-      { key: 'actions', label: t('activityEditor.sections.actionItems') },
-      { key: 'owners', label: t('activityEditor.sections.owners') },
-      { key: 'blockers', label: t('activityEditor.sections.blockers') },
-    ],
-  }
 
   if (type === 'swot') {
     return (
@@ -119,8 +186,104 @@ function ActivityEditor({ activity, onChange, readOnly }: {
       />
     )
   }
+  if (type === 'business_model_canvas') {
+    return (
+      <BusinessModelCanvasEditor
+        value={content as Parameters<typeof BusinessModelCanvasEditor>[0]['value']}
+        onChange={(v) => onChange(v as unknown as Record<string, unknown>)}
+        readOnly={readOnly}
+      />
+    )
+  }
+  if (type === 'pestle') {
+    return (
+      <PestleEditor
+        value={content as Parameters<typeof PestleEditor>[0]['value']}
+        onChange={(v) => onChange(v as unknown as Record<string, unknown>)}
+        readOnly={readOnly}
+      />
+    )
+  }
+  if (type === 'value_proposition') {
+    return (
+      <ValuePropositionEditor
+        value={content as Parameters<typeof ValuePropositionEditor>[0]['value']}
+        onChange={(v) => onChange(v as unknown as Record<string, unknown>)}
+        readOnly={readOnly}
+      />
+    )
+  }
+  if (type === 'stakeholder_map') {
+    return (
+      <StakeholderMapEditor
+        value={content as Parameters<typeof StakeholderMapEditor>[0]['value']}
+        onChange={(v) => onChange(v as unknown as Record<string, unknown>)}
+        readOnly={readOnly}
+      />
+    )
+  }
+  if (type === 'competitive_analysis') {
+    return (
+      <CompetitiveAnalysisEditor
+        value={content as Parameters<typeof CompetitiveAnalysisEditor>[0]['value']}
+        onChange={(v) => onChange(v as unknown as Record<string, unknown>)}
+        readOnly={readOnly}
+      />
+    )
+  }
+  if (type === 'vision_mission') {
+    return (
+      <VisionMissionEditor
+        value={content as Parameters<typeof VisionMissionEditor>[0]['value']}
+        onChange={(v) => onChange(v as unknown as Record<string, unknown>)}
+        readOnly={readOnly}
+      />
+    )
+  }
+  if (type === 'strategic_objectives') {
+    return (
+      <ObjectivesEditor
+        value={content as Parameters<typeof ObjectivesEditor>[0]['value']}
+        onChange={(v) => onChange(v as unknown as Record<string, unknown>)}
+        readOnly={readOnly}
+      />
+    )
+  }
+  if (type === 'theory_of_change') {
+    return (
+      <TheoryOfChangeEditor
+        value={content as Parameters<typeof TheoryOfChangeEditor>[0]['value']}
+        onChange={(v) => onChange(v as unknown as Record<string, unknown>)}
+        readOnly={readOnly}
+      />
+    )
+  }
+  if (type === 'operational_roadmap') {
+    return (
+      <RoadmapEditor
+        value={content as Parameters<typeof RoadmapEditor>[0]['value']}
+        onChange={(v) => onChange(v as unknown as Record<string, unknown>)}
+        readOnly={readOnly}
+      />
+    )
+  }
 
-  const sections = genericSections[type] ?? [
+  const tableConfig = TABLE_CONFIGS[type]
+  if (tableConfig) {
+    return (
+      <TableEditor
+        columns={tableConfig.columns}
+        chart={tableConfig.chart}
+        addLabel={tableConfig.addLabel}
+        value={(content.rows as TableRow[]) ?? []}
+        onChange={(rows) => onChange({ rows })}
+        readOnly={readOnly}
+      />
+    )
+  }
+
+  // Fallback for any future/unmapped activity type — plain labelled fields.
+  const sections = [
     { key: 'content', label: t('activityEditor.sections.content'), placeholder: t('activityEditor.sections.contentPlaceholder') },
     { key: 'notes', label: t('activityEditor.sections.notes') },
   ]
