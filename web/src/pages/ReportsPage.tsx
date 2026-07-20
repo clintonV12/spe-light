@@ -1,9 +1,45 @@
 import { useEffect, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FileOutput, FileText, FileSpreadsheet, Clock, CheckCircle2, Loader, Plus, Download } from 'lucide-react'
+import { FileOutput, FileText, FileSpreadsheet, Clock, CheckCircle2, Loader, Plus, Download, SlidersHorizontal } from 'lucide-react'
 import { plansApi, reportsApi } from '../api/endpoints'
 import { useToast } from '../hooks'
-import type { Plan, Report, ReportType, ReportFormat } from '../types'
+import type { Plan, Report, ReportType, ReportFormat, Phase, ReportSectionConfig } from '../types'
+
+const ALL_PHASES: Phase[] = ['P1', 'P2', 'P3']
+
+const DEFAULT_CUSTOM_SECTIONS: ReportSectionConfig = {
+  executive_summary: true,
+  phase_activities:   true,
+  phases:             [...ALL_PHASES],
+  progress_status:    true,
+  milestones:         true,
+  dependency_links:   false,
+  ai_summary:         false,
+}
+
+// True if the config would actually produce a non-empty report.
+function hasSelectedContent(s: ReportSectionConfig): boolean {
+  return (
+    s.executive_summary ||
+    (s.phase_activities && s.phases.length > 0) ||
+    s.progress_status ||
+    s.milestones ||
+    s.dependency_links ||
+    s.ai_summary
+  )
+}
+
+// Number of top-level sections selected, for the "N sections" badge.
+function countSections(s: ReportSectionConfig): number {
+  return [
+    s.executive_summary,
+    s.phase_activities && s.phases.length > 0,
+    s.progress_status,
+    s.milestones,
+    s.dependency_links,
+    s.ai_summary,
+  ].filter(Boolean).length
+}
 
 // File-format names (PDF/Word/Excel) are conventionally left untranslated —
 // they're product/format names, not descriptive UI copy.
@@ -21,6 +57,7 @@ interface Job {
   startedAt: string
   status: 'processing' | 'complete' | 'failed'
   fileUrl?: string
+  sections?: ReportSectionConfig
 }
 
 export default function ReportsPage() {
@@ -33,6 +70,7 @@ export default function ReportsPage() {
     { value: 'per_phase',         label: t('reportsPage.types.perPhase.label'),         desc: t('reportsPage.types.perPhase.desc') },
     { value: 'progress_status',   label: t('reportsPage.types.progressStatus.label'),   desc: t('reportsPage.types.progressStatus.desc') },
     { value: 'activity_detail',   label: t('reportsPage.types.activityDetail.label'),   desc: t('reportsPage.types.activityDetail.desc') },
+    { value: 'custom',            label: t('reportsPage.types.custom.label'),           desc: t('reportsPage.types.custom.desc') },
   ]
 
   const [plans, setPlans] = useState<Plan[]>([])
@@ -41,8 +79,10 @@ export default function ReportsPage() {
   const [selectedPlan, setSelectedPlan] = useState('')
   const [selectedType, setSelectedType] = useState<ReportType>('executive_summary')
   const [selectedFormat, setSelectedFormat] = useState<ReportFormat>('pdf')
+  const [customSections, setCustomSections] = useState<ReportSectionConfig>(DEFAULT_CUSTOM_SECTIONS)
   const [generating, setGenerating] = useState(false)
   const [jobs, setJobs] = useState<Job[]>([])
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -88,10 +128,18 @@ export default function ReportsPage() {
 
   const handleGenerate = async () => {
     if (!selectedPlan) return
+    if (selectedType === 'custom' && !hasSelectedContent(customSections)) {
+      toastError(t('reportsPage.toastNoSectionsSelected'))
+      return
+    }
     setGenerating(true)
     const plan = plans.find((p) => p.id === selectedPlan)
     try {
-      const { job_id } = await reportsApi.generate(selectedPlan, { type: selectedType, format: selectedFormat })
+      const { job_id } = await reportsApi.generate(selectedPlan, {
+        type: selectedType,
+        format: selectedFormat,
+        ...(selectedType === 'custom' ? { sections: customSections } : {}),
+      })
       setJobs((prev) => [{
         jobId: job_id,
         planTitle: plan?.title ?? selectedPlan,
@@ -99,11 +147,52 @@ export default function ReportsPage() {
         format: selectedFormat,
         startedAt: new Date().toISOString(),
         status: 'processing',
+        ...(selectedType === 'custom' ? { sections: customSections } : {}),
       }, ...prev])
     } catch {
       toastError(t('reportsPage.toastGenerateFailed'))
     } finally {
       setGenerating(false)
+    }
+  }
+
+  const toggleSection = <K extends keyof ReportSectionConfig>(key: K, value: ReportSectionConfig[K]) => {
+    setCustomSections((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const togglePhase = (phase: Phase) => {
+    setCustomSections((prev) => ({
+      ...prev,
+      phases: prev.phases.includes(phase)
+        ? prev.phases.filter((p) => p !== phase)
+        : [...prev.phases, phase],
+    }))
+  }
+
+  // Downloads go through apiClient (as a blob) rather than a plain <a href>,
+  // since the download route sits behind the same auth middleware as every
+  // other API call and a bare anchor tag has no way to attach the Bearer
+  // token — clicking one would just 401.
+  const handleDownload = async (jobId: string, fileUrl: string | undefined, filename: string) => {
+    if (!fileUrl || fileUrl.startsWith('/mock')) {
+      success(t('reportsPage.toastMockDownload'))
+      return
+    }
+    setDownloadingId(jobId)
+    try {
+      const blob = await reportsApi.download(jobId)
+      const objectUrl = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(objectUrl)
+    } catch {
+      toastError(t('reportsPage.toastDownloadFailed'))
+    } finally {
+      setDownloadingId(null)
     }
   }
 
@@ -167,6 +256,96 @@ export default function ReportsPage() {
           </div>
         </div>
 
+        {/* Custom section picker — only shown when the custom report type is selected */}
+        {selectedType === 'custom' && (
+          <div className="space-y-2">
+            <label className="flex items-center gap-1.5 text-sm font-medium text-ink-700">
+              <SlidersHorizontal className="size-3.5" /> {t('reportsPage.customSections')}
+            </label>
+            <div className="rounded-xl border border-ink-200 divide-y divide-ink-50">
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+                <input
+                  type="checkbox"
+                  checked={customSections.executive_summary}
+                  onChange={(e) => toggleSection('executive_summary', e.target.checked)}
+                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
+                />
+                <span className="text-sm text-ink-800">{t('reportsPage.sections.executiveSummary')}</span>
+              </label>
+
+              <div className="px-4 py-3">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={customSections.phase_activities}
+                    onChange={(e) => toggleSection('phase_activities', e.target.checked)}
+                    className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
+                  />
+                  <span className="text-sm text-ink-800">{t('reportsPage.sections.phaseActivities')}</span>
+                </label>
+                {customSections.phase_activities && (
+                  <div className="flex items-center gap-4 mt-2 ml-6">
+                    {ALL_PHASES.map((phase) => (
+                      <label key={phase} className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={customSections.phases.includes(phase)}
+                          onChange={() => togglePhase(phase)}
+                          className="size-3.5 rounded border-ink-300 text-accent focus:ring-accent-400"
+                        />
+                        <span className="text-xs text-ink-500">{t(`plan.phases.${phase}`)}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+                <input
+                  type="checkbox"
+                  checked={customSections.progress_status}
+                  onChange={(e) => toggleSection('progress_status', e.target.checked)}
+                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
+                />
+                <span className="text-sm text-ink-800">{t('reportsPage.sections.progressStatus')}</span>
+              </label>
+
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+                <input
+                  type="checkbox"
+                  checked={customSections.milestones}
+                  onChange={(e) => toggleSection('milestones', e.target.checked)}
+                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
+                />
+                <span className="text-sm text-ink-800">{t('reportsPage.sections.milestones')}</span>
+              </label>
+
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+                <input
+                  type="checkbox"
+                  checked={customSections.dependency_links}
+                  onChange={(e) => toggleSection('dependency_links', e.target.checked)}
+                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
+                />
+                <span className="text-sm text-ink-800">{t('reportsPage.sections.dependencyLinks')}</span>
+              </label>
+
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+                <input
+                  type="checkbox"
+                  checked={customSections.ai_summary}
+                  onChange={(e) => toggleSection('ai_summary', e.target.checked)}
+                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
+                />
+                <span className="text-sm text-ink-800">{t('reportsPage.sections.aiSummary')}</span>
+              </label>
+            </div>
+            {!hasSelectedContent(customSections) && (
+              <p className="text-xs text-red-500">{t('reportsPage.toastNoSectionsSelected')}</p>
+            )}
+          </div>
+        )}
+
         {/* Format picker */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-ink-700">{t('reportsPage.format')}</label>
@@ -189,7 +368,7 @@ export default function ReportsPage() {
 
         <button
           onClick={handleGenerate}
-          disabled={generating || !selectedPlan}
+          disabled={generating || !selectedPlan || (selectedType === 'custom' && !hasSelectedContent(customSections))}
           className="flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {generating
@@ -218,7 +397,10 @@ export default function ReportsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-ink-900 truncate">{job.planTitle}</p>
-                  <p className="text-xs text-ink-400">{rtLabel} · {fmtMeta.label}</p>
+                  <p className="text-xs text-ink-400">
+                    {rtLabel} · {fmtMeta.label}
+                    {job.sections && ` · ${t('reportsPage.sectionsCount', { count: countSections(job.sections) })}`}
+                  </p>
                 </div>
                 <div className="text-right shrink-0">
                   {job.status === 'processing' ? (
@@ -226,13 +408,16 @@ export default function ReportsPage() {
                       <Clock className="size-3.5" /> {t('reportsPage.generating')}
                     </p>
                   ) : (
-                    <a
-                      href={job.fileUrl ?? '#'}
-                      className="flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent-700"
-                      onClick={(e) => { if (!job.fileUrl || job.fileUrl.startsWith('/mock')) { e.preventDefault(); success(t('reportsPage.toastMockDownload')) } }}
+                    <button
+                      onClick={() => handleDownload(job.jobId, job.fileUrl, `${rtLabel.replace(/\s+/g, '-').toLowerCase()}${fmtMeta.ext}`)}
+                      disabled={downloadingId === job.jobId}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent-700 disabled:opacity-50 disabled:cursor-wait"
                     >
-                      <Download className="size-3.5" /> {t('reportsPage.download')}{fmtMeta.ext}
-                    </a>
+                      {downloadingId === job.jobId
+                        ? <span className="size-3.5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                        : <Download className="size-3.5" />}
+                      {' '}{t('reportsPage.download')}{fmtMeta.ext}
+                    </button>
                   )}
                 </div>
               </div>
@@ -286,10 +471,14 @@ export default function ReportsPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button
-                          onClick={() => success(t('reportsPage.toastMockDownload'))}
-                          className="flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent-700 ml-auto"
+                          onClick={() => handleDownload(r.id, r.file_url, `${rtLabel.replace(/\s+/g, '-').toLowerCase()}${fmtMeta.ext}`)}
+                          disabled={downloadingId === r.id}
+                          className="flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent-700 ml-auto disabled:opacity-50 disabled:cursor-wait"
                         >
-                          <Download className="size-3.5" /> {t('reportsPage.download')}
+                          {downloadingId === r.id
+                            ? <span className="size-3.5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                            : <Download className="size-3.5" />}
+                          {' '}{t('reportsPage.download')}
                         </button>
                       </td>
                     </tr>

@@ -25,7 +25,9 @@ import (
 
 	"spe-light/internal/config"
 	"spe-light/internal/database"
+	"spe-light/internal/email"
 	"spe-light/internal/handlers"
+	"spe-light/internal/jobs"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -105,6 +107,25 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// ── Background jobs ───────────────────────────────────────────────
+	// No separate worker binary or job queue in this codebase — background
+	// work runs as plain goroutines started here. OverdueNotifier needs its
+	// own email.Service instance since handlers.NewRouter builds one
+	// internally without exposing it; constructing a second one is cheap
+	// (it only parses the same templates once) and the two are otherwise
+	// fully independent/stateless, so there's no shared-state concern.
+	notifyEmailSvc, err := email.New(cfg, db)
+	if err != nil {
+		// Same failure mode NewRouter already guarded against (bad template
+		// parse) — if it were going to happen, NewRouter above would have
+		// already caught it, but check here too rather than assume.
+		slog.Error("init overdue notifier email service", "err", err)
+		os.Exit(1)
+	}
+	overdueNotifier := jobs.NewOverdueNotifier(db, notifyEmailSvc, cfg.OverdueScanInterval, cfg.OverdueNotifyCooldown)
+	notifyCtx, cancelNotify := context.WithCancel(context.Background())
+	go overdueNotifier.Run(notifyCtx)
+
 	// Start in background so we can listen for signals.
 	go func() {
 		slog.Info("server starting", "addr", srv.Addr, "env", cfg.AppEnv)
@@ -120,6 +141,7 @@ func main() {
 	<-quit
 
 	slog.Info("shutting down — draining requests (10 s)")
+	cancelNotify() // stop the overdue notifier's ticker loop — no in-flight work to drain, a plain cancel is enough
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

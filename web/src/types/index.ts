@@ -69,8 +69,23 @@ export type ReportType =
   | 'per_phase'
   | 'progress_status'
   | 'activity_detail'
+  | 'custom'
 
 export type ReportFormat = 'pdf' | 'docx' | 'xlsx'
+
+// Only relevant when ReportType === 'custom' — lets the user pick which
+// sections of the plan get included instead of using one of the fixed
+// report shapes above. `phases` only applies when `phase_activities` is
+// true and controls which of P1/P2/P3 are pulled in.
+export interface ReportSectionConfig {
+  executive_summary: boolean
+  phase_activities:   boolean
+  phases:             Phase[]
+  progress_status:    boolean
+  milestones:         boolean
+  dependency_links:   boolean
+  ai_summary:         boolean
+}
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -262,6 +277,8 @@ export interface Report {
   file_url?:    string
   generated_at: string
   generated_by: string
+  /** Only present when type === 'custom' */
+  sections?:    ReportSectionConfig
 }
 
 // ── AI ────────────────────────────────────────────────────────────────────────

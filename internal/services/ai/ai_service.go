@@ -29,7 +29,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -146,9 +148,99 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 		// gracefully (return whatever text came back as editable content)
 		// rather than failing the request outright.
 		draft = map[string]any{"content": raw}
+	} else {
+		postProcessDraft(req.ActivityType, draft)
 	}
 
 	return &DraftResponse{Draft: draft, Model: s.model}, nil
+}
+
+// postProcessDraft fixes up fields the model can't be trusted to produce
+// itself, so the draft drops straight into KpiEditor/RiskRegisterEditor
+// without the user hitting broken rows:
+//
+//   - KpiRow/RiskRow both require a stable `id` (KpiEditor/RiskRegisterEditor
+//     match rows by `r.id === id` when editing) — an LLM asked to invent IDs
+//     tends to reuse or omit them, which would make editing one row silently
+//     edit every row sharing that id. We always generate real UUIDs instead
+//     of asking the model for them.
+//   - RiskRow.score is a derived value (likelihood × impact) that
+//     RiskRegisterEditor only recomputes on edit, not on initial load — so a
+//     freshly-accepted draft needs it pre-computed or the score badge shows
+//     nothing until the user touches the row.
+//   - likelihood/impact are coerced to the 1-5 int scale RiskRow requires,
+//     tolerating a model that ignores the numeric-scale instruction and
+//     answers "Low"/"Medium"/"High" instead.
+func postProcessDraft(activityType string, draft map[string]any) {
+	switch activityType {
+	case "kpi_framework", "okr_balanced_scorecard":
+		forEachRow(draft, func(row map[string]any) {
+			row["id"] = uuid.New().String()
+		})
+	case "risk_register":
+		forEachRow(draft, func(row map[string]any) {
+			row["id"] = uuid.New().String()
+			likelihood := coerceRiskScale(row["likelihood"])
+			impact := coerceRiskScale(row["impact"])
+			row["likelihood"] = likelihood
+			row["impact"] = impact
+			row["score"] = likelihood * impact
+			if _, ok := row["owner"]; !ok {
+				row["owner"] = ""
+			}
+		})
+	}
+}
+
+// forEachRow applies fn to every element of draft["rows"] that decoded as a
+// JSON object. Non-object entries (a model occasionally emits a stray string
+// or null in the array) are skipped rather than causing a panic.
+func forEachRow(draft map[string]any, fn func(row map[string]any)) {
+	rows, ok := draft["rows"].([]any)
+	if !ok {
+		return
+	}
+	for _, r := range rows {
+		if row, ok := r.(map[string]any); ok {
+			fn(row)
+		}
+	}
+}
+
+// coerceRiskScale normalises a model-supplied likelihood/impact value into
+// RiskRow's required 1-5 int range. Handles the value arriving as a JSON
+// number (the common case), a numeric string, or a Low/Medium/High word (if
+// the model ignores the "respond with a 1-5 integer" instruction).
+func coerceRiskScale(v any) int {
+	switch val := v.(type) {
+	case float64:
+		return clampScale(int(math.Round(val)))
+	case string:
+		switch strings.ToLower(strings.TrimSpace(val)) {
+		case "low":
+			return 2
+		case "medium", "moderate":
+			return 3
+		case "high":
+			return 4
+		case "critical", "very high", "very_high":
+			return 5
+		}
+		if n, err := strconv.Atoi(strings.TrimSpace(val)); err == nil {
+			return clampScale(n)
+		}
+	}
+	return 3 // sane middle default rather than an invalid 0
+}
+
+func clampScale(n int) int {
+	if n < 1 {
+		return 1
+	}
+	if n > 5 {
+		return 5
+	}
+	return n
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────
@@ -352,22 +444,37 @@ func parseJSONObject(raw string) (map[string]any, error) {
 // ── Per-activity-type draft schemas ──────────────────────────────────────
 //
 // These mirror the exact content shapes ActivityEditorPage.tsx routes to
-// each editor component, so a returned draft can be dropped straight into
-// `content` via handleAiAccept without any client-side reshaping.
+// each editor component (SwotEditor.tsx / KpiEditor.tsx /
+// RiskRegisterEditor.tsx / GenericEditor.tsx), so a returned draft can be
+// dropped straight into `content` via handleAiAccept without any
+// client-side reshaping. `id` fields are deliberately NOT requested from
+// the model — see postProcessDraft, which generates real UUIDs itself
+// rather than trusting an LLM to produce unique ones.
 
 func draftSchemaFor(activityType string) (schema string, instructions string) {
 	switch activityType {
 	case "swot":
-		return `{"strengths": ["..."], "weaknesses": ["..."], "opportunities": ["..."], "threats": ["..."]}`,
-			"Draft a SWOT analysis. Provide 3-5 concise bullet-point strings in each of the four arrays."
+		// SwotEditor's SwotContent is four plain strings (rendered one per
+		// textarea), not arrays — each string holds multiple bullet lines.
+		return `{"strengths": "...", "weaknesses": "...", "opportunities": "...", "threats": "..."}`,
+			"Draft a SWOT analysis. For each of the four keys, write 3-5 bullet points as a single string, " +
+				"each point on its own line starting with \"- \" (e.g. \"- First point\\n- Second point\")."
 
 	case "kpi_framework", "okr_balanced_scorecard":
-		return `{"rows": [{"metric": "...", "target": "...", "actual": ""}]}`,
-			"Draft a KPI/OKR framework. Provide 4-6 rows, each a measurable metric with a specific target. Leave \"actual\" as an empty string — it hasn't happened yet."
+		// Matches KpiEditor's KpiRow exactly (minus `id`, injected server-side).
+		return `{"rows": [{"name": "...", "unit": "...", "baseline": "...", "target": "...", "current": ""}]}`,
+			"Draft a KPI/OKR framework. Provide 4-6 rows. \"name\" is the metric name, \"unit\" is how it's " +
+				"measured (e.g. \"%\", \"$\", \"count\"), \"baseline\" is the current/starting value, \"target\" is " +
+				"the goal value. Leave \"current\" as an empty string — it hasn't been measured yet."
 
 	case "risk_register":
-		return `{"rows": [{"risk": "...", "likelihood": "Low|Medium|High", "impact": "Low|Medium|High", "mitigation": "..."}]}`,
-			"Draft a risk register. Provide 4-6 realistic risks relevant to the plan, each with a likelihood, impact, and a concrete mitigation."
+		// Matches RiskRegisterEditor's RiskRow exactly (minus `id` and
+		// `score`, both computed server-side in postProcessDraft).
+		return `{"rows": [{"risk": "...", "likelihood": 3, "impact": 3, "mitigation": "...", "owner": ""}]}`,
+			"Draft a risk register. Provide 4-6 realistic risks relevant to the plan. \"likelihood\" and " +
+				"\"impact\" must each be a plain integer from 1 (lowest) to 5 (highest) — not words like " +
+				"\"High\". \"mitigation\" is a concrete mitigating action. Leave \"owner\" as an empty string — " +
+				"it hasn't been assigned to a person yet."
 
 	default:
 		sections, ok := genericSectionKeys[activityType]

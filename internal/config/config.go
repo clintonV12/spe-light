@@ -35,6 +35,12 @@ type Config struct {
 	OllamaURL   string
 	OllamaModel string
 
+	// Overdue notifier — see internal/jobs/overdue_notifier.go. Runs as a
+	// background ticker started from main.go, not per-request, so it has no
+	// natural place among the HTTP-request-shaped config above.
+	OverdueScanInterval   time.Duration // how often to scan for newly-overdue activities
+	OverdueNotifyCooldown time.Duration // don't re-email the same person about the same activity more often than this
+
 	// SMTP
 	SMTPHost     string
 	SMTPPort     int
@@ -96,6 +102,17 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid SMTP_PORT: %w", err)
 	}
 
+	// Default: scan every 30 minutes, don't re-notify the same person about
+	// the same overdue activity more than once every 24 hours.
+	cfg.OverdueScanInterval, err = getEnvDuration("OVERDUE_SCAN_INTERVAL", 30*time.Minute)
+	if err != nil {
+		return nil, fmt.Errorf("invalid OVERDUE_SCAN_INTERVAL: %w", err)
+	}
+	cfg.OverdueNotifyCooldown, err = getEnvDuration("OVERDUE_NOTIFY_COOLDOWN", 24*time.Hour)
+	if err != nil {
+		return nil, fmt.Errorf("invalid OVERDUE_NOTIFY_COOLDOWN: %w", err)
+	}
+
 	return cfg, nil
 }
 
@@ -126,4 +143,14 @@ func getEnvInt(key string, fallback int) (int, error) {
 		return fallback, nil
 	}
 	return strconv.Atoi(v)
+}
+
+// getEnvDuration parses a Go duration string (e.g. "30m", "24h"). Empty/unset
+// falls back to the given default.
+func getEnvDuration(key string, fallback time.Duration) (time.Duration, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback, nil
+	}
+	return time.ParseDuration(v)
 }

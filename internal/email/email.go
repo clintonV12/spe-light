@@ -94,13 +94,17 @@ func (s *Service) SendPasswordReset(to, resetLink string, orgID *uuid.UUID, user
 	})
 }
 
-// SendOverdueAlert notifies a user their activity is overdue.
-func (s *Service) SendOverdueAlert(to, activityTitle, planTitle, dueDate string, orgID, userID uuid.UUID) {
+// SendOverdueAlert notifies a user their activity is overdue. activityID is
+// recorded in notification_log's payload (not just orgID/userID) so
+// internal/jobs.OverdueNotifier can query "have we already alerted this user
+// about this specific activity recently?" before sending again — without it,
+// every scan would re-email everyone with anything overdue.
+func (s *Service) SendOverdueAlert(to, activityTitle, planTitle, dueDate string, orgID, userID, activityID uuid.UUID) {
 	s.send(to, fmt.Sprintf("Overdue activity: %s", activityTitle), "overdue_alert", &orgID, &userID, map[string]any{
 		"ActivityTitle": activityTitle,
 		"PlanTitle":     planTitle,
 		"DueDate":       dueDate,
-	})
+	}, map[string]any{"activity_id": activityID.String()})
 }
 
 // SendOrgDeactivated notifies an org admin their org has been deactivated.
@@ -120,12 +124,16 @@ func (s *Service) SendRoleChanged(to, orgName, newRole string, orgID, userID uui
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
-func (s *Service) send(to, subject, tmplName string, orgID, userID *uuid.UUID, data map[string]any) {
+// meta is optional extra payload metadata to persist alongside the standard
+// to/subject/error fields in notification_log — e.g. SendOverdueAlert uses
+// it to record activity_id so a later query can dedupe repeat sends.
+// Variadic so the six call sites that don't need it are unaffected.
+func (s *Service) send(to, subject, tmplName string, orgID, userID *uuid.UUID, data map[string]any, meta ...map[string]any) {
 	// Render body.
 	var buf bytes.Buffer
 	if err := s.tmpl.ExecuteTemplate(&buf, tmplName, data); err != nil {
 		slog.Error("render email template", "template", tmplName, "err", err)
-		s.logDelivery(to, subject, tmplName, orgID, userID, "failed", err)
+		s.logDelivery(to, subject, tmplName, orgID, userID, "failed", err, meta...)
 		return
 	}
 	body := buf.String()
@@ -141,7 +149,7 @@ func (s *Service) send(to, subject, tmplName string, orgID, userID *uuid.UUID, d
 		// notification_log.status only allows 'sent'/'failed' — dev-stdout
 		// delivery counts as "sent" from the app's perspective; the payload
 		// records that it was a dev-mode stdout send rather than real SMTP.
-		s.logDelivery(to, subject, tmplName, orgID, userID, "sent", nil)
+		s.logDelivery(to, subject, tmplName, orgID, userID, "sent", nil, meta...)
 		return
 	}
 
@@ -154,16 +162,16 @@ func (s *Service) send(to, subject, tmplName string, orgID, userID *uuid.UUID, d
 		defer func() {
 			if r := recover(); r != nil {
 				slog.Error("panic while sending email", "to", to, "subject", subject, "template", tmplName, "panic", r)
-				s.logDelivery(to, subject, tmplName, orgID, userID, "failed", fmt.Errorf("panic: %v", r))
+				s.logDelivery(to, subject, tmplName, orgID, userID, "failed", fmt.Errorf("panic: %v", r), meta...)
 			}
 		}()
 
 		if err := s.deliver(to, subject, body); err != nil {
 			slog.Error("send email", "to", to, "subject", subject, "err", err)
-			s.logDelivery(to, subject, tmplName, orgID, userID, "failed", err)
+			s.logDelivery(to, subject, tmplName, orgID, userID, "failed", err, meta...)
 			return
 		}
-		s.logDelivery(to, subject, tmplName, orgID, userID, "sent", nil)
+		s.logDelivery(to, subject, tmplName, orgID, userID, "sent", nil, meta...)
 	}()
 }
 
@@ -186,7 +194,7 @@ func (s *Service) send(to, subject, tmplName string, orgID, userID *uuid.UUID, d
 // pooled connection happened to carry stale session state). Scoping the
 // bypass to SET LOCAL inside a transaction means it never leaks onto the
 // connection once released back to the pool.
-func (s *Service) logDelivery(to, subject, tmplName string, orgID, userID *uuid.UUID, status string, deliveryErr error) {
+func (s *Service) logDelivery(to, subject, tmplName string, orgID, userID *uuid.UUID, status string, deliveryErr error, meta ...map[string]any) {
 	if s.db == nil {
 		return
 	}
@@ -196,6 +204,14 @@ func (s *Service) logDelivery(to, subject, tmplName string, orgID, userID *uuid.
 	}
 	if deliveryErr != nil {
 		payload["error"] = deliveryErr.Error()
+	}
+	// meta is variadic purely so callers without extra metadata don't need
+	// to pass nil explicitly — send() always forwards exactly zero or one
+	// map here.
+	if len(meta) > 0 {
+		for k, v := range meta[0] {
+			payload[k] = v
+		}
 	}
 
 	var sentAt any

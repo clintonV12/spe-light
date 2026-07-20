@@ -14,6 +14,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -27,11 +28,13 @@ import (
 	milestonesvc "spe-light/internal/services/milestone"
 	orgsvc "spe-light/internal/services/org"
 	plansvc "spe-light/internal/services/plan"
+	reportsvc "spe-light/internal/services/report"
 	ssosvc "spe-light/internal/services/sso"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -73,6 +76,20 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 	planService := plansvc.New(db, cfg)
 	milestoneService := milestonesvc.New(db)
 	aiService := aisvc.New(db, cfg) // Sprint C — Ollama-backed AI draft/summary
+	// reportService's AI-summary section calls back into aiService through a
+	// small adapter closure (rather than reportsvc importing aisvc directly)
+	// so the report package doesn't need to know aisvc's request/response
+	// shapes. A failed/unreachable AI service degrades to a placeholder note
+	// in the report rather than failing report generation outright.
+	reportService := reportsvc.New(db, planService, milestoneService,
+		func(ctx context.Context, orgID, planID uuid.UUID) (string, error) {
+			resp, err := aiService.Summary(ctx, orgID, aisvc.SummaryRequest{PlanID: planID})
+			if err != nil {
+				return "", err
+			}
+			return resp.Summary, nil
+		},
+	)
 	ssoConfigService := ssosvc.New(db)
 	ssoAuthService := ssosvc.NewAuth(db, cfg, ssoConfigService) // Sprint A SSO flows
 
@@ -83,6 +100,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 	planH := NewPlan(planService)
 	milestoneH := NewMilestone(milestoneService)
 	aiH := NewAI(aiService)
+	reportsH := NewReports(reportService)
 	ssoH := NewSSO(ssoConfigService)
 	ssoAuthH := NewSSOAuth(ssoAuthService, cfg.FrontendURL, cfg.JWTSecret) // Sprint A SSO flows
 
@@ -197,7 +215,8 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 			)).Post("/{planID}/milestones", milestoneH.CreateMilestone)
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/{planID}/reports", notImplemented)
+			)).Post("/{planID}/reports", reportsH.Generate)
+			r.Get("/{planID}/reports", reportsH.History)
 		})
 
 		// ── Activities ─────────────────────────────────────────────
@@ -239,7 +258,8 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 		})
 
 		// ── Reports (Sprint D) ─────────────────────────────────────
-		r.Get("/api/v1/reports/{jobID}", notImplemented)
+		r.Get("/api/v1/reports/{jobID}", reportsH.Poll)
+		r.Get("/api/v1/reports/{jobID}/download", reportsH.Download)
 	})
 
 	return r, nil

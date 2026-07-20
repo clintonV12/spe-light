@@ -98,6 +98,39 @@ const (
 	MilestoneMissed  MilestoneStatus = "missed"
 )
 
+type ReportType string
+
+const (
+	ReportFullPlan         ReportType = "full_plan"
+	ReportExecutiveSummary ReportType = "executive_summary"
+	ReportPerPhase         ReportType = "per_phase"
+	ReportProgressStatus   ReportType = "progress_status"
+	ReportActivityDetail   ReportType = "activity_detail"
+	ReportCustom           ReportType = "custom"
+)
+
+type ReportFormat string
+
+const (
+	ReportPDF  ReportFormat = "pdf"
+	ReportDOCX ReportFormat = "docx"
+	ReportXLSX ReportFormat = "xlsx"
+)
+
+// ReportStatus tracks the lifecycle of a report generation job. Report
+// generation currently runs synchronously inside the request that creates
+// it, so in practice a row is only ever persisted once it has reached a
+// terminal state (complete or failed) — "processing" exists for API-shape
+// compatibility with the frontend's polling flow and for a future move to
+// background job generation without a breaking response change.
+type ReportStatus string
+
+const (
+	ReportProcessing ReportStatus = "processing"
+	ReportComplete   ReportStatus = "complete"
+	ReportFailed     ReportStatus = "failed"
+)
+
 // ── Organisation ──────────────────────────────────────────────────────────
 
 type Organisation struct {
@@ -258,6 +291,29 @@ type Milestone struct {
 	LinkedActivityID *uuid.UUID      `json:"linked_activity_id,omitempty" db:"linked_activity_id"`
 	CreatedAt        time.Time       `json:"created_at"                   db:"created_at"`
 	UpdatedAt        time.Time       `json:"updated_at"                   db:"updated_at"`
+}
+
+// ── Report ────────────────────────────────────────────────────────────────
+
+// Report is a generated document (PDF/DOCX/XLSX) covering some slice of a
+// plan's data. Sections is only populated for Type == ReportCustom — it
+// records which sections the caller chose so the same config can be shown
+// back in history. FilePath is where the rendered file lives on disk and is
+// never serialised (json:"-"); FileURL is computed at request time by the
+// service layer, never persisted, hence db:"-".
+type Report struct {
+	ID          uuid.UUID      `json:"id"                     db:"id"`
+	PlanID      uuid.UUID      `json:"plan_id"                db:"plan_id"`
+	OrgID       uuid.UUID      `json:"-"                      db:"org_id"`
+	Type        ReportType     `json:"type"                   db:"type"`
+	Format      ReportFormat   `json:"format"                 db:"format"`
+	Status      ReportStatus   `json:"-"                      db:"status"`
+	Sections    map[string]any `json:"sections,omitempty"     db:"sections"`
+	FilePath    string         `json:"-"                      db:"file_path"`
+	FileURL     *string        `json:"file_url,omitempty"     db:"-"`
+	Error       *string        `json:"-"                      db:"error"`
+	GeneratedBy uuid.UUID      `json:"generated_by"           db:"generated_by"`
+	GeneratedAt time.Time      `json:"generated_at"           db:"generated_at"`
 }
 
 // ── Notification log ──────────────────────────────────────────────────────

@@ -20,7 +20,7 @@ import type {
   Activity, ActivityLink,
   AiDraftRequest, AiSummaryRequest,
   Invitation, Organisation,
-  Report, ReportType, ReportFormat, ReportJobStatus,
+  Report, ReportType, ReportFormat, ReportJobStatus, ReportSectionConfig,
   User, UserRole,
   AuditListResponse,
   Milestone, MilestoneStatus,
@@ -114,10 +114,17 @@ export const milestonesApi = {
 // ── Reports ───────────────────────────────────────────────────────────────────
 
 export const reportsApi = {
-  generate: (planId: string, p: { type: ReportType; format: ReportFormat; date_range?: { from: string; to: string } }) =>
+  generate: (planId: string, p: {
+              type: ReportType
+              format: ReportFormat
+              date_range?: { from: string; to: string }
+              /** Required (and only used) when type === 'custom' */
+              sections?: ReportSectionConfig
+            }) =>
               api().then((m) => m.reportsApi.generate(planId, p))  as Promise<{ job_id: string }>,
   poll:     (jobId: string)  => api().then((m) => m.reportsApi.poll(jobId))     as Promise<ReportJobStatus>,
   history:  (planId: string) => api().then((m) => m.reportsApi.history(planId)) as Promise<Report[]>,
+  download: (jobId: string)  => api().then((m) => m.reportsApi.download(jobId)) as Promise<Blob>,
 }
 
 // ── AI ────────────────────────────────────────────────────────────────────────

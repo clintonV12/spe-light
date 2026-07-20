@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
-  ArrowLeft, Sparkles, Clock, User, AlertTriangle, ChevronDown,
+  ArrowLeft, Sparkles, Clock, User, AlertTriangle, ChevronDown, Check, X,
 } from 'lucide-react'
 import { activitiesApi } from '../api/endpoints'
 import { useOfflineStore } from '../store/offline'
@@ -159,6 +159,22 @@ export default function ActivityEditorPage() {
   const [planLinks, setPlanLinks] = useState<ActivityLink[]>([])
   const [linksLoading, setLinksLoading] = useState(true)
 
+  // ── AI draft approval gate ────────────────────────────────────────────────
+  // Accepting an AI draft only fills the editable fields — it does NOT save.
+  // Autosave stays disabled until the user explicitly approves (or discards,
+  // which restores whatever was in the fields immediately beforehand).
+  const [pendingApproval, setPendingApproval] = useState(false)
+  const [preDraftContent, setPreDraftContent] = useState<Record<string, unknown> | null>(null)
+  const [approving, setApproving] = useState(false)
+  // Bumped on every AI accept/discard so <ActivityEditor key={contentVersion}>
+  // remounts instead of re-rendering in place. SwotEditor/KpiEditor/etc. only
+  // read their `value` prop once on mount (they own their own field state
+  // internally) — without a remount, a programmatic content swap like an AI
+  // draft silently doesn't show up in the fields even though `content` state
+  // (and therefore autosave) is genuinely updated. Remounting forces them to
+  // re-initialise from the new value.
+  const [contentVersion, setContentVersion] = useState(0)
+
   // Track whether the editor has been initialised (skip auto-save on first render)
   const initialised = useRef(false)
   const canEdit = can.editActivity
@@ -202,21 +218,10 @@ export default function ActivityEditorPage() {
     data: { content, status },
     onSave: doSave,
     debounceMs: 1500,
-    disabled: !canEdit || !initialised.current,
+    // pendingApproval blocks autosave entirely — an AI draft sitting in the
+    // fields is a proposal, not a save, until the user hits Approve.
+    disabled: !canEdit || !initialised.current || pendingApproval,
   })
-
-  // ── Cmd+S instant save ──────────────────────────────────────────────────────
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault()
-        if (canEdit && initialised.current) saveNow()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [canEdit, saveNow])
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -230,11 +235,59 @@ export default function ActivityEditorPage() {
     markDirty()
   }, [markDirty])
 
-  const handleAiAccept = (draft: Record<string, unknown>) => {
+  // Fills the editable fields with the AI draft — does NOT save. The user
+  // reviews/edits, then explicitly Approves (or Discards) before anything
+  // touches the database.
+  const handleAiAccept = useCallback((draft: Record<string, unknown>) => {
+    setPreDraftContent(content) // snapshot so Discard has something to restore
     setContent(draft)
-    markDirty()
+    setContentVersion((v) => v + 1) // force the editor to remount and re-sync
+    setPendingApproval(true)
     setShowAi(false)
-  }
+  }, [content])
+
+  // Persists the (possibly user-edited) draft content. Calls activitiesApi
+  // directly rather than going through useAutoSave's saveNow(), since that
+  // hook is intentionally `disabled` while pendingApproval is true — this is
+  // the one deliberate, explicit write that's allowed to bypass that gate.
+  const handleApproveDraft = useCallback(async () => {
+    if (!activityId || !activity) return
+    setApproving(true)
+    try {
+      await activitiesApi.update(activityId, { content, status })
+      setPendingApproval(false)
+      setPreDraftContent(null)
+    } finally {
+      setApproving(false)
+    }
+  }, [activityId, activity, content, status])
+
+  const handleDiscardDraft = useCallback(() => {
+    if (preDraftContent) {
+      setContent(preDraftContent)
+      setContentVersion((v) => v + 1)
+    }
+    setPendingApproval(false)
+    setPreDraftContent(null)
+  }, [preDraftContent])
+
+  // ── Cmd+S instant save ──────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        if (!canEdit || !initialised.current) return
+        if (pendingApproval) {
+          handleApproveDraft()
+        } else {
+          saveNow()
+        }
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [canEdit, saveNow, pendingApproval, handleApproveDraft])
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -361,10 +414,46 @@ export default function ActivityEditorPage() {
         />
       )}
 
+      {/* AI draft pending approval — fields below are filled in and editable,
+          but nothing is saved until Approve is clicked (or Discard reverts). */}
+      {pendingApproval && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-accent/10 border border-accent/30 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-ink-700">
+            <Sparkles className="size-4 text-accent shrink-0" />
+            {t('activityEditor.aiPendingApproval', 'AI draft filled in below — review or edit, then approve to save.')}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleDiscardDraft}
+              disabled={approving}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-ink-500 hover:bg-ink-100 transition-colors disabled:opacity-50"
+            >
+              <X className="size-4" /> {t('activityEditor.discardDraft', 'Discard')}
+            </button>
+            <button
+              onClick={handleApproveDraft}
+              disabled={approving}
+              className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 transition-colors disabled:opacity-50"
+            >
+              <Check className="size-4" />
+              {approving ? t('activityEditor.approving', 'Saving…') : t('activityEditor.approveDraft', 'Approve & Save')}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Two-column: editor + linked activities */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6 items-start">
         <div className="bg-white rounded-2xl border border-ink-100 p-6">
           <ActivityEditor
+            // Forces SwotEditor/KpiEditor/RiskRegisterEditor/GenericEditor to
+            // remount and re-read `content` as fresh initial state whenever
+            // an AI draft is accepted or discarded — those components own
+            // their field state internally and only read `value` on mount,
+            // so without this key a programmatic content swap wouldn't show
+            // up in the fields even though `content` (and the eventual save)
+            // is genuinely updated.
+            key={contentVersion}
             activity={{ ...activity, content }}
             onChange={handleContentChange}
             readOnly={!canEdit}

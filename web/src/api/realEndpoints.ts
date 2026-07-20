@@ -82,7 +82,7 @@ import type {
   Activity, ActivityLink,
   AiDraftRequest, AiDraftResponse, AiSummaryRequest, AiSummaryResponse,
   Invitation, Organisation,
-  Report, ReportType, ReportFormat, ReportJobStatus,
+  Report, ReportType, ReportFormat, ReportJobStatus, ReportSectionConfig,
   User, UserRole,
   AuditLog, AuditListResponse,
   Milestone, MilestoneStatus,
@@ -283,6 +283,8 @@ export const reportsApi = {
     type:         ReportType
     format:       ReportFormat
     date_range?:  { from: string; to: string }
+    /** Required (and only used) when type === 'custom' */
+    sections?:    ReportSectionConfig
   }) => apiClient.post<{ job_id: string }>(`/plans/${planId}/reports`, payload).then((r) => r.data),
 
   /**
@@ -295,6 +297,16 @@ export const reportsApi = {
   /** GET /api/v1/plans/{planID}/reports — history of completed reports */
   history: (planId: string) =>
     apiClient.get<Report[]>(`/plans/${planId}/reports`).then((r) => r.data),
+
+  /**
+   * GET /api/v1/reports/{jobID}/download
+   * Fetched as a blob (rather than a plain <a href>) so the request goes
+   * through apiClient and carries the Authorization header — the download
+   * route is behind the same auth middleware as everything else, and a
+   * bare anchor tag has no way to attach a Bearer token.
+   */
+  download: (jobId: string) =>
+    apiClient.get<Blob>(`/reports/${jobId}/download`, { baseURL: '/api/v1', responseType: 'blob' }).then((r) => r.data),
 }
 
 // ── AI ────────────────────────────────────────────────────────────────────────
