@@ -1,35 +1,192 @@
-// render.go — turns a reportContent tree into actual PDF/DOCX/XLSX bytes.
+// render.go — turns a reportContent tree into branded, enterprise-grade
+// PDF/DOCX/XLSX bytes for the SPE-Lite platform (by DGRV Eswatini).
 //
-// All three formats are built by hand:
-//   - PDF: raw PDF 1.4 object syntax (a handful of objects + an xref table).
-//   - DOCX/XLSX: minimal-but-valid OOXML packages via archive/zip.
+// Every export carries a consistent letterhead: a cover page with the
+// organisation's name, the plan it was generated from, who generated it and
+// when, plus a running header/footer, page numbering and a confidentiality
+// notice on every subsequent page. Tables are drawn with real borders,
+// shaded header rows and banded body rows rather than pipe-delimited text.
 //
-// No third-party document library is used or required — only
-// archive/zip, bytes, fmt, and strings from the standard library. This is a
-// deliberate choice given this codebase's dependency set wasn't available to
-// verify against; if a proper PDF/OOXML library is already vendored
-// elsewhere in the project, swapping these functions out for it is a
-// drop-in replacement (they're the only thing service.go calls).
+// As before, everything is built by hand with only the standard library
+// (archive/zip, image/jpeg, bytes, fmt, strings) — no third-party PDF/OOXML
+// dependency is required. Swapping these functions out for a proper document
+// library later is a drop-in replacement; report_service.go is the only
+// caller.
+//
+// Branding assets:
+//   - The SPE-Lite / DGRV Eswatini logo is optional. Set REPORT_LOGO_PATH to
+//     the on-disk path of a JPEG (e.g. a server-side copy of the frontend's
+//     public/logo.jpg) or drop the file at ./assets/logo.jpg. If it can't be
+//     found or decoded, reports still render — just with a text wordmark
+//     instead of the mark itself — generation never fails because of it.
+//   - Brand colours are set once, below, as sensible defaults (navy +
+//     gold). Swap the hex/RGB constants for the exact DGRV Eswatini brand
+//     kit values when available.
 package reportsvc
 
 import (
 	"archive/zip"
 	"bytes"
 	"fmt"
+	"image/color"
+	"image/jpeg"
+	"os"
+	"reflect"
 	"strings"
+	"time"
 )
 
-// ── PDF ───────────────────────────────────────────────────────────────────
+// ── Report metadata (letterhead) ─────────────────────────────────────────
+
+// reportMeta carries the letterhead information that isn't part of the
+// section content itself — who/what/when this report is for. Built once by
+// report_service.go and threaded into every renderer.
+type reportMeta struct {
+	ReportTitle     string // shown large on the cover — the plan's title
+	ReportTypeLabel string // human label for the report type, e.g. "Full Plan Report"
+	PlanTitle       string
+	PlanStatus      string
+	OrgName         string
+	OrgIndustry     string
+	GeneratedBy     string
+	GeneratedAt     time.Time
+}
+
+// reportTypeLabel maps the fixed report type enum onto a human-readable
+// title used on the cover page and in the header. Takes a plain string
+// (report_service.go passes string(req.Type)) so this file doesn't need to
+// import the models package.
+func reportTypeLabel(t string) string {
+	switch t {
+	case "full_plan":
+		return "Full Plan Report"
+	case "executive_summary":
+		return "Executive Summary"
+	case "per_phase":
+		return "Per-Phase Report"
+	case "progress_status":
+		return "Progress & Status Report"
+	case "activity_detail":
+		return "Activity Detail Report"
+	case "custom":
+		return "Custom Report"
+	default:
+		return "Report"
+	}
+}
+
+// ── Brand palette ─────────────────────────────────────────────────────────
+// Defaults — replace with the exact DGRV Eswatini brand hex values once
+// available. All PDF colours are 0–1 RGB triples; DOCX/XLSX use the hex
+// strings alongside.
+
+var (
+	brandPrimary = [3]float64{0.106, 0.227, 0.388} // #1B3A63 navy
+	brandAccent  = [3]float64{0.737, 0.573, 0.114} // #BC921D gold
+	inkDark      = [3]float64{0.16, 0.16, 0.18}    // #29292E
+	inkMed       = [3]float64{0.35, 0.37, 0.42}    // #5A5F6A
+	inkLight     = [3]float64{0.54, 0.56, 0.60}    // #8A8F99
+	bandLight    = [3]float64{0.95, 0.96, 0.97}    // #F2F3F5
+	white        = [3]float64{1, 1, 1}
+	borderGray   = [3]float64{0.84, 0.85, 0.87} // #D5D8DD
+)
 
 const (
-	pdfPageWidth   = 612 // US Letter, points
-	pdfPageHeight  = 792
-	pdfMarginLeft  = 50
-	pdfMarginTop   = 50
-	pdfFontSize    = 10
-	pdfLeading     = 14
-	pdfLinesPerPg  = 48
-	pdfWrapColumns = 92
+	brandPrimaryHex = "1B3A63"
+	brandAccentHex  = "BC921D"
+	inkDarkHex      = "26282E"
+	inkMedHex       = "5A5F6A"
+	inkLightHex     = "8A8F99"
+	bandLightHex    = "F2F3F5"
+	borderGrayHex   = "D5D8DD"
+)
+
+// ── Logo asset ────────────────────────────────────────────────────────────
+
+// pdfLogo is a decoded JPEG ready to be embedded as a PDF XObject or a DOCX
+// media part.
+type pdfLogo struct {
+	Bytes      []byte
+	Width      int
+	Height     int
+	ColorSpace string // PDF colour space name, e.g. "/DeviceRGB"
+	Decode     string // extra " /Decode [...]" entry, only set for CMYK
+}
+
+// loadLogoAsset reads and decodes a JPEG logo from disk. Returns an error
+// (never a partial/invalid asset) if the file is missing or not a valid
+// JPEG — callers should treat that as "no logo" and fall back to a
+// text-only wordmark rather than failing report generation.
+func loadLogoAsset(path string) (*pdfLogo, error) {
+	if path == "" {
+		return nil, fmt.Errorf("no logo path configured")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("decode jpeg config: %w", err)
+	}
+	l := &pdfLogo{Bytes: data, Width: cfg.Width, Height: cfg.Height, ColorSpace: "/DeviceRGB"}
+
+	// image/color's model globals wrap function values, which aren't safe to
+	// compare with ==, so identify the model by function pointer via reflect
+	// instead of a direct interface comparison.
+	fnPtr := func(m color.Model) uintptr { return reflect.ValueOf(m).Pointer() }
+	switch fnPtr(cfg.ColorModel) {
+	case fnPtr(color.GrayModel):
+		l.ColorSpace = "/DeviceGray"
+	case fnPtr(color.CMYKModel):
+		l.ColorSpace = "/DeviceCMYK"
+		l.Decode = " /Decode [1 0 1 0 1 0 1 0]"
+	}
+	return l, nil
+}
+
+// emuSize returns the DrawingML (EMU) width/height for the logo scaled to
+// fit within the given bounds (inches), preserving aspect ratio.
+func (l *pdfLogo) emuSize(maxHIn, maxWIn float64) (cx, cy int64) {
+	if l == nil || l.Height == 0 {
+		return 0, 0
+	}
+	ratio := float64(l.Width) / float64(l.Height)
+	hIn, wIn := maxHIn, maxHIn*ratio
+	if wIn > maxWIn {
+		wIn = maxWIn
+		hIn = wIn / ratio
+	}
+	return int64(wIn * 914400), int64(hIn * 914400)
+}
+
+// ptSize returns the logo's display size in PDF points, scaled to fit
+// within maxH×maxW.
+func (l *pdfLogo) ptSize(maxH, maxW float64) (w, h float64) {
+	if l == nil || l.Height == 0 {
+		return 0, 0
+	}
+	ratio := float64(l.Width) / float64(l.Height)
+	h, w = maxH, maxH*ratio
+	if w > maxW {
+		w = maxW
+		h = w / ratio
+	}
+	return w, h
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// PDF
+// ══════════════════════════════════════════════════════════════════════════
+
+const (
+	pdfPageWidth  = 612.0 // US Letter, points
+	pdfPageHeight = 792.0
+	pdfMarginL    = 50.0
+	pdfMarginR    = 50.0
+	pdfMarginTop  = 56.0
+	pdfMarginBot  = 56.0
+	pdfContentW   = pdfPageWidth - pdfMarginL - pdfMarginR
 )
 
 // pdfWriter incrementally builds a PDF's object table, allowing objects to
@@ -50,14 +207,38 @@ func (w *pdfWriter) reserve() int {
 	return id
 }
 
-func (w *pdfWriter) set(id int, body string) {
-	w.bodies[id] = []byte(body)
-}
+func (w *pdfWriter) set(id int, body string) { w.bodies[id] = []byte(body) }
 
 func (w *pdfWriter) add(body string) int {
 	id := w.reserve()
 	w.set(id, body)
 	return id
+}
+
+// addImageXObject registers a JPEG as a DCTDecode image XObject and returns
+// its object ID.
+func (w *pdfWriter) addImageXObject(l *pdfLogo) int {
+	header := fmt.Sprintf(
+		"<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace %s /BitsPerComponent 8 /Filter /DCTDecode%s /Length %d >>\nstream\n",
+		l.Width, l.Height, l.ColorSpace, l.Decode, len(l.Bytes),
+	)
+	body := append([]byte(header), l.Bytes...)
+	body = append(body, []byte("\nendstream")...)
+	id := w.reserve()
+	w.bodies[id] = body
+	return id
+}
+
+func (w *pdfWriter) addContentStream(ops []string) int {
+	stream := strings.Join(ops, "\n")
+	return w.add(fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(stream), stream))
+}
+
+func (w *pdfWriter) addPage(pagesID int, resources string, contentID int) int {
+	return w.add(fmt.Sprintf(
+		"<< /Type /Page /Parent %d 0 R /MediaBox [0 0 %.0f %.0f] /Resources %s /Contents %d 0 R >>",
+		pagesID, pdfPageWidth, pdfPageHeight, resources, contentID,
+	))
 }
 
 func (w *pdfWriter) build(rootID int) []byte {
@@ -84,54 +265,331 @@ func (w *pdfWriter) build(rootID int) []byte {
 	return buf.Bytes()
 }
 
-func renderPDF(title string, rc *reportContent) ([]byte, error) {
-	lines := flattenToLines(title, rc)
+// ── Content-stream drawing primitives ───────────────────────────────────
 
-	w := newPDFWriter()
-	catalogID := w.reserve()
-	pagesID := w.reserve()
-	fontID := w.add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-
-	var pageIDs []int
-	for start := 0; start < len(lines); start += pdfLinesPerPg {
-		end := start + pdfLinesPerPg
-		if end > len(lines) {
-			end = len(lines)
-		}
-		pageIDs = append(pageIDs, addPDFPage(w, pagesID, fontID, lines[start:end]))
-	}
-	if len(pageIDs) == 0 {
-		pageIDs = append(pageIDs, addPDFPage(w, pagesID, fontID, []string{title}))
-	}
-
-	kids := make([]string, len(pageIDs))
-	for i, id := range pageIDs {
-		kids[i] = fmt.Sprintf("%d 0 R", id)
-	}
-	w.set(pagesID, fmt.Sprintf("<< /Type /Pages /Kids [%s] /Count %d >>", strings.Join(kids, " "), len(pageIDs)))
-	w.set(catalogID, fmt.Sprintf("<< /Type /Catalog /Pages %d 0 R >>", pagesID))
-
-	return w.build(catalogID), nil
+type pdfPage struct {
+	ops []string
 }
 
-func addPDFPage(w *pdfWriter, pagesID, fontID int, lines []string) int {
-	var content bytes.Buffer
-	content.WriteString(fmt.Sprintf("BT\n/F1 %d Tf\n%d TL\n%d %d Td\n", pdfFontSize, pdfLeading, pdfMarginLeft, pdfPageHeight-pdfMarginTop))
-	for i, ln := range lines {
-		if i > 0 {
-			content.WriteString("T*\n")
-		}
-		content.WriteString("(" + escapePDFText(ln) + ") Tj\n")
+func (p *pdfPage) add(op string) { p.ops = append(p.ops, op) }
+
+func pdfRect(p *pdfPage, x, y, w, h float64, c [3]float64) {
+	p.add(fmt.Sprintf("%.3f %.3f %.3f rg\n%.2f %.2f %.2f %.2f re\nf", c[0], c[1], c[2], x, y, w, h))
+}
+
+func pdfLine(p *pdfPage, x1, y1, x2, y2 float64, c [3]float64, width float64) {
+	p.add(fmt.Sprintf("%.3f %.3f %.3f RG\n%.2f w\n%.2f %.2f m\n%.2f %.2f l\nS", c[0], c[1], c[2], width, x1, y1, x2, y2))
+}
+
+func pdfText(p *pdfPage, font string, size float64, x, y float64, c [3]float64, text string) {
+	p.add(fmt.Sprintf("BT\n/%s %.1f Tf\n%.3f %.3f %.3f rg\n%.2f %.2f Td\n(%s) Tj\nET",
+		font, size, c[0], c[1], c[2], x, y, escapePDFText(text)))
+}
+
+// pdfTextRight right-aligns text against rightX using an approximate
+// Helvetica average-glyph-width heuristic (there's no font-metrics table in
+// this hand-rolled renderer, so this is a good-enough estimate, not exact
+// kerning).
+func pdfTextRight(p *pdfPage, font string, size float64, rightX, y float64, c [3]float64, text string) {
+	width := float64(len(text)) * size * 0.5
+	pdfText(p, font, size, rightX-width, y, c, text)
+}
+
+func pdfImageDraw(p *pdfPage, name string, x, y, w, h float64) {
+	p.add(fmt.Sprintf("q\n%.2f 0 0 %.2f %.2f %.2f cm\n/%s Do\nQ", w, h, x, y, name))
+}
+
+func charsForWidth(widthPt, fontSize float64) int {
+	avgCharWidth := fontSize * 0.5
+	n := int(widthPt / avgCharWidth)
+	if n < 4 {
+		n = 4
 	}
-	content.WriteString("ET")
+	return n
+}
 
-	stream := content.String()
-	contentID := w.add(fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(stream), stream))
+func resourcesDict(fontReg, fontBold, logoID int) string {
+	xobj := ""
+	if logoID != 0 {
+		xobj = fmt.Sprintf(" /XObject << /Logo %d 0 R >>", logoID)
+	}
+	return fmt.Sprintf("<< /Font << /F1 %d 0 R /F2 %d 0 R >>%s >>", fontReg, fontBold, xobj)
+}
 
-	return w.add(fmt.Sprintf(
-		"<< /Type /Page /Parent %d 0 R /MediaBox [0 0 %d %d] /Resources << /Font << /F1 %d 0 R >> >> /Contents %d 0 R >>",
-		pagesID, pdfPageWidth, pdfPageHeight, fontID, contentID,
-	))
+// ── Page-flow builder ────────────────────────────────────────────────────
+
+// pdfDoc lays out a cover page followed by any number of flowing content
+// pages, wrapping headings/paragraphs/tables and starting new pages as
+// content overflows. Page numbers and the letterhead footer are applied at
+// build() time, once the total page count is known.
+type pdfDoc struct {
+	w         *pdfWriter
+	catalogID int
+	pagesID   int
+	fontReg   int
+	fontBold  int
+	logoID    int
+	logo      *pdfLogo
+	meta      reportMeta
+
+	cover *pdfPage
+	pages []*pdfPage
+	cur   *pdfPage
+	y     float64
+}
+
+func newPDFDoc(meta reportMeta, logo *pdfLogo) *pdfDoc {
+	w := newPDFWriter()
+	d := &pdfDoc{w: w, meta: meta, logo: logo}
+	d.catalogID = w.reserve()
+	d.pagesID = w.reserve()
+	d.fontReg = w.add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+	d.fontBold = w.add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
+	if logo != nil {
+		d.logoID = w.addImageXObject(logo)
+	}
+	d.buildCover()
+	d.newContentPage()
+	return d
+}
+
+func (d *pdfDoc) newContentPage() {
+	p := &pdfPage{}
+	d.pages = append(d.pages, p)
+	d.cur = p
+	d.drawContentHeader()
+	d.y = pdfPageHeight - pdfMarginTop - 6
+}
+
+func (d *pdfDoc) drawContentHeader() {
+	top := pdfPageHeight - 34
+	pdfText(d.cur, "F2", 8.5, pdfMarginL, top, brandPrimary, "SPE-Lite")
+	pdfText(d.cur, "F1", 8, pdfMarginL+42, top, inkLight, "by DGRV Eswatini")
+	pdfTextRight(d.cur, "F1", 8, pdfPageWidth-pdfMarginR, top, inkMed, d.meta.OrgName)
+	pdfLine(d.cur, pdfMarginL, top-10, pdfPageWidth-pdfMarginR, top-10, borderGray, 0.75)
+}
+
+func (d *pdfDoc) footer(p *pdfPage, pageNum, total int) {
+	y := pdfMarginBot - 22
+	pdfLine(p, pdfMarginL, y+14, pdfPageWidth-pdfMarginR, y+14, borderGray, 0.5)
+	pdfText(p, "F1", 7.5, pdfMarginL, y, inkLight, "SPE-Lite by DGRV Eswatini \u2014 Confidential")
+	pdfTextRight(p, "F1", 7.5, pdfPageWidth-pdfMarginR, y, inkLight, fmt.Sprintf("Page %d of %d", pageNum, total))
+}
+
+func (d *pdfDoc) ensureSpace(h float64) {
+	if d.y-h < pdfMarginBot+16 {
+		d.newContentPage()
+	}
+}
+
+func (d *pdfDoc) buildCover() {
+	p := &pdfPage{}
+	d.cover = p
+
+	// Top brand band.
+	pdfRect(p, 0, pdfPageHeight-170, pdfPageWidth, 170, brandPrimary)
+	pdfRect(p, 0, pdfPageHeight-174, pdfPageWidth, 4, brandAccent)
+
+	if d.logoID != 0 {
+		lw, lh := d.logo.ptSize(56, 150)
+		pdfImageDraw(p, "Logo", pdfMarginL, pdfPageHeight-40-lh, lw, lh)
+	}
+	pdfTextRight(p, "F2", 12, pdfPageWidth-pdfMarginR, pdfPageHeight-56, white, "SPE-Lite")
+	pdfTextRight(p, "F1", 8.5, pdfPageWidth-pdfMarginR, pdfPageHeight-70, white, "Strategic Planning & Execution Platform")
+	pdfTextRight(p, "F1", 8, pdfPageWidth-pdfMarginR, pdfPageHeight-84, white, "by DGRV Eswatini")
+
+	y := pdfPageHeight - 236.0
+	pdfText(p, "F2", 21, pdfMarginL, y, inkDark, d.meta.ReportTitle)
+	y -= 24
+	pdfText(p, "F1", 12, pdfMarginL, y, inkMed, d.meta.ReportTypeLabel)
+	y -= 42
+
+	labelVal := func(label, val string) {
+		if val == "" {
+			return
+		}
+		pdfText(p, "F2", 9.5, pdfMarginL, y, inkMed, label)
+		pdfText(p, "F1", 9.5, pdfMarginL+130, y, inkDark, val)
+		y -= 18
+	}
+	labelVal("Plan", d.meta.PlanTitle)
+	labelVal("Organisation", d.meta.OrgName)
+	labelVal("Industry", d.meta.OrgIndustry)
+	labelVal("Plan Status", strings.ToUpper(d.meta.PlanStatus))
+	labelVal("Prepared By", d.meta.GeneratedBy)
+	labelVal("Generated On", d.meta.GeneratedAt.Format("02 January 2006, 15:04"))
+
+	y -= 16
+	pdfLine(p, pdfMarginL, y, pdfPageWidth-pdfMarginR, y, borderGray, 0.75)
+	y -= 20
+	pdfText(p, "F1", 8.5, pdfMarginL, y, inkLight, "CONFIDENTIAL \u2014 this document contains proprietary strategic planning")
+	y -= 12
+	pdfText(p, "F1", 8.5, pdfMarginL, y, inkLight, "information prepared solely for the addressed organisation.")
+
+	pdfLine(p, pdfMarginL, 60, pdfPageWidth-pdfMarginR, 60, borderGray, 0.5)
+	pdfText(p, "F1", 8, pdfMarginL, 46, inkLight, "Generated by SPE-Lite \u2014 a strategic planning platform by DGRV Eswatini")
+}
+
+func (d *pdfDoc) heading(text string) {
+	d.ensureSpace(36)
+	d.y -= 4
+	pdfRect(d.cur, pdfMarginL, d.y-3, 3, 15, brandAccent)
+	pdfText(d.cur, "F2", 12.5, pdfMarginL+10, d.y, brandPrimary, text)
+	d.y -= 7
+	pdfLine(d.cur, pdfMarginL, d.y, pdfPageWidth-pdfMarginR, d.y, borderGray, 0.5)
+	d.y -= 16
+}
+
+func (d *pdfDoc) paragraph(text string) {
+	lines := wrapText(text, charsForWidth(pdfContentW, 9.5))
+	for _, ln := range lines {
+		d.ensureSpace(13)
+		pdfText(d.cur, "F1", 9.5, pdfMarginL, d.y, inkDark, ln)
+		d.y -= 13
+	}
+	d.y -= 6
+}
+
+func (d *pdfDoc) table(t *contentTable) {
+	if t == nil || len(t.Headers) == 0 {
+		return
+	}
+	n := len(t.Headers)
+	weights := make([]float64, n)
+	for i, h := range t.Headers {
+		weights[i] = float64(len(h))
+	}
+	for _, row := range t.Rows {
+		for i, c := range row {
+			if i < n && float64(len(c)) > weights[i] {
+				weights[i] = float64(len(c))
+			}
+		}
+	}
+	total := 0.0
+	for _, wt := range weights {
+		total += wt
+	}
+	if total == 0 {
+		total = float64(n)
+	}
+	const minW = 55.0
+	colW := make([]float64, n)
+	for i := range colW {
+		cw := weights[i] / total * pdfContentW
+		if cw < minW {
+			cw = minW
+		}
+		colW[i] = cw
+	}
+	sum := 0.0
+	for _, cw := range colW {
+		sum += cw
+	}
+	if sum > pdfContentW {
+		scale := pdfContentW / sum
+		for i := range colW {
+			colW[i] *= scale
+		}
+	}
+
+	const fontSize = 8.0
+	const pad = 4.0
+	drawRow := func(cells []string, header, band bool) {
+		cellLines := make([][]string, n)
+		maxLines := 1
+		for i := 0; i < n; i++ {
+			var text string
+			if i < len(cells) {
+				text = cells[i]
+			}
+			chars := charsForWidth(colW[i]-2*pad, fontSize)
+			cellLines[i] = wrapText(text, chars)
+			if len(cellLines[i]) > maxLines {
+				maxLines = len(cellLines[i])
+			}
+		}
+		rowH := float64(maxLines)*(fontSize+2.5) + 2*pad
+		d.ensureSpace(rowH)
+
+		if header {
+			pdfRect(d.cur, pdfMarginL, d.y-rowH, pdfContentW, rowH, brandPrimary)
+		} else if band {
+			pdfRect(d.cur, pdfMarginL, d.y-rowH, pdfContentW, rowH, bandLight)
+		}
+
+		x := pdfMarginL
+		for i := 0; i < n; i++ {
+			textColor, font := inkDark, "F1"
+			if header {
+				textColor, font = white, "F2"
+			}
+			ty := d.y - pad - fontSize
+			for _, ln := range cellLines[i] {
+				pdfText(d.cur, font, fontSize, x+pad, ty, textColor, ln)
+				ty -= fontSize + 2.5
+			}
+			x += colW[i]
+		}
+
+		x = pdfMarginL
+		for i := 0; i <= n; i++ {
+			pdfLine(d.cur, x, d.y, x, d.y-rowH, borderGray, 0.4)
+			if i < n {
+				x += colW[i]
+			}
+		}
+		pdfLine(d.cur, pdfMarginL, d.y-rowH, pdfMarginL+pdfContentW, d.y-rowH, borderGray, 0.4)
+		d.y -= rowH
+	}
+
+	drawRow(t.Headers, true, false)
+	for i, row := range t.Rows {
+		drawRow(row, false, i%2 == 1)
+	}
+	d.y -= 10
+}
+
+func (d *pdfDoc) build() []byte {
+	total := len(d.pages)
+	for i, p := range d.pages {
+		d.footer(p, i+1, total)
+	}
+
+	res := resourcesDict(d.fontReg, d.fontBold, d.logoID)
+
+	var kidIDs []int
+	coverContentID := d.w.addContentStream(d.cover.ops)
+	kidIDs = append(kidIDs, d.w.addPage(d.pagesID, res, coverContentID))
+	for _, p := range d.pages {
+		cID := d.w.addContentStream(p.ops)
+		kidIDs = append(kidIDs, d.w.addPage(d.pagesID, res, cID))
+	}
+
+	kids := make([]string, len(kidIDs))
+	for i, id := range kidIDs {
+		kids[i] = fmt.Sprintf("%d 0 R", id)
+	}
+	d.w.set(d.pagesID, fmt.Sprintf("<< /Type /Pages /Kids [%s] /Count %d >>", strings.Join(kids, " "), len(kidIDs)))
+	d.w.set(d.catalogID, fmt.Sprintf("<< /Type /Catalog /Pages %d 0 R >>", d.pagesID))
+	return d.w.build(d.catalogID)
+}
+
+func renderPDF(meta reportMeta, rc *reportContent, logo *pdfLogo) ([]byte, error) {
+	d := newPDFDoc(meta, logo)
+	if len(rc.Sections) == 0 {
+		d.paragraph("This report has no sections to display.")
+	}
+	for _, sec := range rc.Sections {
+		d.heading(sec.Heading)
+		for _, p := range sec.Paragraphs {
+			d.paragraph(p)
+		}
+		if sec.Table != nil {
+			d.table(sec.Table)
+		}
+	}
+	return d.build(), nil
 }
 
 // escapePDFText escapes PDF string-literal special characters and drops
@@ -151,27 +609,6 @@ func escapePDFText(s string) string {
 		}
 	}
 	return b.String()
-}
-
-// flattenToLines turns the section tree into a flat list of text lines,
-// wrapping long paragraphs and rendering tables as simple pipe-delimited
-// rows — enough structure to be readable in a plain-text PDF layout.
-func flattenToLines(title string, rc *reportContent) []string {
-	lines := []string{title, strings.Repeat("=", len(title)), ""}
-	for _, sec := range rc.Sections {
-		lines = append(lines, sec.Heading, strings.Repeat("-", len(sec.Heading)))
-		for _, p := range sec.Paragraphs {
-			lines = append(lines, wrapText(p, pdfWrapColumns)...)
-		}
-		if sec.Table != nil {
-			lines = append(lines, strings.Join(sec.Table.Headers, "  |  "))
-			for _, row := range sec.Table.Rows {
-				lines = append(lines, strings.Join(row, "  |  "))
-			}
-		}
-		lines = append(lines, "")
-	}
-	return lines
 }
 
 func wrapText(s string, width int) []string {
@@ -197,9 +634,9 @@ func wrapText(s string, width int) []string {
 	return lines
 }
 
-// ── Shared: zip + XML escaping for DOCX/XLSX ────────────────────────────────
+// ── Shared: zip + XML escaping for DOCX/XLSX ────────────────────────────
 
-func buildZip(files map[string]string) ([]byte, error) {
+func buildZip(files map[string][]byte) ([]byte, error) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	for name, content := range files {
@@ -207,7 +644,7 @@ func buildZip(files map[string]string) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := f.Write([]byte(content)); err != nil {
+		if _, err := f.Write(content); err != nil {
 			return nil, err
 		}
 	}
@@ -228,13 +665,18 @@ func xmlEscape(s string) string {
 	return r.Replace(s)
 }
 
-// ── DOCX ──────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════
+// DOCX
+// ══════════════════════════════════════════════════════════════════════════
 
 const docxContentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
+<Default Extension="jpeg" ContentType="image/jpeg"/>
 <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
+<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
 </Types>`
 
 const docxRootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -242,54 +684,199 @@ const docxRootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>`
 
-func renderDOCX(title string, rc *reportContent) ([]byte, error) {
-	var body bytes.Buffer
-	body.WriteString(`<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t>` + xmlEscape(title) + `</w:t></w:r></w:p>`)
+const docxFontRun = `w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"`
 
-	for _, sec := range rc.Sections {
-		body.WriteString(`<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>` + xmlEscape(sec.Heading) + `</w:t></w:r></w:p>`)
-		for _, p := range sec.Paragraphs {
-			body.WriteString(`<w:p><w:r><w:t xml:space="preserve">` + xmlEscape(p) + `</w:t></w:r></w:p>`)
-		}
-		if sec.Table != nil {
-			body.WriteString(`<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders>` +
-				`<w:top w:val="single" w:sz="4"/><w:left w:val="single" w:sz="4"/>` +
-				`<w:bottom w:val="single" w:sz="4"/><w:right w:val="single" w:sz="4"/>` +
-				`<w:insideH w:val="single" w:sz="4"/><w:insideV w:val="single" w:sz="4"/></w:tblBorders></w:tblPr>`)
-			body.WriteString(docxTableRow(sec.Table.Headers, true))
-			for _, row := range sec.Table.Rows {
-				body.WriteString(docxTableRow(row, false))
-			}
-			body.WriteString(`</w:tbl>`)
-		}
+func docxImageParagraph(logo *pdfLogo) string {
+	if logo == nil {
+		return ""
 	}
-
-	documentXML := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-		`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
-		`<w:body>` + body.String() + `<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`
-
-	return buildZip(map[string]string{
-		"[Content_Types].xml": docxContentTypes,
-		"_rels/.rels":         docxRootRels,
-		"word/document.xml":   documentXML,
-	})
+	cx, cy := logo.emuSize(0.55, 1.7)
+	if cx == 0 || cy == 0 {
+		return ""
+	}
+	return `<w:p><w:r><w:drawing>` +
+		`<wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0">` +
+		fmt.Sprintf(`<wp:extent cx="%d" cy="%d"/>`, cx, cy) +
+		`<wp:docPr id="1" name="Logo"/>` +
+		`<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+		`<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+		`<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+		`<pic:nvPicPr><pic:cNvPr id="1" name="Logo"/><pic:cNvPicPr/></pic:nvPicPr>` +
+		`<pic:blipFill><a:blip r:embed="rIdImage"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+		fmt.Sprintf(`<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="%d" cy="%d"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>`, cx, cy) +
+		`</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`
 }
 
-func docxTableRow(cells []string, bold bool) string {
+func docxTitle(text string) string {
+	return `<w:p><w:pPr><w:spacing w:before="160" w:after="40"/></w:pPr>` +
+		`<w:r><w:rPr><w:b/><w:color w:val="` + brandPrimaryHex + `"/><w:sz w:val="44"/><w:rFonts ` + docxFontRun + `/></w:rPr>` +
+		`<w:t xml:space="preserve">` + xmlEscape(text) + `</w:t></w:r></w:p>`
+}
+
+func docxSubtitle(text string) string {
+	return `<w:p><w:pPr><w:spacing w:after="240"/></w:pPr>` +
+		`<w:r><w:rPr><w:color w:val="` + inkMedHex + `"/><w:sz w:val="22"/><w:rFonts ` + docxFontRun + `/></w:rPr>` +
+		`<w:t xml:space="preserve">` + xmlEscape(text) + `</w:t></w:r></w:p>`
+}
+
+func docxMetaLine(label, val string) string {
+	if val == "" {
+		return ""
+	}
+	return `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>` +
+		`<w:r><w:rPr><w:b/><w:sz w:val="19"/><w:rFonts ` + docxFontRun + `/></w:rPr><w:t xml:space="preserve">` + xmlEscape(label+":  ") + `</w:t></w:r>` +
+		`<w:r><w:rPr><w:sz w:val="19"/><w:rFonts ` + docxFontRun + `/></w:rPr><w:t xml:space="preserve">` + xmlEscape(val) + `</w:t></w:r></w:p>`
+}
+
+func docxConfidentialityNote() string {
+	return `<w:p><w:pPr><w:spacing w:before="220"/></w:pPr>` +
+		`<w:r><w:rPr><w:i/><w:color w:val="` + inkLightHex + `"/><w:sz w:val="17"/><w:rFonts ` + docxFontRun + `/></w:rPr>` +
+		`<w:t xml:space="preserve">CONFIDENTIAL — prepared solely for the addressed organisation. Distribution is restricted.</w:t></w:r></w:p>`
+}
+
+func docxPageBreak() string {
+	return `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`
+}
+
+func docxHeading(text string) string {
+	return `<w:p><w:pPr><w:spacing w:before="260" w:after="100"/>` +
+		`<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="` + brandPrimaryHex + `"/></w:pBdr></w:pPr>` +
+		`<w:r><w:rPr><w:b/><w:color w:val="` + brandPrimaryHex + `"/><w:sz w:val="26"/><w:rFonts ` + docxFontRun + `/></w:rPr>` +
+		`<w:t xml:space="preserve">` + xmlEscape(text) + `</w:t></w:r></w:p>`
+}
+
+func docxParagraph(text string) string {
+	return `<w:p><w:pPr><w:spacing w:after="140"/></w:pPr>` +
+		`<w:r><w:rPr><w:sz w:val="19"/><w:rFonts ` + docxFontRun + `/><w:color w:val="` + inkDarkHex + `"/></w:rPr>` +
+		`<w:t xml:space="preserve">` + xmlEscape(text) + `</w:t></w:r></w:p>`
+}
+
+func docxTableRow(cells []string, kind int) string {
+	// kind: 0 = header, 1 = normal, 2 = banded
 	var row bytes.Buffer
 	row.WriteString(`<w:tr>`)
+	shade := ""
+	switch kind {
+	case 0:
+		shade = `<w:shd w:val="clear" w:fill="` + brandPrimaryHex + `"/>`
+	case 2:
+		shade = `<w:shd w:val="clear" w:fill="` + bandLightHex + `"/>`
+	}
 	for _, c := range cells {
-		rPr := ""
-		if bold {
-			rPr = `<w:rPr><w:b/></w:rPr>`
+		rPr := `<w:rPr><w:sz w:val="18"/><w:rFonts ` + docxFontRun + `/></w:rPr>`
+		if kind == 0 {
+			rPr = `<w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="18"/><w:rFonts ` + docxFontRun + `/></w:rPr>`
 		}
-		row.WriteString(`<w:tc><w:p><w:r>` + rPr + `<w:t xml:space="preserve">` + xmlEscape(c) + `</w:t></w:r></w:p></w:tc>`)
+		row.WriteString(`<w:tc><w:tcPr><w:tcMar><w:left w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tcMar>` + shade + `</w:tcPr>` +
+			`<w:p><w:r>` + rPr + `<w:t xml:space="preserve">` + xmlEscape(c) + `</w:t></w:r></w:p></w:tc>`)
 	}
 	row.WriteString(`</w:tr>`)
 	return row.String()
 }
 
-// ── XLSX ──────────────────────────────────────────────────────────────────
+func docxTable(t *contentTable) string {
+	var body strings.Builder
+	body.WriteString(`<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>` +
+		`<w:top w:val="single" w:sz="4" w:color="` + borderGrayHex + `"/><w:left w:val="single" w:sz="4" w:color="` + borderGrayHex + `"/>` +
+		`<w:bottom w:val="single" w:sz="4" w:color="` + borderGrayHex + `"/><w:right w:val="single" w:sz="4" w:color="` + borderGrayHex + `"/>` +
+		`<w:insideH w:val="single" w:sz="4" w:color="` + borderGrayHex + `"/><w:insideV w:val="single" w:sz="4" w:color="` + borderGrayHex + `"/></w:tblBorders></w:tblPr>`)
+	body.WriteString(docxTableRow(t.Headers, 0))
+	for i, row := range t.Rows {
+		kind := 1
+		if i%2 == 1 {
+			kind = 2
+		}
+		body.WriteString(docxTableRow(row, kind))
+	}
+	body.WriteString(`</w:tbl><w:p><w:pPr><w:spacing w:after="160"/></w:pPr></w:p>`)
+	return body.String()
+}
+
+func docxHeaderXML(orgName string) string {
+	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+		`<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="4" w:color="` + borderGrayHex + `"/></w:pBdr>` +
+		`<w:tabs><w:tab w:val="right" w:pos="9360"/></w:tabs></w:pPr>` +
+		`<w:r><w:rPr><w:b/><w:color w:val="` + brandPrimaryHex + `"/><w:sz w:val="16"/><w:rFonts ` + docxFontRun + `/></w:rPr><w:t xml:space="preserve">SPE-Lite  </w:t></w:r>` +
+		`<w:r><w:rPr><w:color w:val="` + inkLightHex + `"/><w:sz w:val="16"/><w:rFonts ` + docxFontRun + `/></w:rPr><w:t xml:space="preserve">by DGRV Eswatini</w:t></w:r>` +
+		`<w:r><w:rPr><w:color w:val="` + inkLightHex + `"/><w:sz w:val="16"/><w:rFonts ` + docxFontRun + `/></w:rPr><w:tab/><w:t xml:space="preserve">` + xmlEscape(orgName) + `</w:t></w:r>` +
+		`</w:p></w:hdr>`
+}
+
+func docxFooterXML() string {
+	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+		`<w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="4" w:space="4" w:color="` + borderGrayHex + `"/></w:pBdr>` +
+		`<w:tabs><w:tab w:val="right" w:pos="9360"/></w:tabs></w:pPr>` +
+		`<w:r><w:rPr><w:color w:val="` + inkLightHex + `"/><w:sz w:val="15"/><w:rFonts ` + docxFontRun + `/></w:rPr><w:t xml:space="preserve">SPE-Lite by DGRV Eswatini — Confidential</w:t></w:r>` +
+		`<w:r><w:rPr><w:color w:val="` + inkLightHex + `"/><w:sz w:val="15"/><w:rFonts ` + docxFontRun + `/></w:rPr><w:tab/><w:t xml:space="preserve">Page </w:t></w:r>` +
+		`<w:fldSimple w:instr=" PAGE "><w:r><w:rPr><w:color w:val="` + inkLightHex + `"/><w:sz w:val="15"/></w:rPr><w:t>1</w:t></w:r></w:fldSimple>` +
+		`<w:r><w:rPr><w:color w:val="` + inkLightHex + `"/><w:sz w:val="15"/><w:rFonts ` + docxFontRun + `/></w:rPr><w:t xml:space="preserve"> of </w:t></w:r>` +
+		`<w:fldSimple w:instr=" NUMPAGES "><w:r><w:rPr><w:color w:val="` + inkLightHex + `"/><w:sz w:val="15"/></w:rPr><w:t>1</w:t></w:r></w:fldSimple>` +
+		`</w:p></w:ftr>`
+}
+
+func renderDOCX(meta reportMeta, rc *reportContent, logo *pdfLogo) ([]byte, error) {
+	var cover strings.Builder
+	cover.WriteString(docxImageParagraph(logo))
+	cover.WriteString(docxTitle(meta.ReportTitle))
+	cover.WriteString(docxSubtitle(meta.ReportTypeLabel))
+	cover.WriteString(`<w:p/>`)
+	cover.WriteString(docxMetaLine("Plan", meta.PlanTitle))
+	cover.WriteString(docxMetaLine("Organisation", meta.OrgName))
+	cover.WriteString(docxMetaLine("Industry", meta.OrgIndustry))
+	cover.WriteString(docxMetaLine("Plan Status", strings.ToUpper(meta.PlanStatus)))
+	cover.WriteString(docxMetaLine("Prepared By", meta.GeneratedBy))
+	cover.WriteString(docxMetaLine("Generated On", meta.GeneratedAt.Format("02 January 2006, 15:04")))
+	cover.WriteString(docxConfidentialityNote())
+	cover.WriteString(docxPageBreak())
+
+	var body strings.Builder
+	if len(rc.Sections) == 0 {
+		body.WriteString(docxParagraph("This report has no sections to display."))
+	}
+	for _, sec := range rc.Sections {
+		body.WriteString(docxHeading(sec.Heading))
+		for _, p := range sec.Paragraphs {
+			body.WriteString(docxParagraph(p))
+		}
+		if sec.Table != nil && len(sec.Table.Headers) > 0 {
+			body.WriteString(docxTable(sec.Table))
+		}
+	}
+
+	sectPr := `<w:sectPr><w:headerReference w:type="default" r:id="rIdHeader"/><w:footerReference w:type="default" r:id="rIdFooter"/>` +
+		`<w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1080" w:bottom="1440" w:left="1080" w:header="720" w:footer="720"/></w:sectPr>`
+
+	documentXML := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+		`<w:body>` + cover.String() + body.String() + sectPr + `</w:body></w:document>`
+
+	relTargets := `<Relationship Id="rIdHeader" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>` +
+		`<Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>`
+	if logo != nil {
+		relTargets += `<Relationship Id="rIdImage" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.jpeg"/>`
+	}
+	documentRels := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` + relTargets + `</Relationships>`
+
+	files := map[string][]byte{
+		"[Content_Types].xml":          []byte(docxContentTypes),
+		"_rels/.rels":                  []byte(docxRootRels),
+		"word/document.xml":            []byte(documentXML),
+		"word/_rels/document.xml.rels": []byte(documentRels),
+		"word/header1.xml":             []byte(docxHeaderXML(meta.OrgName)),
+		"word/footer1.xml":             []byte(docxFooterXML()),
+	}
+	if logo != nil {
+		files["word/media/image1.jpeg"] = logo.Bytes
+	}
+	return buildZip(files)
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// XLSX
+// ══════════════════════════════════════════════════════════════════════════
 
 const xlsxContentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -297,6 +884,7 @@ const xlsxContentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?
 <Default Extension="xml" ContentType="application/xml"/>
 <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
 <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>`
 
 const xlsxRootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -312,48 +900,123 @@ const xlsxWorkbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 const xlsxWorkbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`
 
-func renderXLSX(title string, rc *reportContent) ([]byte, error) {
+// xlsxStyles defines a small fixed style palette:
+//
+//	0 default   1 title   2 section-heading/meta   3 table header (navy/white)
+//	4 bordered cell   5 bordered + banded cell
+const xlsxStyles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="5">
+<font><sz val="10"/><name val="Calibri"/></font>
+<font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+<font><b/><sz val="18"/><color rgb="FF1B3A63"/><name val="Calibri"/></font>
+<font><b/><sz val="11"/><color rgb="FF1B3A63"/><name val="Calibri"/></font>
+<font><i/><sz val="9"/><color rgb="FF8A8F99"/><name val="Calibri"/></font>
+</fonts>
+<fills count="4">
+<fill><patternFill patternType="none"/></fill>
+<fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF1B3A63"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFF2F3F5"/><bgColor indexed="64"/></patternFill></fill>
+</fills>
+<borders count="2">
+<border><left/><right/><top/><bottom/><diagonal/></border>
+<border><left style="thin"><color rgb="FFD5D8DD"/></left><right style="thin"><color rgb="FFD5D8DD"/></right><top style="thin"><color rgb="FFD5D8DD"/></top><bottom style="thin"><color rgb="FFD5D8DD"/></bottom><diagonal/></border>
+</borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="6">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
+<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1"/>
+</cellXfs>
+</styleSheet>`
+
+func renderXLSX(meta reportMeta, rc *reportContent) ([]byte, error) {
 	rowIdx := 1
 	var rows []string
-	addRow := func(cells []string) {
+	maxCols := 1
+
+	addRow := func(cells []string, style int) {
 		var cs []string
 		for i, c := range cells {
 			ref := colLetter(i) + fmt.Sprint(rowIdx)
-			cs = append(cs, fmt.Sprintf(`<c r="%s" t="inlineStr"><is><t xml:space="preserve">%s</t></is></c>`, ref, xmlEscape(c)))
+			sAttr := ""
+			if style != 0 {
+				sAttr = fmt.Sprintf(` s="%d"`, style)
+			}
+			cs = append(cs, fmt.Sprintf(`<c r="%s"%s t="inlineStr"><is><t xml:space="preserve">%s</t></is></c>`, ref, sAttr, xmlEscape(c)))
 		}
 		rows = append(rows, fmt.Sprintf(`<row r="%d">%s</row>`, rowIdx, strings.Join(cs, "")))
 		rowIdx++
 	}
 
-	addRow([]string{title})
-	addRow([]string{""})
+	addRow([]string{meta.ReportTitle}, 1)
+	addRow([]string{meta.ReportTypeLabel}, 4)
+	addRow([]string{""}, 0)
+	addRow([]string{"Organisation: " + meta.OrgName}, 0)
+	if meta.OrgIndustry != "" {
+		addRow([]string{"Industry: " + meta.OrgIndustry}, 0)
+	}
+	addRow([]string{"Plan: " + meta.PlanTitle + "   |   Status: " + strings.ToUpper(meta.PlanStatus)}, 0)
+	addRow([]string{"Prepared by " + meta.GeneratedBy + " on " + meta.GeneratedAt.Format("02 Jan 2006 15:04")}, 4)
+	addRow([]string{"SPE-Lite by DGRV Eswatini \u2014 Confidential"}, 4)
+	addRow([]string{""}, 0)
+
+	if len(rc.Sections) == 0 {
+		addRow([]string{"This report has no sections to display."}, 0)
+	}
 	for _, sec := range rc.Sections {
-		addRow([]string{sec.Heading})
+		addRow([]string{sec.Heading}, 2)
 		for _, p := range sec.Paragraphs {
-			addRow([]string{p})
+			addRow([]string{p}, 0)
 		}
-		if sec.Table != nil {
-			addRow(sec.Table.Headers)
-			for _, row := range sec.Table.Rows {
-				addRow(row)
+		if sec.Table != nil && len(sec.Table.Headers) > 0 {
+			if len(sec.Table.Headers) > maxCols {
+				maxCols = len(sec.Table.Headers)
+			}
+			addRow(sec.Table.Headers, 3)
+			for i, row := range sec.Table.Rows {
+				style := 4
+				if i%2 == 1 {
+					style = 5
+				}
+				addRow(row, style)
 			}
 		}
-		addRow([]string{""})
+		addRow([]string{""}, 0)
 	}
+
+	var colsXML strings.Builder
+	colsXML.WriteString("<cols>")
+	for i := 0; i < maxCols; i++ {
+		w := 22.0
+		if i == 0 {
+			w = 36.0
+		}
+		colsXML.WriteString(fmt.Sprintf(`<col min="%d" max="%d" width="%.1f" customWidth="1"/>`, i+1, i+1, w))
+	}
+	colsXML.WriteString("</cols>")
 
 	sheetXML := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 		`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+		colsXML.String() +
 		`<sheetData>` + strings.Join(rows, "") + `</sheetData></worksheet>`
 
-	return buildZip(map[string]string{
-		"[Content_Types].xml":        xlsxContentTypes,
-		"_rels/.rels":                xlsxRootRels,
-		"xl/workbook.xml":            xlsxWorkbook,
-		"xl/_rels/workbook.xml.rels": xlsxWorkbookRels,
-		"xl/worksheets/sheet1.xml":   sheetXML,
-	})
+	files := map[string][]byte{
+		"[Content_Types].xml":        []byte(xlsxContentTypes),
+		"_rels/.rels":                []byte(xlsxRootRels),
+		"xl/workbook.xml":            []byte(xlsxWorkbook),
+		"xl/_rels/workbook.xml.rels": []byte(xlsxWorkbookRels),
+		"xl/worksheets/sheet1.xml":   []byte(sheetXML),
+		"xl/styles.xml":              []byte(xlsxStyles),
+	}
+	return buildZip(files)
 }
 
 // colLetter converts a 0-based column index to a spreadsheet column letter

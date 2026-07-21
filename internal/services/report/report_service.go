@@ -29,9 +29,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"spe-light/internal/models"
 	milestonesvc "spe-light/internal/services/milestone"
+	orgsvc "spe-light/internal/services/org"
 	plansvc "spe-light/internal/services/plan"
 
 	"github.com/google/uuid"
@@ -49,19 +51,41 @@ type Service struct {
 	db           *pgxpool.Pool
 	planSvc      *plansvc.Service
 	milestoneSvc *milestonesvc.Service
+	orgSvc       *orgsvc.Service
 	aiSummaryFn  AISummaryFn
 	storageDir   string
+	// logo is the decoded SPE-Lite / DGRV Eswatini letterhead mark, loaded
+	// once at startup. It is nil (never a partial asset) if REPORT_LOGO_PATH
+	// isn't set / the file can't be found or decoded — reports still render
+	// fine without it, just with a text wordmark instead of the mark itself.
+	logo *pdfLogo
 }
 
 // New creates a report Service. aiSummaryFn may be nil — the AI summary
 // section will then just note that AI summaries are unavailable rather than
 // erroring the whole report out.
-func New(db *pgxpool.Pool, planSvc *plansvc.Service, milestoneSvc *milestonesvc.Service, aiSummaryFn AISummaryFn) *Service {
+//
+// The letterhead logo is loaded from REPORT_LOGO_PATH if set, falling back
+// to ./assets/logo.jpg. Point this at a server-side copy of the frontend's
+// public/logo.jpg (the Go backend can't read the frontend's static folder
+// directly in a typical two-service deployment) — e.g. copy it into the
+// backend's assets/ directory as part of your build/deploy step, or set
+// REPORT_LOGO_PATH to wherever it ends up.
+func New(db *pgxpool.Pool, planSvc *plansvc.Service, milestoneSvc *milestonesvc.Service, orgSvc *orgsvc.Service, aiSummaryFn AISummaryFn) *Service {
 	dir := os.Getenv("REPORTS_STORAGE_DIR")
 	if dir == "" {
 		dir = "./data/reports"
 	}
-	return &Service{db: db, planSvc: planSvc, milestoneSvc: milestoneSvc, aiSummaryFn: aiSummaryFn, storageDir: dir}
+	logoPath := os.Getenv("REPORT_LOGO_PATH")
+	if logoPath == "" {
+		logoPath = "./assets/logo.jpg"
+	}
+	logo, _ := loadLogoAsset(logoPath) // nil on any error — see field doc above
+
+	return &Service{
+		db: db, planSvc: planSvc, milestoneSvc: milestoneSvc, orgSvc: orgSvc,
+		aiSummaryFn: aiSummaryFn, storageDir: dir, logo: logo,
+	}
 }
 
 // ── Request/response DTOs ────────────────────────────────────────────────
@@ -186,14 +210,16 @@ func (s *Service) Generate(ctx context.Context, planID, orgID, userID uuid.UUID,
 		return nil, fmt.Errorf("build report content: %w", err)
 	}
 
+	meta := s.buildMeta(ctx, plan, orgID, userID, req.Type)
+
 	var fileBytes []byte
 	switch req.Format {
 	case models.ReportPDF:
-		fileBytes, err = renderPDF(plan.Title, content)
+		fileBytes, err = renderPDF(meta, content, s.logo)
 	case models.ReportDOCX:
-		fileBytes, err = renderDOCX(plan.Title, content)
+		fileBytes, err = renderDOCX(meta, content, s.logo)
 	case models.ReportXLSX:
-		fileBytes, err = renderXLSX(plan.Title, content)
+		fileBytes, err = renderXLSX(meta, content)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("render report: %w", err)
@@ -346,6 +372,36 @@ func (s *Service) get(ctx context.Context, id, orgID uuid.UUID) (*models.Report,
 		r.FileURL = &url
 	}
 	return &r, nil
+}
+
+// ── Letterhead assembly ──────────────────────────────────────────────────
+
+// buildMeta assembles the report's letterhead — organisation details and
+// who/when it was generated. Falls back to safe defaults on any lookup
+// failure rather than failing generation outright, since none of this is
+// essential to the report's actual data.
+func (s *Service) buildMeta(ctx context.Context, plan *models.Plan, orgID, userID uuid.UUID, reportType models.ReportType) reportMeta {
+	meta := reportMeta{
+		ReportTitle:     plan.Title,
+		ReportTypeLabel: reportTypeLabel(string(reportType)),
+		PlanTitle:       plan.Title,
+		PlanStatus:      string(plan.Status),
+		OrgName:         "Your Organisation",
+		GeneratedBy:     "System",
+		GeneratedAt:     time.Now(),
+	}
+	if s.orgSvc != nil {
+		if org, err := s.orgSvc.GetOrgByID(ctx, orgID); err == nil {
+			meta.OrgName = org.Name
+			if org.Industry != nil {
+				meta.OrgIndustry = *org.Industry
+			}
+		}
+		if user, err := s.orgSvc.GetUserByID(ctx, userID); err == nil && user.Name != "" {
+			meta.GeneratedBy = user.Name
+		}
+	}
+	return meta
 }
 
 // ── Content assembly ──────────────────────────────────────────────────────

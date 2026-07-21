@@ -81,7 +81,11 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 	// so the report package doesn't need to know aisvc's request/response
 	// shapes. A failed/unreachable AI service degrades to a placeholder note
 	// in the report rather than failing report generation outright.
-	reportService := reportsvc.New(db, planService, milestoneService,
+	//
+	// orgService is also threaded in (new) so generated reports can carry a
+	// proper letterhead — organisation name/industry and the generating
+	// user's display name — see render.go's reportMeta.
+	reportService := reportsvc.New(db, planService, milestoneService, orgService,
 		func(ctx context.Context, orgID, planID uuid.UUID) (string, error) {
 			resp, err := aiService.Summary(ctx, orgID, aisvc.SummaryRequest{PlanID: planID})
 			if err != nil {
