@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react'
 import { authApi } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
+import AuthBrandPanel from '../components/auth/AuthBrandPanel'
+import AuthMobileHeader from '../components/auth/AuthMobileHeader'
 import LanguageSwitcher from '../components/ui/LanguageSwitcher'
 
 export default function LoginPage() {
@@ -63,77 +65,14 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-ink-900 flex">
-      {/* Left panel — branding */}
-      <div className="hidden lg:flex flex-col justify-between w-[480px] shrink-0 bg-ink-900 border-r border-ink-700 p-12">
-        {/* Logo + language */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <img
-              src="/logo.jpg"
-              alt="SPE-Lite"
-              className="size-9 rounded-xl shrink-0 object-contain"
-            />
-            <span className="font-display font-bold text-white text-lg tracking-tight">SPE-Lite</span>
-          </div>
-          <LanguageSwitcher dark compact />
-        </div>
-
-        {/* Headline */}
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <p className="text-xs font-semibold tracking-widest text-accent-400 uppercase">
-              {t('auth.tagline')}
-            </p>
-            <h1 className="font-display text-4xl font-bold text-white leading-[1.15]">
-              {t('auth.headline1')}<br />{t('auth.headline2')}<br />{t('auth.headline3')}
-            </h1>
-            <p className="text-ink-400 text-base leading-relaxed max-w-xs">
-              {t('auth.heroDescription')}
-            </p>
-          </div>
-
-          {/* Phase pills */}
-          <div className="flex flex-col gap-3">
-            {[
-              { phase: 'P1', label: t('auth.phaseAnalysis'),   desc: t('auth.phaseAnalysisDesc'),   color: 'bg-p1-light text-p1-dark' },
-              { phase: 'P2', label: t('auth.phaseStrategy'),   desc: t('auth.phaseStrategyDesc'),   color: 'bg-p2-light text-p2-dark' },
-              { phase: 'P3', label: t('auth.phaseOperations'), desc: t('auth.phaseOperationsDesc'), color: 'bg-p3-light text-p3-dark' },
-            ].map(({ phase, label, desc, color }) => (
-              <div key={phase} className="flex items-center gap-3">
-                <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold shrink-0 ${color}`}>
-                  {phase}
-                </span>
-                <div>
-                  <p className="text-sm font-semibold text-white">{label}</p>
-                  <p className="text-xs text-ink-400">{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <p className="text-xs text-ink-600">
-          {t('auth.selfHosted')}
-        </p>
-      </div>
+      <AuthBrandPanel />
 
       {/* Right panel — form */}
       <div className="flex-1 flex items-center justify-center p-6 bg-ink-50">
         <div className="w-full max-w-sm">
-          {/* Mobile logo + language */}
-          <div className="flex items-center justify-between gap-2 mb-10 lg:hidden">
-            <div className="flex items-center gap-2">
-              <img
-                src="/logo.jpg"
-                alt="SPE-Lite"
-                className="size-8 rounded-lg shrink-0 object-contain"
-              />
-              <span className="font-display font-bold text-ink-900 text-base">SPE-Lite</span>
-            </div>
-            <LanguageSwitcher compact />
-          </div>
+          <AuthMobileHeader />
 
-          {/* Desktop language switcher (mobile one lives in the row above) */}
+          {/* Desktop language switcher (mobile one lives in the header above) */}
           <div className="hidden lg:flex justify-end mb-4">
             <LanguageSwitcher />
           </div>
@@ -143,7 +82,7 @@ export default function LoginPage() {
             <p className="text-ink-500 text-sm mt-1">{t('auth.signInSubtitle')}</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             {/* Email */}
             <div className="space-y-1.5">
               <label htmlFor="email" className="block text-sm font-medium text-ink-700">
@@ -189,7 +128,7 @@ export default function LoginPage() {
 
             {/* Error */}
             {error && (
-              <div className="flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
+              <div role="alert" className="flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
                 <AlertCircle className="size-4 text-red-500 shrink-0 mt-0.5" />
                 <p className="text-sm text-red-700">{error}</p>
               </div>
@@ -199,7 +138,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading || !email || !password}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-accent-600 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
             >
               {loading ? (
                 <span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -217,7 +156,6 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
-
     </div>
   )
 }
