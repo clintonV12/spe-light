@@ -99,24 +99,28 @@ function PlanStatusPicker({
 }
 
 const STATUS_OPTIONS: { value: ActivityStatus; label: string }[] = [
-  { value: 'not_started',  label: 'Not started' },
-  { value: 'in_progress',  label: 'In progress' },
-  { value: 'under_review', label: 'Under review' },
-  { value: 'complete',     label: 'Complete' },
+  { value: 'not_started', label: 'Not started' },
+  { value: 'in_progress', label: 'In progress' },
+  // Value was 'under_review' — the backend's models.go ActivityStatus enum
+  // only ever defined "review", so every bulk-status-update using this
+  // picker (handleBulkStatus below) was sending a value the backend
+  // couldn't validate/match. See ActivityEditorPage.tsx for the same fix.
+  { value: 'review', label: 'Under review' },
+  { value: 'complete', label: 'Complete' },
 ]
 
 const STATUS_DOT: Record<ActivityStatus, string> = {
-  not_started:  'bg-ink-300',
-  in_progress:  'bg-p2',
-  under_review: 'bg-p1',
-  complete:     'bg-green-500',
+  not_started: 'bg-ink-300',
+  in_progress: 'bg-p2',
+  review:      'bg-p1',
+  complete:    'bg-green-500',
 }
 
 const STATUS_LABEL: Record<ActivityStatus, string> = {
-  not_started:  'Not started',
-  in_progress:  'In progress',
-  under_review: 'Under review',
-  complete:     'Complete',
+  not_started: 'Not started',
+  in_progress: 'In progress',
+  review:      'Under review',
+  complete:    'Complete',
 }
 
 // ─── Bulk action bar ──────────────────────────────────────────────────────────

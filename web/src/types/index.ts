@@ -22,7 +22,7 @@ export type PlanStatus = 'draft' | 'active' | 'review' | 'completed' | 'archived
 
 export type Phase = 'P1' | 'P2' | 'P3'
 
-export type ActivityStatus = 'not_started' | 'in_progress' | 'under_review' | 'complete'
+export type ActivityStatus = 'not_started' | 'in_progress' | 'review' | 'complete'
 
 // Activity type values offered by the "new activity" picker (CreateActivityModal).
 // Not a backend-enforced enum — internal/models/models.go stores Activity.Type

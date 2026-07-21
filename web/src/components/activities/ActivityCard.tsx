@@ -11,17 +11,17 @@ const phaseLabels: Record<Phase, string> = {
 }
 
 const statusLabels: Record<Activity['status'], string> = {
-  not_started:  'Not started',
-  in_progress:  'In progress',
-  under_review: 'Under review',
-  complete:     'Complete',
+  not_started: 'Not started',
+  in_progress: 'In progress',
+  review:      'Under review',
+  complete:    'Complete',
 }
 
 const statusToVariant: Record<Activity['status'], 'neutral' | 'p1' | 'p2' | 'p3' | 'success'> = {
-  not_started:  'neutral',
-  in_progress:  'p2',
-  under_review: 'p1',
-  complete:     'success',
+  not_started: 'neutral',
+  in_progress: 'p2',
+  review:      'p1',
+  complete:    'success',
 }
 
 interface ActivityCardProps {

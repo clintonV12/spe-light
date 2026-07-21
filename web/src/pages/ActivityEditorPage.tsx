@@ -31,10 +31,10 @@ import type { TableColumn, ChartConfig, TableRow } from '../components/activitie
 import type { Activity, ActivityStatus, ActivityType, Phase, ActivityLink } from '../types'
 
 const STATUS_COLORS: Record<ActivityStatus, string> = {
-  not_started:  'bg-ink-100 text-ink-600',
-  in_progress:  'bg-p2-light text-p2-dark',
-  under_review: 'bg-p1-light text-p1-dark',
-  complete:     'bg-green-100 text-green-700',
+  not_started: 'bg-ink-100 text-ink-600',
+  in_progress: 'bg-p2-light text-p2-dark',
+  review:      'bg-p1-light text-p1-dark',
+  complete:    'bg-green-100 text-green-700',
 }
 
 const PHASE_COLOR: Record<Phase, string> = {
@@ -307,10 +307,16 @@ export default function ActivityEditorPage() {
   const isOnline = useOfflineStore((s) => s.isOnline)
 
   const STATUS_OPTIONS: { value: ActivityStatus; label: string }[] = [
-    { value: 'not_started',  label: t('activity.status.not_started') },
-    { value: 'in_progress',  label: t('activity.status.in_progress') },
-    { value: 'under_review', label: t('activity.status.under_review') },
-    { value: 'complete',     label: t('activity.status.complete') },
+    { value: 'not_started', label: t('activity.status.not_started') },
+    { value: 'in_progress', label: t('activity.status.in_progress') },
+    // NOTE: value + i18n key changed from 'under_review' to 'review' to match
+    // the backend's models.go ActivityStatus enum ("review") — this was
+    // previously sending a value the backend never defined. If your locale
+    // JSON files (e.g. en.json) still have the key under
+    // activity.status.under_review, rename it to activity.status.review too,
+    // or this label will fall back to showing the raw key.
+    { value: 'review', label: t('activity.status.review') },
+    { value: 'complete', label: t('activity.status.complete') },
   ]
 
   const [activity, setActivity] = useState<Activity | null>(null)

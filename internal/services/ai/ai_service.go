@@ -119,6 +119,20 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 		req.ActivityID, req.PlanID, orgID,
 	).Scan(&activityTitle)
 
+	// Plan-wide context: every other activity in this plan, its status, a
+	// compact synopsis of what it has already produced, and the dependency
+	// graph around the activity being drafted. Without this, each draft
+	// request was previously answered in total isolation from the rest of
+	// the plan — the model had no way to know Phase 1 was already done, or
+	// that another activity already produced the keywords/data this one
+	// would otherwise reinvent. See context.go. This is an enhancement, not
+	// a hard requirement, so a load failure just means we draft without it
+	// rather than failing the request.
+	activities, links, ctxErr := s.loadPlanContext(ctx, orgID, req.PlanID)
+	if ctxErr != nil {
+		activities, links = nil, nil
+	}
+
 	schema, instructions := draftSchemaFor(req.ActivityType)
 
 	var sb strings.Builder
@@ -135,7 +149,18 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 	if len(req.Keywords) > 0 {
 		fmt.Fprintf(&sb, "Keywords/focus areas to incorporate: %s\n", strings.Join(req.Keywords, ", "))
 	}
+
+	if section := buildContextSection(activities, links, req.ActivityID, req.Phase); section != "" {
+		sb.WriteString("\n" + section)
+	}
+
 	sb.WriteString("\n" + instructions + "\n\n")
+	sb.WriteString("Ground the draft in the plan context above: don't recreate outputs another activity has " +
+		"already produced, stay consistent with decisions already made elsewhere in the plan, and if an " +
+		"upstream activity already supplies data (e.g. keywords, metrics, findings) this activity would " +
+		"otherwise have to invent, build on that explicitly instead of restating it. If the existing activities " +
+		"already fully cover what this activity type would normally contribute, say so briefly within the " +
+		"drafted content and focus on whatever genuinely new angle is still missing.\n\n")
 	sb.WriteString("Respond with ONLY a single JSON object — no markdown fences, no commentary — matching exactly this shape:\n")
 	sb.WriteString(schema)
 
