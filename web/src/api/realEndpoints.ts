@@ -81,6 +81,7 @@ import type {
   Plan, PlanProgress,
   Activity, ActivityLink,
   AiDraftRequest, AiDraftResponse, AiSummaryRequest, AiSummaryResponse,
+  AiSuggestLinksRequest, AiSuggestLinksResponse,
   Invitation, Organisation,
   Report, ReportType, ReportFormat, ReportJobStatus, ReportSectionConfig,
   User, UserRole,
@@ -321,6 +322,15 @@ export const aiApi = {
   /** POST /api/v1/ai/summary — requires planner or org_admin */
   summary: (payload: AiSummaryRequest) =>
     apiClient.post<AiSummaryResponse>('/ai/summary', payload).then((r) => r.data),
+
+  /**
+   * POST /api/v1/ai/suggest-links — requires planner or org_admin.
+   * Read-only: returns candidate links for the caller to review. Accepting
+   * one is a separate activitiesApi.createLink(..., { link_type:
+   * 'ai_suggested' }) call — this endpoint never writes to activity_links.
+   */
+  suggestLinks: (payload: AiSuggestLinksRequest) =>
+    apiClient.post<AiSuggestLinksResponse>('/ai/suggest-links', payload).then((r) => r.data),
 }
 
 // ── Org / Users ───────────────────────────────────────────────────────────────

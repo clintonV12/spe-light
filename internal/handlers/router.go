@@ -255,6 +255,9 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/summary", aiH.Summary)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Post("/suggest-links", aiH.SuggestLinks)
 		})
 
 		// ── Reports (Sprint D) ─────────────────────────────────────

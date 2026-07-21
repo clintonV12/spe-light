@@ -276,8 +276,8 @@ func summarizeContent(activityType string, content map[string]any) string {
 //
 // Types already listed in genericSectionKeys (ai_service.go — vision_mission,
 // strategic_objectives, pestle, stakeholder_map, competitive_analysis,
-// value_proposition, operational_roadmap, action_items) are reused from
-// there via orderedKeys rather than duplicated here; this map only adds the
+// value_proposition, operational_roadmap) are reused from there via
+// orderedKeys rather than duplicated here; this map only adds the
 // dedicated-editor types genericSectionKeys doesn't cover.
 var fieldOrder = map[string][]string{
 	"swot": {"strengths", "weaknesses", "opportunities", "threats"},
@@ -295,13 +295,10 @@ var fieldOrder = map[string][]string{
 	// ValuePropositionEditor.tsx, RoadmapEditor.tsx), so orderedKeys falls
 	// through to genericSectionKeys for those instead of duplicating them.
 	//
-	// action_items IS in genericSectionKeys ({actions, owners, blockers})
-	// but that doesn't reflect reality: ActivityEditorPage.tsx actually
-	// routes action_items through TableEditor with a {rows: [...]} shape
-	// (action/owner/status columns), not flat sections — a pre-existing
-	// mismatch between draftSchemaFor's default schema and the real editor.
-	// It doesn't affect us here: the rows-shaped branch above intercepts
-	// action_items' real content before orderedKeys is ever consulted.
+	// action_items has no entry here or in genericSectionKeys — its real
+	// content shape is TableEditor's {rows: [...]}, which the rows-shaped
+	// branch in summarizeContent intercepts before orderedKeys is ever
+	// consulted for it.
 }
 
 // orderedKeys returns content's keys in the editor's natural order where

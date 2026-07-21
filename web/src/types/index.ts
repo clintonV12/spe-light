@@ -55,7 +55,7 @@ export type ActivityType =
   | 'implementation_timeline'
   | 'procurement_plan'
 
-export type ActivityLinkType = 'auto' | 'manual' | 'ai_suggested'
+export type ActivityLinkType = 'manual' | 'ai_suggested'
 
 export type InviteStatus = 'pending' | 'accepted' | 'cancelled' | 'expired'
 
@@ -304,6 +304,28 @@ export interface AiSummaryRequest {
 export interface AiSummaryResponse {
   summary: string
   model:   string
+}
+
+// AI-generated candidate link (POST /api/v1/ai/suggest-links). Read-only —
+// nothing is persisted until the caller separately POSTs to
+// /api/v1/activities/{id}/links with link_type: 'ai_suggested' to accept one.
+export interface AiSuggestLinksRequest {
+  plan_id: string
+}
+
+export interface AiLinkSuggestion {
+  source_id:    string
+  target_id:    string
+  source_title: string
+  target_title: string
+  source_type:  string
+  target_type:  string
+  reason:       string
+}
+
+export interface AiSuggestLinksResponse {
+  suggestions: AiLinkSuggestion[]
+  model:       string
 }
 
 // ── Audit log ─────────────────────────────────────────────────────────────────

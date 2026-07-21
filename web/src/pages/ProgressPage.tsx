@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, Clock, TrendingUp, GitBranch } from 'lucide-react'
@@ -128,23 +128,39 @@ export default function ProgressPage() {
       .finally(() => setLoading(false))
   }, [filterPlan]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (!networkPlanId) return
-    setNetworkLoading(true)
-    Promise.all([
-      activitiesApi.list(networkPlanId),
-      activitiesApi.listLinks(networkPlanId),
+  // Extracted so it can be reused as TransPhaseNetwork's onLinksChanged
+  // callback (after accepting an AI-suggested link) without duplicating the
+  // fetch logic. `silent` skips the loading-skeleton toggle — the diagram
+  // is already visible and interactive at that point, so swapping it for a
+  // pulsing placeholder just to add one edge would be a jarring flash for
+  // what's normally a near-instant refetch.
+  const fetchNetworkData = useCallback((planId: string, opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setNetworkLoading(true)
+    return Promise.all([
+      activitiesApi.list(planId),
+      activitiesApi.listLinks(planId),
     ])
       .then(([acts, links]) => {
         setNetworkActivities(acts)
         setNetworkLinks(links)
       })
       .catch(() => {
-        setNetworkActivities([])
-        setNetworkLinks([])
+        if (!opts?.silent) {
+          setNetworkActivities([])
+          setNetworkLinks([])
+        }
+        // A silent refresh failing just leaves existing data in place —
+        // the newly-accepted link won't render until the next full load,
+        // but that's preferable to blanking an otherwise-working diagram
+        // over a transient refetch failure.
       })
-      .finally(() => setNetworkLoading(false))
-  }, [networkPlanId])
+      .finally(() => { if (!opts?.silent) setNetworkLoading(false) })
+  }, [])
+
+  useEffect(() => {
+    if (!networkPlanId) return
+    fetchNetworkData(networkPlanId)
+  }, [networkPlanId, fetchNetworkData])
 
   const totalActivities = plans.reduce((s, p) => s + (p.progress?.phases.reduce((ps, ph) => ps + ph.total, 0) ?? 0), 0)
   const totalComplete = plans.reduce((s, p) => s + (p.progress?.phases.reduce((ps, ph) => ps + ph.complete, 0) ?? 0), 0)
@@ -247,6 +263,7 @@ export default function ProgressPage() {
                   activities={networkActivities}
                   links={networkLinks}
                   planId={networkPlanId}
+                  onLinksChanged={() => fetchNetworkData(networkPlanId, { silent: true })}
                 />
               )}
             </div>

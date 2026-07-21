@@ -2,9 +2,10 @@ import { useState, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ZoomIn, ZoomOut, Maximize2, GitBranch, Sparkles,
-  Clock, AlertTriangle, X,
+  Clock, AlertTriangle, X, Loader2,
 } from 'lucide-react'
-import type { Activity, ActivityLink, Phase, ActivityStatus } from '../../types'
+import { aiApi, activitiesApi } from '../../api/endpoints'
+import type { Activity, ActivityLink, Phase, ActivityStatus, AiLinkSuggestion } from '../../types'
 
 // ─── Layout constants ─────────────────────────────────────────────────────
 
@@ -25,16 +26,27 @@ const PHASE_META: Record<Phase, { label: string; sub: string; accent: string; bg
 }
 
 const STATUS_META: Record<ActivityStatus, { label: string; color: string; fill: string }> = {
-  not_started:  { label: 'Not started',  color: '#94A3B8', fill: '#F1F5F9' },
-  in_progress:  { label: 'In progress',  color: '#2563EB', fill: '#DBEAFE' },
-  under_review: { label: 'Under review', color: '#D97706', fill: '#FEF3C7' },
-  complete:     { label: 'Complete',     color: '#059669', fill: '#D1FAE5' },
+  not_started: { label: 'Not started',  color: '#94A3B8', fill: '#F1F5F9' },
+  in_progress: { label: 'In progress',  color: '#2563EB', fill: '#DBEAFE' },
+  review:      { label: 'Under review', color: '#D97706', fill: '#FEF3C7' },
+  complete:    { label: 'Complete',     color: '#059669', fill: '#D1FAE5' },
 }
 
-const LINK_META: Record<ActivityLink['link_type'], { label: string; dash: string; color: string }> = {
-  auto:         { label: 'Auto-linked',    dash: '0',   color: '#94A3B8' },
-  manual:       { label: 'Manually drawn', dash: '0',   color: '#4B6BFB' },
-  ai_suggested: { label: 'AI suggested',   dash: '5,4', color: '#8B5CF6' },
+// Keyed loosely by string rather than ActivityLink['link_type'] on purpose:
+// that type dropped 'auto' when the rule-based auto-linker's candidates
+// stopped being persisted as their own type, but rows created before that
+// change may still carry link_type "auto" in the database. Falling back to
+// DEFAULT_LINK_META for anything unrecognized (rather than typing this as
+// an exact Record and letting an unknown key throw when indexed) means old
+// data still renders instead of crashing the diagram.
+const LINK_META: Record<string, { label: string; dash: string; color: string }> = {
+  auto:         { label: 'Auto-linked (legacy)', dash: '0',   color: '#94A3B8' },
+  manual:       { label: 'Manually drawn',       dash: '0',   color: '#4B6BFB' },
+  ai_suggested: { label: 'AI suggested',         dash: '5,4', color: '#8B5CF6' },
+}
+const DEFAULT_LINK_META = { label: 'Linked', dash: '0', color: '#94A3B8' }
+function linkMeta(type: string) {
+  return LINK_META[type] ?? DEFAULT_LINK_META
 }
 
 // ─── Layout computation ─────────────────────────────────────────────────────
@@ -157,9 +169,18 @@ interface TransPhaseNetworkProps {
   activities: Activity[]
   links: ActivityLink[]
   planId: string
+  /**
+   * Called after an AI-suggested link is accepted and successfully saved.
+   * The component doesn't refetch its own activities/links — the parent
+   * (ProgressPage.tsx) owns that data — so this is how a newly-accepted
+   * link actually shows up in the diagram. Optional so this component still
+   * works (suggestions just won't visually confirm) if a caller doesn't
+   * wire it up.
+   */
+  onLinksChanged?: () => void
 }
 
-export default function TransPhaseNetwork({ activities, links, planId }: TransPhaseNetworkProps) {
+export default function TransPhaseNetwork({ activities, links, planId, onLinksChanged }: TransPhaseNetworkProps) {
   const navigate = useNavigate()
   const containerRef = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(1)
@@ -168,7 +189,66 @@ export default function TransPhaseNetwork({ activities, links, planId }: TransPh
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [filterType, setFilterType] = useState<'all' | ActivityLink['link_type']>('all')
+  const [filterType, setFilterType] = useState<'all' | string>('all')
+
+  // ── AI link suggestions ──────────────────────────────────────────────────
+  // `suggestions === null` means "panel not open / nothing requested yet";
+  // an empty array is a real "asked, found nothing" result and still shows
+  // the panel with that message rather than looking indistinguishable from
+  // never having asked.
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggestions, setSuggestions] = useState<AiLinkSuggestion[] | null>(null)
+  const [suggestError, setSuggestError] = useState<string | null>(null)
+  const [acceptingKey, setAcceptingKey] = useState<string | null>(null)
+
+  const suggestionKey = (s: AiLinkSuggestion) => `${s.source_id}-${s.target_id}`
+
+  const handleSuggestLinks = useCallback(async () => {
+    setSuggesting(true)
+    setSuggestError(null)
+    try {
+      const res = await aiApi.suggestLinks({ plan_id: planId })
+      setSuggestions(res.suggestions)
+    } catch {
+      setSuggestions([])
+      setSuggestError('AI is unavailable right now — try again in a moment.')
+    } finally {
+      setSuggesting(false)
+    }
+  }, [planId])
+
+  const handleDismissSuggestions = useCallback(() => {
+    setSuggestions(null)
+    setSuggestError(null)
+  }, [])
+
+  const handleRejectSuggestion = useCallback((s: AiLinkSuggestion) => {
+    // Nothing was ever persisted for a suggestion, so "reject" is purely
+    // local — just drop it from the review list.
+    const key = suggestionKey(s)
+    setSuggestions((cur) => cur?.filter((x) => suggestionKey(x) !== key) ?? null)
+  }, [])
+
+  const handleAcceptSuggestion = useCallback(async (s: AiLinkSuggestion) => {
+    const key = suggestionKey(s)
+    setAcceptingKey(key)
+    setSuggestError(null)
+    try {
+      await activitiesApi.createLink(s.source_id, { target_id: s.target_id, link_type: 'ai_suggested' })
+      setSuggestions((cur) => cur?.filter((x) => suggestionKey(x) !== key) ?? null)
+      onLinksChanged?.()
+    } catch {
+      // Most likely cause is CreateActivityLink's cycle check rejecting it,
+      // or the link already existing (e.g. added manually since the
+      // suggestion was generated) — leave it in the list so the user can
+      // see which one failed, rather than silently dropping it.
+      setSuggestError(
+        `Couldn't save the link between "${s.source_title}" and "${s.target_title}" — it may create a cycle, or already exist.`,
+      )
+    } finally {
+      setAcceptingKey(null)
+    }
+  }, [onLinksChanged])
 
   const { nodes, width, height } = useMemo(
     () => computeLayout(activities, links),
@@ -244,12 +324,25 @@ export default function TransPhaseNetwork({ activities, links, planId }: TransPh
 
   const selectedNode = selectedId ? nodeById.get(selectedId) : null
 
-  // Link-type counts for the legend/filter row
+  // Link-type counts for the legend/filter row. Keyed by plain string (not
+  // ActivityLink['link_type']) since real data can still contain legacy
+  // "auto" rows even though that's no longer a creatable type — see the
+  // LINK_META comment above.
   const linkCounts = useMemo(() => {
-    const c: Record<ActivityLink['link_type'], number> = { auto: 0, manual: 0, ai_suggested: 0 }
-    links.forEach((l) => { c[l.link_type] += 1 })
+    const c: Record<string, number> = {}
+    links.forEach((l) => { c[l.link_type] = (c[l.link_type] ?? 0) + 1 })
     return c
   }, [links])
+
+  // Filter pills: always offer 'manual' and 'ai_suggested' (the two types
+  // that can actually be created going forward), plus 'auto' only if this
+  // plan happens to still have legacy auto-linked rows — no point offering
+  // a filter for a type that can never match anything.
+  const filterTypes = useMemo(() => {
+    const types = ['manual', 'ai_suggested']
+    if (linkCounts.auto > 0) types.push('auto')
+    return types
+  }, [linkCounts])
 
   const crossPhaseCount = useMemo(
     () => links.filter((l) => nodeById.get(l.source_id)?.column !== nodeById.get(l.target_id)?.column).length,
@@ -271,9 +364,22 @@ export default function TransPhaseNetwork({ activities, links, planId }: TransPh
         </div>
 
         <div className="flex items-center gap-2">
+          {/* AI link-suggestion trigger */}
+          <button
+            onClick={handleSuggestLinks}
+            disabled={suggesting || activities.length < 2}
+            className="flex items-center gap-1.5 rounded-lg bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-600 hover:bg-purple-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title={activities.length < 2 ? 'Add at least two activities first' : undefined}
+          >
+            {suggesting
+              ? <Loader2 className="size-3.5 animate-spin" />
+              : <Sparkles className="size-3.5" />}
+            {suggesting ? 'Thinking…' : 'Suggest AI links'}
+          </button>
+
           {/* Link-type filter pills */}
           <div className="flex items-center gap-1 bg-ink-50 rounded-lg p-1">
-            {(['all', 'manual', 'auto', 'ai_suggested'] as const).map((t) => (
+            {(['all', ...filterTypes]).map((t) => (
               <button
                 key={t}
                 onClick={() => setFilterType(t)}
@@ -281,7 +387,7 @@ export default function TransPhaseNetwork({ activities, links, planId }: TransPh
                   filterType === t ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-400 hover:text-ink-600'
                 }`}
               >
-                {t === 'all' ? `All (${links.length})` : `${LINK_META[t].label} (${linkCounts[t]})`}
+                {t === 'all' ? `All (${links.length})` : `${linkMeta(t).label} (${linkCounts[t] ?? 0})`}
               </button>
             ))}
           </div>
@@ -366,7 +472,7 @@ export default function TransPhaseNetwork({ activities, links, planId }: TransPh
                 const target = nodeById.get(link.target_id)
                 if (!source || !target) return null
                 const linkKey = `${link.source_id}-${link.target_id}-${link.id}`
-                const meta = LINK_META[link.link_type]
+                const meta = linkMeta(link.link_type)
                 const isHighlighted = connectedLinkIds?.has(linkKey)
                 const isDimmed = connectedLinkIds !== null && !isHighlighted
                 return (
@@ -470,14 +576,81 @@ export default function TransPhaseNetwork({ activities, links, planId }: TransPh
       {/* Legend */}
       <div className="flex flex-wrap items-center gap-4 px-5 py-3 border-t border-ink-100 bg-ink-50/50">
         <span className="text-xs font-semibold text-ink-500">Link type:</span>
-        {(['manual', 'auto', 'ai_suggested'] as const).map((t) => (
+        {filterTypes.map((t) => (
           <span key={t} className="flex items-center gap-1.5 text-xs text-ink-500">
-            <svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke={LINK_META[t].color} strokeWidth="2" strokeDasharray={LINK_META[t].dash} /></svg>
-            {LINK_META[t].label}
+            <svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke={linkMeta(t).color} strokeWidth="2" strokeDasharray={linkMeta(t).dash} /></svg>
+            {linkMeta(t).label}
           </span>
         ))}
         <span className="text-xs text-ink-300 ml-auto">Scroll to zoom · drag to pan · click a card for detail</span>
       </div>
+
+      {/* AI link-suggestion review panel */}
+      {suggestions !== null && (
+        <div className="border-t border-ink-100 bg-purple-50/40 px-5 py-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-4 text-purple-500" />
+              <h3 className="text-sm font-semibold text-ink-800">
+                AI suggested links{suggestions.length > 0 && ` (${suggestions.length})`}
+              </h3>
+            </div>
+            <button
+              onClick={handleDismissSuggestions}
+              className="text-ink-300 hover:text-ink-600 transition-colors"
+              aria-label="Dismiss suggestions"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+
+          {suggestError && (
+            <p className="text-xs text-red-500 mb-3">{suggestError}</p>
+          )}
+
+          {suggestions.length === 0 ? (
+            <p className="text-xs text-ink-400">
+              No new links found — the existing links may already cover everything the model was confident about.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {suggestions.map((s) => {
+                const key = suggestionKey(s)
+                const isAccepting = acceptingKey === key
+                return (
+                  <div
+                    key={key}
+                    className="flex items-center gap-3 rounded-xl border border-purple-200 bg-white px-3 py-2.5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-ink-800 truncate">
+                        {s.source_title} <span className="text-ink-300">→</span> {s.target_title}
+                      </p>
+                      <p className="text-[11px] text-ink-400 mt-0.5">{s.reason}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => handleAcceptSuggestion(s)}
+                        disabled={isAccepting}
+                        className="rounded-lg bg-accent px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-accent-700 transition-colors disabled:opacity-50"
+                      >
+                        {isAccepting ? '…' : 'Accept'}
+                      </button>
+                      <button
+                        onClick={() => handleRejectSuggestion(s)}
+                        disabled={isAccepting}
+                        className="rounded-lg px-2.5 py-1 text-[11px] font-medium text-ink-400 hover:bg-ink-100 transition-colors disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Detail panel — slides in when a node is selected */}
       {selectedNode && (

@@ -181,14 +181,19 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 }
 
 // postProcessDraft fixes up fields the model can't be trusted to produce
-// itself, so the draft drops straight into KpiEditor/RiskRegisterEditor
-// without the user hitting broken rows:
+// itself, so the draft drops straight into KpiEditor/RiskRegisterEditor/
+// TableEditor without the user hitting broken rows:
 //
-//   - KpiRow/RiskRow both require a stable `id` (KpiEditor/RiskRegisterEditor
-//     match rows by `r.id === id` when editing) — an LLM asked to invent IDs
-//     tends to reuse or omit them, which would make editing one row silently
-//     edit every row sharing that id. We always generate real UUIDs instead
-//     of asking the model for them.
+//   - Every row-shaped draft (KpiRow, RiskRow, and every TABLE_CONFIGS type
+//     in ActivityEditorPage.tsx — market_analysis, budget_allocation,
+//     action_items, etc.) requires each row to have a stable `id`
+//     (KpiEditor/RiskRegisterEditor/TableEditor all match rows by
+//     `r.id === id` when editing) — an LLM asked to invent IDs tends to
+//     reuse or omit them, which would make editing one row silently edit
+//     every row sharing that id. We always generate real UUIDs instead of
+//     asking the model for them. This is applied structurally (any draft
+//     with a `rows` array) rather than enumerated per activity type, so it
+//     also covers table types added after this was written.
 //   - RiskRow.score is a derived value (likelihood × impact) that
 //     RiskRegisterEditor only recomputes on edit, not on initial load — so a
 //     freshly-accepted draft needs it pre-computed or the score badge shows
@@ -197,14 +202,15 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 //     tolerating a model that ignores the numeric-scale instruction and
 //     answers "Low"/"Medium"/"High" instead.
 func postProcessDraft(activityType string, draft map[string]any) {
+	// Structural: applies to every rows-shaped draft, not just the types
+	// enumerated below.
+	forEachRow(draft, func(row map[string]any) {
+		row["id"] = uuid.New().String()
+	})
+
 	switch activityType {
-	case "kpi_framework", "okr_balanced_scorecard":
-		forEachRow(draft, func(row map[string]any) {
-			row["id"] = uuid.New().String()
-		})
 	case "risk_register":
 		forEachRow(draft, func(row map[string]any) {
-			row["id"] = uuid.New().String()
 			likelihood := coerceRiskScale(row["likelihood"])
 			impact := coerceRiskScale(row["impact"])
 			row["likelihood"] = likelihood
@@ -501,6 +507,75 @@ func draftSchemaFor(activityType string) (schema string, instructions string) {
 				"\"High\". \"mitigation\" is a concrete mitigating action. Leave \"owner\" as an empty string — " +
 				"it hasn't been assigned to a person yet."
 
+	// ── TableEditor-backed types ──────────────────────────────────────────
+	//
+	// These all match ActivityEditorPage.tsx's TABLE_CONFIGS column layout
+	// exactly. TableEditor's TableRow type is `{id: string} & Record<string,
+	// string>` — every field, including the numeric-looking ones like
+	// market_size or amount, is stored (and rendered into a plain <input>)
+	// as a string, not a JSON number. So every value below is requested as
+	// a string, with instructions to keep numeric fields as bare digit
+	// strings (no "$", "%", or commas) so TableEditor's own `Number(...)`
+	// coercion (used for its chart views) parses them cleanly. Previously
+	// these 8 types had no case here and fell through to the generic
+	// {content, notes} schema — which TableEditor can't read at all, so an
+	// accepted draft silently vanished (and got clobbered the moment the
+	// user added or edited a row, since TableEditor's onChange always
+	// rewrites the whole `content` object from its rows).
+
+	case "market_analysis":
+		return `{"rows": [{"segment": "...", "market_size": "...", "growth_rate": "...", "notes": "..."}]}`,
+			"Draft a market analysis table. Provide 3-5 rows, one per market segment. \"segment\" names the " +
+				"segment. \"market_size\" and \"growth_rate\" are plain numeric strings (e.g. \"120\", \"8.5\") " +
+				"with no currency symbol, percent sign, or commas. \"notes\" is a short supporting observation."
+
+	case "strategic_initiatives":
+		return `{"rows": [{"initiative": "...", "priority": "...", "owner": "", "timeline": "..."}]}`,
+			"Draft a strategic initiatives table. Provide 3-5 rows. \"initiative\" is a short initiative name. " +
+				"\"priority\" must be exactly one of \"High\", \"Medium\", or \"Low\". Leave \"owner\" as an " +
+				"empty string — it hasn't been assigned to a person yet. \"timeline\" is a short target " +
+				"timeframe (e.g. \"Q2 2026\")."
+
+	case "financial_projections":
+		return `{"rows": [{"period": "...", "revenue": "...", "costs": "...", "profit": "..."}]}`,
+			"Draft a financial projections table. Provide 3-4 rows, one per period (e.g. \"Q1 2026\"). " +
+				"\"revenue\", \"costs\", and \"profit\" are plain numeric strings in dollars, no symbol or " +
+				"commas. Keep profit consistent with revenue minus costs for each row."
+
+	case "budget_allocation":
+		return `{"rows": [{"category": "...", "amount": "...", "notes": "..."}]}`,
+			"Draft a budget allocation table. Provide 4-6 rows, one per budget category. \"amount\" is a plain " +
+				"numeric string in dollars, no symbol or commas. \"notes\" is a short justification."
+
+	case "resource_plan":
+		return `{"rows": [{"resource": "...", "type": "...", "allocation_pct": "...", "notes": "..."}]}`,
+			"Draft a resource plan table. Provide 3-5 rows. \"resource\" names the resource. \"type\" is " +
+				"exactly one of \"People\", \"Budget\", or \"Equipment\". \"allocation_pct\" is a plain numeric " +
+				"string from 0 to 100 with no percent sign. \"notes\" is a short clarification."
+
+	case "action_items":
+		// NOTE: activity_items' real content shape (TableEditor, {rows:
+		// [{action, owner, status}]}) doesn't match the flat
+		// {actions,owners,blockers} shape genericSectionKeys still lists
+		// for this type — this case takes priority so that stale entry is
+		// never actually reached; see the comment on genericSectionKeys.
+		return `{"rows": [{"action": "...", "owner": "", "status": "Open"}]}`,
+			"Draft an action items table. Provide 4-6 concrete, actionable items. Leave \"owner\" as an empty " +
+				"string — it hasn't been assigned to a person yet. \"status\" must be exactly one of \"Open\", " +
+				"\"In Progress\", \"Blocked\", or \"Done\" — use \"Open\" for every new item."
+
+	case "implementation_timeline":
+		return `{"rows": [{"phase": "...", "start_date": "", "end_date": "", "status": "Not started"}]}`,
+			"Draft an implementation timeline table. Provide 3-5 rows, one per implementation phase. Leave " +
+				"\"start_date\" and \"end_date\" as empty strings — they haven't been scheduled yet. \"status\" " +
+				"must be exactly \"Not started\" for every new phase."
+
+	case "procurement_plan":
+		return `{"rows": [{"item": "...", "quantity": "...", "estimated_cost": "...", "vendor": "", "status": "Pending"}]}`,
+			"Draft a procurement plan table. Provide 3-5 rows. \"quantity\" and \"estimated_cost\" are plain " +
+				"numeric strings with no symbol or commas. Leave \"vendor\" as an empty string — it hasn't been " +
+				"selected yet. \"status\" must be exactly \"Pending\" for every new item."
+
 	default:
 		sections, ok := genericSectionKeys[activityType]
 		if !ok {
@@ -520,6 +595,11 @@ func draftSchemaFor(activityType string) (schema string, instructions string) {
 // these two lists in sync — if the frontend adds/renames a section key for
 // a type, GenericEditor will silently show an extra/empty field until this
 // map is updated too.
+//
+// action_items is deliberately NOT listed here (it used to be, as
+// {actions, owners, blockers}) — that never matched its real content shape
+// (TableEditor's {rows: [...]}, see draftSchemaFor's explicit case for it)
+// and would have gone on being dead code silently.
 var genericSectionKeys = map[string][]string{
 	"vision_mission":       {"vision", "mission", "values"},
 	"strategic_objectives": {"objectives", "rationale"},
@@ -528,5 +608,4 @@ var genericSectionKeys = map[string][]string{
 	"competitive_analysis": {"competitors", "positioning", "differentiators"},
 	"value_proposition":    {"customer", "problem", "solution", "differentiator"},
 	"operational_roadmap":  {"q1", "q2", "q3", "q4"},
-	"action_items":         {"actions", "owners", "blockers"},
 }

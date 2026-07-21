@@ -18,7 +18,7 @@ import type {
   AuthTokens, LoginPayload,
   Plan, PlanProgress,
   Activity, ActivityLink,
-  AiDraftRequest, AiSummaryRequest,
+  AiDraftRequest, AiSummaryRequest, AiSuggestLinksRequest, AiLinkSuggestion,
   Invitation, Organisation,
   Report, ReportType, ReportFormat, ReportJobStatus, ReportSectionConfig,
   User, UserRole,
@@ -132,6 +132,8 @@ export const reportsApi = {
 export const aiApi = {
   draft:   (p: AiDraftRequest)   => api().then((m) => m.aiApi.draft(p))   as Promise<{ draft: Record<string, unknown>; model: string }>,
   summary: (p: AiSummaryRequest) => api().then((m) => m.aiApi.summary(p)) as Promise<{ summary: string; model: string }>,
+  suggestLinks: (p: AiSuggestLinksRequest) =>
+    api().then((m) => m.aiApi.suggestLinks(p)) as Promise<{ suggestions: AiLinkSuggestion[]; model: string }>,
 }
 
 // ── Org / Users ───────────────────────────────────────────────────────────────

@@ -73,6 +73,34 @@ func (h *AI) Summary(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, summary)
 }
 
+// POST /api/v1/ai/suggest-links
+//
+// Read-only — returns candidate links for the caller to review and
+// individually accept/reject. Accepting one is a normal
+// POST /api/v1/activities/{id}/links call (link_type: "ai_suggested"); this
+// endpoint never writes to activity_links itself.
+func (h *AI) SuggestLinks(w http.ResponseWriter, r *http.Request) {
+	claims := mustOrgClaims(w, r)
+	if claims == nil {
+		return
+	}
+	var req aisvc.SuggestLinksRequest
+	if !response.DecodeJSON(w, r, &req) {
+		return
+	}
+	if req.PlanID == uuid.Nil {
+		response.ErrorJSON(w, "plan_id is required", http.StatusBadRequest)
+		return
+	}
+
+	suggestions, err := h.svc.SuggestLinks(r.Context(), *claims.OrgID, req)
+	if err != nil {
+		writeAIError(w, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, suggestions)
+}
+
 // writeAIError maps Ollama connectivity failures to 503 (so the frontend can
 // distinguish "AI is down, try later" from a genuine 400 bad request) and
 // everything else to 400.
