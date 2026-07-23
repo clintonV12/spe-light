@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Plus, Search, SlidersHorizontal, ChevronUp, ChevronDown,
   MoreHorizontal, Archive, Copy, Trash2, AlertTriangle, CheckSquare,
-  Square, X,
+  Square, X, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { plansApi } from '../api/endpoints'
 import { usePermission } from '../hooks'
@@ -32,6 +32,12 @@ const STATUS_META: Record<PlanStatus, { label: string; variant: 'neutral' | 'p1'
 
 type SortKey = 'title' | 'status' | 'progress' | 'updated_at'
 type SortDir = 'asc' | 'desc'
+
+// Client-side pagination: `filtered` is already the full sorted/searched
+// result set (the list endpoint has no server-side paging), so we just
+// slice it for display. 10 keeps each page a comfortable table height —
+// pagination controls only render at all once there's more than one page.
+const PAGE_SIZE = 10
 
 function PlanRowMenu({ onArchive, onDuplicate, onDelete }: {
   onArchive: () => void
@@ -224,6 +230,30 @@ export default function PlansPage() {
     })
   }, [plans, search, statusFilter, sortKey, sortDir])
 
+  // ── Pagination ───────────────────────────────────────────────────────────
+  const [page, setPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+
+  // Whenever the search/filter/sort inputs change, `filtered` is a new result
+  // set — jump back to page 1 rather than possibly landing on a now-empty
+  // page (e.g. you were on page 3 and a new filter only matches 1 page).
+  useEffect(() => {
+    setPage(1)
+  }, [search, statusFilter, sortKey, sortDir])
+
+  // Separately, clamp if the *current* filtered set shrinks below the page
+  // we're on — e.g. deleting the last plan on the last page, or a plan
+  // reload dropping the count — without resetting all the way to page 1
+  // and losing the user's place for a one-row change.
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
+
+  const paginated = useMemo(
+    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filtered, page],
+  )
+
   const allFilteredSelected = filtered.length > 0 && filtered.every((p) => selected.has(p.id))
   const someSelected = selected.size > 0
 
@@ -392,7 +422,7 @@ export default function PlansPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-50">
-              {filtered.map((plan) => {
+              {paginated.map((plan) => {
                 const meta = STATUS_META[plan.status]
                 const overallPct = plan.progress?.overall.percent_complete ?? 0
                 const overdue = plan.progress?.overall.overdue ?? 0
@@ -450,6 +480,34 @@ export default function PlansPage() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Pagination — only shown once results actually span more than one page */}
+      {!loading && filtered.length > PAGE_SIZE && (
+        <div className="flex items-center justify-between px-1">
+          <p className="text-xs text-ink-400">
+            Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-500 hover:bg-ink-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              <ChevronLeft className="size-3.5" /> Prev
+            </button>
+            <span className="px-2 text-xs text-ink-500 tabular-nums">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-500 hover:bg-ink-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              Next <ChevronRight className="size-3.5" />
+            </button>
+          </div>
         </div>
       )}
 
