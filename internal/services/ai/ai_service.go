@@ -507,6 +507,32 @@ func draftSchemaFor(activityType string) (schema string, instructions string) {
 				"\"High\". \"mitigation\" is a concrete mitigating action. Leave \"owner\" as an empty string — " +
 				"it hasn't been assigned to a person yet."
 
+	case "business_model_canvas":
+		// Matches BusinessModelCanvasEditor's BusinessModelCanvasContent
+		// exactly — 9 flat string fields, same shape/order as fieldOrder's
+		// entry for this type in context.go. Previously this type had no
+		// case here and fell through to the generic {content, notes}
+		// default, which BusinessModelCanvasEditor can't read at all (it
+		// only ever looks at key_partners/key_activities/etc.) — so an
+		// accepted draft silently left every block blank.
+		return `{"key_partners": "...", "key_activities": "...", "key_resources": "...", ` +
+				`"value_propositions": "...", "customer_relationships": "...", "channels": "...", ` +
+				`"customer_segments": "...", "cost_structure": "...", "revenue_streams": "..."}`,
+			"Draft a Business Model Canvas. Fill all 9 blocks, each as a few sentences of plain, specific " +
+				"prose — not further nested JSON, not a bullet list. Keep each block consistent with the " +
+				"others (e.g. cost_structure should reflect what key_resources/key_activities actually cost)."
+
+	case "theory_of_change":
+		// Matches TheoryOfChangeEditor's TheoryOfChangeContent exactly — 5
+		// flat string fields in causal-chain order, same as fieldOrder's
+		// entry for this type in context.go. Same previously-missing-case
+		// bug as business_model_canvas above.
+		return `{"inputs": "...", "activities": "...", "outputs": "...", "outcomes": "...", "impact": "..."}`,
+			"Draft a Theory of Change. Fill all 5 stages as a few sentences of plain, specific prose each, " +
+				"and keep the causal chain consistent: inputs should plausibly enable the activities, " +
+				"activities should plausibly produce the outputs, outputs should plausibly lead to the " +
+				"outcomes, and outcomes should plausibly drive the impact."
+
 	// ── TableEditor-backed types ──────────────────────────────────────────
 	//
 	// These all match ActivityEditorPage.tsx's TABLE_CONFIGS column layout
