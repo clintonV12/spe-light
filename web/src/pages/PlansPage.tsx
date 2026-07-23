@@ -168,8 +168,30 @@ export default function PlansPage() {
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
 
   const load = async () => {
-    try { const data = await plansApi.list(); setPlans(data) }
-    catch { } finally { setLoading(false) }
+    try {
+      const data = await plansApi.list()
+      // GET /api/v1/plans never returns `progress` — it's explicitly not a
+      // backend field on Plan (see the type's own doc comment); it only
+      // comes back from GET /plans/{id}/progress. Without this extra
+      // fetch-and-merge step, the progress column/sort and every card's
+      // overall % always read as zero, even though ProgressPage.tsx (which
+      // does fetch it per plan) shows the real numbers for the same plans.
+      const withProgress = await Promise.all(
+        data.map(async (p) => {
+          try {
+            const progress = await plansApi.progress(p.id)
+            return { ...p, progress }
+          } catch {
+            return p
+          }
+        })
+      )
+      setPlans(withProgress)
+    } catch {
+      // leave plans empty
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { load() }, [])
