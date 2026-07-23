@@ -24,11 +24,11 @@ import { Phone, Globe, MapPin, ArrowUpRight } from 'lucide-react'
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 const QUICK_LINKS = [
-  { label: 'Coop Criteria',       href: '#' },
-  { label: 'Coop Meet',           href: '#' },
-  { label: 'Coop Digi Gap',       href: '#' },
-  { label: 'Coop Sustainability', href: '#' },
-  { label: 'SPE',                 href: '#' },
+  { label: 'Coop Criteria',       href: 'https://www.dgrvcoop360.com/index.php/coop-criteria/' },
+  { label: 'Coop Meet',           href: 'https://dgrvcoop360.com/index.php/coop-meet/' },
+  { label: 'Coop Digi Gap',       href: 'https://dgrvcoop360.com/index.php/coop-digi-gap/' },
+  { label: 'Coop Sustainability', href: 'https://dgrvcoop360.com/index.php/coop-sustainability/' },
+  { label: 'SPE',                 href: 'https://dgrvcoop360.com/index.php/spe/' },
 ]
 
 const CONTACTS = [
@@ -86,7 +86,18 @@ export default function AppFooter() {
 
             <div className="flex items-center gap-3 pt-4 border-t border-ink-700">
               <img
-                src="/logo.jpg"
+                src="/dgrv.png"
+                alt="German Cooperation — Deutsche Zusammenarbeit"
+                className="size-9 rounded-lg object-contain shrink-0 ring-1 ring-white/10 opacity-80"
+              />
+              <p className="text-white/40 text-xs leading-snug">
+                German Cooperation<br />Deutsche Zusammenarbeit
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-4 border-t border-ink-700">
+              <img
+                src="/german.jpg"
                 alt="German Cooperation — Deutsche Zusammenarbeit"
                 className="size-9 rounded-lg object-contain shrink-0 ring-1 ring-white/10 opacity-80"
               />
