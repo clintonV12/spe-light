@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   Plus, AlertTriangle, TrendingUp, CheckCircle2,
   ArrowUpRight, Sparkles, Activity,
@@ -16,29 +17,29 @@ import type { Plan, PlanStatus, AuditLog, AuditAction } from '../types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function relativeTime(iso: string): string {
+function relativeTime(iso: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const s = Math.floor(diff / 1000)
-  if (s < 60)  return 'just now'
+  if (s < 60)  return t('auditLog.justNow')
   const m = Math.floor(s / 60)
-  if (m < 60)  return `${m}m ago`
+  if (m < 60)  return t('auditLog.minutesAgo', { count: m })
   const h = Math.floor(m / 60)
-  if (h < 24)  return `${h}h ago`
+  if (h < 24)  return t('auditLog.hoursAgo', { count: h })
   const d = Math.floor(h / 24)
-  if (d === 1) return 'yesterday'
-  if (d < 7)   return `${d}d ago`
+  if (d === 1) return t('dashboard.activityFeed.yesterday')
+  if (d < 7)   return t('auditLog.daysAgo', { count: d })
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 }
 
-function groupByDay(logs: AuditLog[]): Array<{ label: string; entries: AuditLog[] }> {
+function groupByDay(logs: AuditLog[], t: (key: string) => string): Array<{ label: string; entries: AuditLog[] }> {
   const groups = new Map<string, AuditLog[]>()
   const now = new Date()
   logs.forEach((log) => {
     const d = new Date(log.created_at)
     const isToday     = d.toDateString() === now.toDateString()
     const isYesterday = d.toDateString() === new Date(Date.now() - 864e5).toDateString()
-    const label = isToday ? 'Today'
-      : isYesterday ? 'Yesterday'
+    const label = isToday ? t('dashboard.activityFeed.today')
+      : isYesterday ? t('dashboard.activityFeed.yesterday')
       : d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
     if (!groups.has(label)) groups.set(label, [])
     groups.get(label)!.push(log)
@@ -54,19 +55,20 @@ const PHASE_GRADIENT: Record<string, { track: string; bar: 'p1'|'p2'|'p3' }> = {
   P3: { track: 'bg-violet-50',  bar: 'p3' },
 }
 
-const STATUS_PILL: Record<PlanStatus, { label: string; cls: string }> = {
-  draft:     { label: 'Draft',     cls: 'bg-ink-100 text-ink-500' },
-  active:    { label: 'Active',    cls: 'bg-emerald-100 text-emerald-700' },
-  review:    { label: 'Review',    cls: 'bg-amber-100 text-amber-700' },
-  completed: { label: 'Completed', cls: 'bg-blue-100 text-blue-700' },
-  archived:  { label: 'Archived',  cls: 'bg-ink-100 text-ink-400' },
+const STATUS_PILL_CLS: Record<PlanStatus, string> = {
+  draft:     'bg-ink-100 text-ink-500',
+  active:    'bg-emerald-100 text-emerald-700',
+  review:    'bg-amber-100 text-amber-700',
+  completed: 'bg-blue-100 text-blue-700',
+  archived:  'bg-ink-100 text-ink-400',
 }
 
 function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
+  const { t } = useTranslation()
   const progress   = plan.progress
   const overallPct = progress?.overall.percent_complete ?? 0
   const overdue    = progress?.overall.overdue ?? 0
-  const pill       = STATUS_PILL[plan.status]
+  const pillCls    = STATUS_PILL_CLS[plan.status]
 
   return (
     <button
@@ -85,8 +87,8 @@ function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
             <p className="text-ink-400 text-xs mt-1 line-clamp-1">{plan.description}</p>
           )}
         </div>
-        <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full ${pill.cls}`}>
-          {pill.label}
+        <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full ${pillCls}`}>
+          {t(`plan.status.${plan.status}`)}
         </span>
       </div>
 
@@ -141,10 +143,10 @@ function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
           </div>
           {overdue > 0 ? (
             <span className="flex items-center gap-1 text-xs text-red-500 font-medium">
-              <AlertTriangle className="size-3" /> {overdue} overdue
+              <AlertTriangle className="size-3" /> {t('dashboard.overdueBadge', { count: overdue })}
             </span>
           ) : (
-            <span className="text-xs text-ink-400">On track</span>
+            <span className="text-xs text-ink-400">{t('dashboard.onTrack')}</span>
           )}
         </div>
         <ArrowUpRight className="size-4 text-ink-200 group-hover:text-accent group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-150" />
@@ -202,17 +204,8 @@ const ACTION_DISPLAY: Partial<Record<AuditAction, { icon: React.ReactNode; bg: s
 
 const DEFAULT_DISPLAY = { icon: <Activity className="size-3" />, bg: 'bg-ink-100', color: 'text-ink-400' }
 
-const VERB_MAP: Partial<Record<AuditAction, string>> = {
-  'plan.created': 'created',  'plan.updated': 'updated',  'plan.archived': 'archived',
-  'plan.deleted': 'deleted',  'plan.duplicated': 'duplicated',
-  'activity.created': 'added',  'activity.updated': 'edited',
-  'activity.deleted': 'removed', 'activity.status_changed': 'updated',
-  'link.created': 'linked',   'link.deleted': 'unlinked',
-  'user.invited': 'invited',  'user.role_changed': 'changed role for',
-  'user.deactivated': 'deactivated', 'user.reactivated': 'reactivated',
-  'invitation.cancelled': 'cancelled invite for', 'invitation.resent': 'resent invite to',
-  'report.generated': 'generated report for',
-}
+// Verb text comes from t(`activityVerbs.${log.action}`) — same dot-key
+// mapping pattern as auditActions in AdminPage/PlatformAdminPage.
 
 function DiffPill({ diff }: { diff: AuditLog['diff'] }) {
   const keys = Object.keys(diff)
@@ -229,6 +222,7 @@ function DiffPill({ diff }: { diff: AuditLog['diff'] }) {
 }
 
 function ActivityFeed() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [logs, setLogs]       = useState<AuditLog[]>([])
   const [loading, setLoading] = useState(true)
@@ -245,7 +239,7 @@ function ActivityFeed() {
   useEffect(() => { fetchLogs() }, [])
 
   const displayed = showAll ? logs : logs.slice(0, 12)
-  const groups    = groupByDay(displayed)
+  const groups    = groupByDay(displayed, t)
 
   return (
     <div className="bg-white rounded-2xl border border-ink-100 flex flex-col overflow-hidden" style={{ maxHeight: 660 }}>
@@ -255,9 +249,9 @@ function ActivityFeed() {
           <div className="size-6 rounded-lg bg-ink-50 flex items-center justify-center">
             <Activity className="size-3.5 text-ink-400" />
           </div>
-          <h2 className="font-display text-sm font-bold text-ink-800">Recent activity</h2>
+          <h2 className="font-display text-sm font-bold text-ink-800">{t('dashboard.activityFeed.title')}</h2>
         </div>
-        <button onClick={fetchLogs} className="p-1.5 rounded-lg text-ink-300 hover:text-ink-600 hover:bg-ink-50 transition-colors" title="Refresh">
+        <button onClick={fetchLogs} className="p-1.5 rounded-lg text-ink-300 hover:text-ink-600 hover:bg-ink-50 transition-colors" title={t('dashboard.activityFeed.refresh')}>
           <RefreshCw className="size-3.5" />
         </button>
       </div>
@@ -279,8 +273,8 @@ function ActivityFeed() {
         ) : logs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 text-center">
             <Activity className="size-8 text-ink-200 mb-3" />
-            <p className="text-sm text-ink-400">No activity yet</p>
-            <p className="text-xs text-ink-300 mt-0.5">Changes appear here as your team works.</p>
+            <p className="text-sm text-ink-400">{t('dashboard.activityFeed.empty')}</p>
+            <p className="text-xs text-ink-300 mt-0.5">{t('dashboard.activityFeed.emptySub')}</p>
           </div>
         ) : (
           <>
@@ -295,12 +289,12 @@ function ActivityFeed() {
                 <div className="space-y-3.5">
                   {entries.map((log) => {
                     const display = ACTION_DISPLAY[log.action] ?? DEFAULT_DISPLAY
-                    const verb = VERB_MAP[log.action] ?? log.action.replace('.', ' ')
+                    const verb = t(`activityVerbs.${log.action}`, log.action.replace('.', ' '))
                     const clickable = ['plans', 'activities'].includes(log.table_name)
                     // Some audit actions (e.g. invitation.accepted) aren't
                     // guaranteed to have a denormalised label/name from the
                     // backend yet — fall back rather than crash the feed.
-                    const userName = log.user_name || 'Someone'
+                    const userName = log.user_name || t('dashboard.activityFeed.someone')
                     const firstName = userName.split(' ')[0]
                     const recordLabel = log.record_label || '—'
                     const subject = recordLabel.length > 38
@@ -331,7 +325,7 @@ function ActivityFeed() {
                           {Object.keys(log.diff ?? {}).length > 0 && (
                             <div className="mt-1"><DiffPill diff={log.diff} /></div>
                           )}
-                          <p className="text-[10px] text-ink-300 mt-1">{relativeTime(log.created_at)}</p>
+                          <p className="text-[10px] text-ink-300 mt-1">{relativeTime(log.created_at, t)}</p>
                         </div>
                       </div>
                     )
@@ -345,7 +339,7 @@ function ActivityFeed() {
                 onClick={() => setShowAll(true)}
                 className="w-full flex items-center justify-center gap-1.5 text-xs text-ink-400 hover:text-accent font-medium py-2 border-t border-ink-50 transition-colors"
               >
-                {logs.length - 12} more <ArrowRight className="size-3" />
+                {t('dashboard.activityFeed.more', { count: logs.length - 12 })} <ArrowRight className="size-3" />
               </button>
             )}
           </>
@@ -358,7 +352,7 @@ function ActivityFeed() {
           onClick={() => navigate('/admin?tab=audit')}
           className="flex items-center gap-1.5 text-xs text-ink-400 hover:text-accent font-medium transition-colors"
         >
-          Full audit log <ArrowUpRight className="size-3" />
+          {t('dashboard.activityFeed.fullAuditLog')} <ArrowUpRight className="size-3" />
         </button>
       </div>
     </div>
@@ -368,6 +362,7 @@ function ActivityFeed() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const user     = useAuthStore((s) => s.user)
   const org      = useAuthStore((s) => s.org)
@@ -422,7 +417,7 @@ export default function DashboardPage() {
     .slice(0, 6)
 
   const hour = new Date().getHours()
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const greeting = hour < 12 ? t('dashboard.greetingMorning') : hour < 17 ? t('dashboard.greetingAfternoon') : t('dashboard.greetingEvening')
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-7">
@@ -434,7 +429,7 @@ export default function DashboardPage() {
             {greeting}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}.
           </h1>
           <p className="text-ink-400 text-sm mt-0.5">
-            {org?.name ?? 'Your organisation'} · Strategic overview
+            {org?.name ?? t('dashboard.orgFallback')} · {t('dashboard.subtitle')}
           </p>
         </div>
         {can.createPlan && (
@@ -442,7 +437,7 @@ export default function DashboardPage() {
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 shadow-sm shadow-accent/20 transition-all shrink-0"
           >
-            <Plus className="size-4" /> New plan
+            <Plus className="size-4" /> {t('dashboard.newPlan')}
           </button>
         )}
       </div>
@@ -450,23 +445,23 @@ export default function DashboardPage() {
       {/* ── Stat cards ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label="Active plans" loading={loading} value={activePlans}
-          sub={activePlans === 1 ? '1 plan in motion' : `${activePlans} plans in motion`}
+          label={t('dashboard.statActivePlans')} loading={loading} value={activePlans}
+          sub={t('dashboard.statActivePlansSub', { count: activePlans })}
           icon={<div className="size-9 rounded-xl bg-emerald-50 flex items-center justify-center"><TrendingUp className="size-4 text-emerald-600" /></div>}
         />
         <StatCard
-          label="Avg. progress" loading={loading} value={`${avgProgress}%`}
-          sub="Across all active plans"
+          label={t('dashboard.statAvgProgress')} loading={loading} value={`${avgProgress}%`}
+          sub={t('dashboard.statAvgProgressSub')}
           icon={<div className="size-9 rounded-xl bg-blue-50 flex items-center justify-center"><CheckCircle2 className="size-4 text-blue-500" /></div>}
         />
         <StatCard
-          label="Overdue" loading={loading} value={totalOverdue} alert={totalOverdue > 0}
-          sub={totalOverdue > 0 ? 'Needs attention' : 'All on schedule'}
+          label={t('dashboard.statOverdue')} loading={loading} value={totalOverdue} alert={totalOverdue > 0}
+          sub={totalOverdue > 0 ? t('dashboard.statOverdueSubAlert') : t('dashboard.statOverdueSubOk')}
           icon={<div className={`size-9 rounded-xl flex items-center justify-center ${totalOverdue > 0 ? 'bg-red-50' : 'bg-ink-50'}`}><AlertTriangle className={`size-4 ${totalOverdue > 0 ? 'text-red-500' : 'text-ink-300'}`} /></div>}
         />
         <StatCard
-          label="Total plans" loading={loading} value={plans.length}
-          sub={`${plans.filter(p => p.status === 'completed').length} completed`}
+          label={t('dashboard.statTotalPlans')} loading={loading} value={plans.length}
+          sub={t('dashboard.statTotalPlansSub', { count: plans.filter(p => p.status === 'completed').length })}
           icon={<div className="size-9 rounded-xl bg-violet-50 flex items-center justify-center"><BarChart2 className="size-4 text-violet-500" /></div>}
         />
       </div>
@@ -479,15 +474,15 @@ export default function DashboardPage() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-red-800">
-              {totalOverdue} {totalOverdue === 1 ? 'activity is' : 'activities are'} overdue.
+              {t('dashboard.overdueAlert', { count: totalOverdue })}
             </p>
-            <p className="text-xs text-red-500 mt-0.5">Review your plans to reassign or reschedule.</p>
+            <p className="text-xs text-red-500 mt-0.5">{t('dashboard.overdueAlertSub')}</p>
           </div>
           <button
             onClick={() => navigate('/plans')}
             className="flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-800 bg-red-100 hover:bg-red-200 rounded-lg px-3 py-2 transition-colors shrink-0"
           >
-            View plans <ArrowRight className="size-3" />
+            {t('dashboard.viewPlans')} <ArrowRight className="size-3" />
           </button>
         </div>
       )}
@@ -498,12 +493,12 @@ export default function DashboardPage() {
         {/* Plans grid */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-base font-bold text-ink-900">Recent plans</h2>
+            <h2 className="font-display text-base font-bold text-ink-900">{t('dashboard.recentPlans')}</h2>
             <button
               onClick={() => navigate('/plans')}
               className="flex items-center gap-1 text-xs font-medium text-ink-400 hover:text-accent transition-colors"
             >
-              View all <ArrowRight className="size-3" />
+              {t('dashboard.viewAll')} <ArrowRight className="size-3" />
             </button>
           </div>
 
@@ -523,14 +518,14 @@ export default function DashboardPage() {
             <div className="bg-white rounded-2xl border border-dashed border-ink-200 p-12">
               <EmptyState
                 icon={<Sparkles className="size-10 text-ink-200" />}
-                title="No plans yet"
-                description="Create your first strategic plan to get started with P1 analysis, P2 strategy, and P3 execution."
+                title={t('dashboard.emptyTitle')}
+                description={t('dashboard.emptyDesc')}
                 action={can.createPlan ? (
                   <button
                     onClick={() => setShowCreate(true)}
                     className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors"
                   >
-                    <Plus className="size-4" /> Create your first plan
+                    <Plus className="size-4" /> {t('dashboard.createFirstPlan')}
                   </button>
                 ) : undefined}
               />

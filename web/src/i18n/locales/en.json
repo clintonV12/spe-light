@@ -9,7 +9,9 @@
     "error": "Something went wrong",
     "offline": "You're offline",
     "sync": "Sync now",
-    "pending": "{{count}} pending"
+    "pending": "{{count}} pending",
+    "resend": "Resend",
+    "none": "None"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -173,5 +175,387 @@
     "passwordMismatch": "Passwords don't match",
     "invalidLink": "This invite link is invalid or has expired. Ask your admin to resend it.",
     "createAccount": "Create account"
+  },
+  "roles": {
+    "super_admin": "Super admin",
+    "platform_support": "Platform support",
+    "org_admin": "Org admin",
+    "planner": "Planner",
+    "contributor": "Contributor",
+    "viewer": "Viewer"
+  },
+  "auditActions": {
+    "plan": {
+      "created": "Created plan",
+      "updated": "Updated plan",
+      "archived": "Archived plan",
+      "deleted": "Deleted plan",
+      "duplicated": "Duplicated plan"
+    },
+    "activity": {
+      "created": "Created activity",
+      "updated": "Updated activity",
+      "deleted": "Deleted activity",
+      "status_changed": "Changed activity status"
+    },
+    "user": {
+      "invited": "Invited user",
+      "role_changed": "Changed role",
+      "deactivated": "Deactivated user",
+      "reactivated": "Reactivated user"
+    },
+    "invitation": {
+      "cancelled": "Cancelled invitation",
+      "resent": "Resent invitation",
+      "accepted": "Accepted invitation"
+    },
+    "report": {
+      "generated": "Generated report"
+    },
+    "link": {
+      "created": "Created link",
+      "deleted": "Deleted link"
+    }
+  },
+  "auditLog": {
+    "filterAllActions": "All actions",
+    "filterPlans": "Plans",
+    "filterActivities": "Activities",
+    "filterUsers": "Users",
+    "filterInvitations": "Invitations",
+    "filterReports": "Reports",
+    "allMembers": "All team members",
+    "allOrganisations": "All organisations",
+    "eventsCount_one": "{{count}} event",
+    "eventsCount_other": "{{count}} events",
+    "filtered": " (filtered)",
+    "noEventsFound": "No events found",
+    "adjustFilters": "Try adjusting your filters.",
+    "showing": "Showing {{from}}–{{to}} of {{total}}",
+    "justNow": "just now",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago",
+    "daysAgo": "{{count}}d ago",
+    "unknownUser": "Unknown user",
+    "unknownOrg": "Unknown org"
+  },
+  "admin": {
+    "title": "Team & access",
+    "membersCount_one": "{{count}} member",
+    "membersCount_other": "{{count}} members",
+    "pendingInvitesCount_one": "{{count}} pending invite",
+    "pendingInvitesCount_other": "{{count}} pending invites",
+    "inviteMember": "Invite member",
+    "tabs": {
+      "members": "Members",
+      "invitations": "Invitations",
+      "auditLog": "Audit log"
+    },
+    "table": {
+      "member": "Member",
+      "role": "Role",
+      "status": "Status",
+      "email": "Email",
+      "expires": "Expires"
+    },
+    "status": {
+      "active": "Active",
+      "deactivated": "Deactivated",
+      "expired": "Expired",
+      "pending": "Pending",
+      "accepted": "Accepted",
+      "cancelled": "Cancelled"
+    },
+    "you": "(you)",
+    "scopedToPlans_one": "Scoped to {{count}} plan",
+    "scopedToPlans_other": "Scoped to {{count}} plans",
+    "noInvitations": "No invitations sent yet",
+    "changeRole": "Change role",
+    "deactivateUser": "Deactivate user",
+    "reactivateUser": "Reactivate user"
+  },
+  "platformAdmin": {
+    "title": "Platform console",
+    "restricted": "This area is restricted to platform-level administrators.",
+    "orgsCount_one": "{{count}} organisation",
+    "orgsCount_other": "{{count}} organisations",
+    "activeCount": "{{count}} active",
+    "readOnly": "read-only",
+    "inviteOrgAdmin": "Invite org admin",
+    "newOrganisation": "New organisation",
+    "tabs": {
+      "organisations": "Organisations",
+      "team": "Platform team",
+      "auditLog": "Audit log"
+    },
+    "activeOnly": "Active only",
+    "table": {
+      "organisation": "Organisation",
+      "industry": "Industry",
+      "locale": "Locale",
+      "status": "Status",
+      "created": "Created",
+      "name": "Name",
+      "role": "Role",
+      "lastLogin": "Last login"
+    },
+    "status": {
+      "active": "Active",
+      "deactivated": "Deactivated"
+    },
+    "activate": "Activate",
+    "deactivate": "Deactivate",
+    "noOrganisations": "No organisations yet",
+    "noOrganisationsHelp": "Create one, or invite an org admin to set one up.",
+    "createOrgModal": {
+      "title": "New organisation",
+      "name": "Organisation name",
+      "namePlaceholder": "Acme Strategy Group",
+      "industry": "Industry",
+      "industryPlaceholder": "Optional",
+      "locale": "Locale",
+      "inviteAdminLabel": "Invite admin now (optional)",
+      "adminEmailPlaceholder": "admin@acme.com",
+      "noteWithEmail": "The org is created active, and an invite emails immediately to make this person its org admin.",
+      "noteWithoutEmail": "The org is created active with no members. Leave this blank and use \"Invite org admin\" later to onboard the first admin.",
+      "errorWithEmail": "Organisation may have been created, but the admin invite failed to send. Check the \"Invite org admin\" list and try again from there.",
+      "errorWithoutEmail": "Could not create the organisation. Check the details and try again.",
+      "submit": "Create organisation"
+    },
+    "inviteOrgAdminModal": {
+      "title": "Invite an org admin",
+      "noOrgs": "No organisations exist yet. Create one first with \"New organisation\", then invite its admin from here.",
+      "organisation": "Organisation",
+      "inactiveSuffix": " (inactive)",
+      "adminEmail": "Admin contact email",
+      "emailPlaceholder": "admin@acme.com",
+      "note": "Emails a 7-day invite link for the selected organisation. This person becomes its org admin once they accept.",
+      "error": "Could not send the invitation. Check the email address and try again.",
+      "submit": "Send invite"
+    },
+    "inviteTeamModal": {
+      "title": "Invite a platform teammate",
+      "email": "Email",
+      "emailPlaceholder": "teammate@yourcompany.com",
+      "platformRole": "Platform role",
+      "platformSupportDesc": "Read-only across all orgs",
+      "superAdminDesc": "Full cross-org access",
+      "note": "This grants cross-organisation access, not membership in any single org. A 7-day setup link is emailed to accept.",
+      "error": "Could not send the invitation. They may already have a platform account.",
+      "submit": "Send invite"
+    },
+    "team": {
+      "inviteTeammate": "Invite teammate",
+      "membersHeading": "Platform team members",
+      "noMembers": "No platform team members yet",
+      "never": "Never",
+      "pendingHeading": "Pending invitations",
+      "noPending": "No pending invitations",
+      "expires": "expires {{date}}"
+    }
+  },
+  "dashboard": {
+    "greetingMorning": "Good morning",
+    "greetingAfternoon": "Good afternoon",
+    "greetingEvening": "Good evening",
+    "orgFallback": "Your organisation",
+    "subtitle": "Strategic overview",
+    "newPlan": "New plan",
+    "statActivePlans": "Active plans",
+    "statActivePlansSub_one": "{{count}} plan in motion",
+    "statActivePlansSub_other": "{{count}} plans in motion",
+    "statAvgProgress": "Avg. progress",
+    "statAvgProgressSub": "Across all active plans",
+    "statOverdue": "Overdue",
+    "statOverdueSubAlert": "Needs attention",
+    "statOverdueSubOk": "All on schedule",
+    "statTotalPlans": "Total plans",
+    "statTotalPlansSub": "{{count}} completed",
+    "overdueAlert_one": "{{count}} activity is overdue.",
+    "overdueAlert_other": "{{count}} activities are overdue.",
+    "overdueAlertSub": "Review your plans to reassign or reschedule.",
+    "viewPlans": "View plans",
+    "recentPlans": "Recent plans",
+    "viewAll": "View all",
+    "emptyTitle": "No plans yet",
+    "emptyDesc": "Create your first strategic plan to get started with P1 analysis, P2 strategy, and P3 execution.",
+    "createFirstPlan": "Create your first plan",
+    "overdueBadge_one": "{{count}} overdue",
+    "overdueBadge_other": "{{count}} overdue",
+    "onTrack": "On track",
+    "activityFeed": {
+      "title": "Recent activity",
+      "refresh": "Refresh",
+      "empty": "No activity yet",
+      "emptySub": "Changes appear here as your team works.",
+      "someone": "Someone",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "more_one": "{{count}} more",
+      "more_other": "{{count}} more",
+      "fullAuditLog": "Full audit log"
+    }
+  },
+  "activityVerbs": {
+    "plan": {
+      "created": "created",
+      "updated": "updated",
+      "archived": "archived",
+      "deleted": "deleted",
+      "duplicated": "duplicated"
+    },
+    "activity": {
+      "created": "added",
+      "updated": "edited",
+      "deleted": "removed",
+      "status_changed": "updated"
+    },
+    "link": {
+      "created": "linked",
+      "deleted": "unlinked"
+    },
+    "user": {
+      "invited": "invited",
+      "role_changed": "changed role for",
+      "deactivated": "deactivated",
+      "reactivated": "reactivated"
+    },
+    "invitation": {
+      "cancelled": "cancelled invite for",
+      "resent": "resent invite to"
+    },
+    "report": {
+      "generated": "generated report for"
+    }
+  },
+  "editorsCommon": {
+    "table": "Table",
+    "bar": "Bar",
+    "line": "Line",
+    "pie": "Pie",
+    "riskMatrix": "Risk matrix",
+    "addRow": "Add row",
+    "addRisk": "Add risk",
+    "addKpi": "Add KPI",
+    "noRowsYet": "No rows yet.",
+    "addRowsToSeeChart": "Add some rows to see the chart.",
+    "addNamedRiskForChart": "Add a named risk to see the chart.",
+    "addNamedRiskForMatrix": "Add a named risk to see the risk matrix.",
+    "addNamedKpiForChart": "Add a named KPI with numeric values to see the chart.",
+    "chartOnlyNotSaved": "Chart view only — not saved with the activity.",
+    "bubbleSizeScore": "Bubble size = score. Chart view only — not saved with the activity.",
+    "enterField": "Enter {{field}}…"
+  },
+  "editors": {
+    "riskRegister": {
+      "headers": {
+        "risk": "Risk",
+        "likelihood": "Likelihood (1-5)",
+        "impact": "Impact (1-5)",
+        "score": "Score",
+        "mitigation": "Mitigation",
+        "owner": "Owner"
+      },
+      "riskPlaceholder": "Describe the risk",
+      "mitigationPlaceholder": "Mitigation action",
+      "ownerPlaceholder": "Owner",
+      "axisLikelihood": "Likelihood",
+      "axisImpact": "Impact",
+      "tooltip": "Likelihood {{likelihood}} · Impact {{impact}} · Score {{score}}"
+    },
+    "kpi": {
+      "headers": {
+        "name": "KPI name",
+        "unit": "Unit",
+        "baseline": "Baseline",
+        "target": "Target",
+        "current": "Current"
+      },
+      "seriesBaseline": "Baseline",
+      "seriesTarget": "Target",
+      "seriesCurrent": "Current"
+    },
+    "swot": {
+      "strengths": "Strengths",
+      "weaknesses": "Weaknesses",
+      "opportunities": "Opportunities",
+      "threats": "Threats"
+    },
+    "roadmap": {
+      "q1": "Q1",
+      "q2": "Q2",
+      "q3": "Q3",
+      "q4": "Q4",
+      "milestonesSuffix": "Milestones",
+      "placeholder": "What ships or happens in {{quarter}}?"
+    },
+    "theoryOfChange": {
+      "inputs": "Inputs",
+      "inputsHint": "Resources invested",
+      "activities": "Activities",
+      "activitiesHint": "What gets done",
+      "outputs": "Outputs",
+      "outputsHint": "Direct deliverables",
+      "outcomes": "Outcomes",
+      "outcomesHint": "Resulting change",
+      "impact": "Impact",
+      "impactHint": "Long-term effect"
+    },
+    "objectives": {
+      "title": "Strategic Objectives",
+      "count_one": "{{count}} objective",
+      "count_other": "{{count}} objectives",
+      "placeholder": "One objective per line…",
+      "rationale": "Rationale",
+      "rationalePlaceholder": "Why these objectives, and why now?"
+    },
+    "visionMission": {
+      "vision": "Vision",
+      "visionPlaceholder": "Where is the organisation headed, ultimately?",
+      "mission": "Mission",
+      "missionPlaceholder": "What does the organisation do, day to day, to get there?",
+      "coreValues": "Core Values",
+      "valuesPlaceholder": "Separate values with a comma or a new line…"
+    },
+    "competitiveAnalysis": {
+      "competitors": "Key Competitors",
+      "competitorsPlaceholder": "Who are we up against?",
+      "positioning": "Market Positioning",
+      "positioningPlaceholder": "Where do we sit in the market relative to them?",
+      "differentiators": "Our Differentiators",
+      "differentiatorsPlaceholder": "What sets us apart?"
+    },
+    "stakeholderMap": {
+      "internal": "Internal Stakeholders",
+      "internalHint": "Teams, leadership, and functions inside the organisation.",
+      "external": "External Stakeholders",
+      "externalHint": "Customers, partners, regulators, and others outside the organisation.",
+      "strategy": "Engagement Strategy",
+      "strategyHint": "How each group will be informed, consulted, or involved."
+    },
+    "valueProposition": {
+      "customer": "Customer",
+      "who": "Who they are",
+      "whoPlaceholder": "Describe the target customer…",
+      "problem": "Problem they face",
+      "problemPlaceholder": "What pain or unmet need drives them?",
+      "fit": "Fit",
+      "ourSolution": "Our Solution",
+      "what": "What we offer",
+      "whatPlaceholder": "Describe the product or service…",
+      "whyUs": "Why us",
+      "whyUsPlaceholder": "What makes this better than the alternatives?"
+    },
+    "bmc": {
+      "keyPartners": "Key Partners",
+      "keyActivities": "Key Activities",
+      "keyResources": "Key Resources",
+      "valuePropositions": "Value Propositions",
+      "customerRelationships": "Customer Relationships",
+      "channels": "Channels",
+      "customerSegments": "Customer Segments",
+      "costStructure": "Cost Structure",
+      "revenueStreams": "Revenue Streams"
+    }
   }
 }

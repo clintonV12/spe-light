@@ -4,6 +4,7 @@ import {
   RefreshCw, Filter, ArrowDownUp, ChevronLeft, ChevronRight, Activity, X, Lock,
   Users, Send, Clock3, Trash2, UserCog,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { adminApi } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
 import type { Organisation, AuditLog, AuditAction, User, Invitation, UserRole } from '../types'
@@ -11,63 +12,48 @@ import type { Organisation, AuditLog, AuditAction, User, Invitation, UserRole } 
 type Tab = 'organisations' | 'team' | 'audit'
 
 // ─── Shared display maps ───────────────────────────────────────────────────
+// Action labels come from t(`auditActions.${action}`) — the AuditAction
+// strings (e.g. 'plan.created') map directly onto the nested auditActions.*
+// keys in the locale files via i18next's default dot key-separator.
 
-const ACTION_LABEL: Record<AuditAction, string> = {
-  'plan.created':            'Created plan',
-  'plan.updated':            'Updated plan',
-  'plan.archived':           'Archived plan',
-  'plan.deleted':            'Deleted plan',
-  'plan.duplicated':         'Duplicated plan',
-  'activity.created':        'Created activity',
-  'activity.updated':        'Updated activity',
-  'activity.deleted':        'Deleted activity',
-  'activity.status_changed': 'Changed activity status',
-  'user.invited':            'Invited user',
-  'user.role_changed':       'Changed role',
-  'user.deactivated':        'Deactivated user',
-  'user.reactivated':        'Reactivated user',
-  'invitation.cancelled':    'Cancelled invitation',
-  'invitation.resent':       'Resent invitation',
-  'invitation.accepted':     'Accepted invitation',
-  'report.generated':        'Generated report',
-  'link.created':            'Created link',
-  'link.deleted':            'Deleted link',
+function getActionGroups(t: (key: string) => string) {
+  return [
+    { label: t('auditLog.filterAllActions'), value: '' },
+    { label: t('auditLog.filterPlans'),       value: 'plan' },
+    { label: t('auditLog.filterActivities'),  value: 'activity' },
+    { label: t('auditLog.filterUsers'),       value: 'user' },
+    { label: t('auditLog.filterInvitations'), value: 'invitation' },
+    { label: t('auditLog.filterReports'),     value: 'report' },
+  ]
 }
 
-const ACTION_GROUPS = [
-  { label: 'All actions', value: '' },
-  { label: 'Plans',       value: 'plan' },
-  { label: 'Activities',  value: 'activity' },
-  { label: 'Users',       value: 'user' },
-  { label: 'Invitations', value: 'invitation' },
-  { label: 'Reports',     value: 'report' },
-]
-
-const PLATFORM_ROLE_META: Record<'super_admin' | 'platform_support', { label: string; className: string }> = {
-  super_admin:      { label: 'Super admin',      className: 'bg-accent-100 text-accent-700' },
-  platform_support: { label: 'Platform support', className: 'bg-p3-light text-p3-dark' },
+function getPlatformRoleMeta(t: (key: string) => string): Record<'super_admin' | 'platform_support', { label: string; className: string }> {
+  return {
+    super_admin:      { label: t('roles.super_admin'),      className: 'bg-accent-100 text-accent-700' },
+    platform_support: { label: t('roles.platform_support'), className: 'bg-p3-light text-p3-dark' },
+  }
 }
 
-function relativeTime(iso: string): string {
+function relativeTime(iso: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const s = Math.floor(diff / 1000)
-  if (s < 60) return 'just now'
+  if (s < 60) return t('auditLog.justNow')
   const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ago`
+  if (m < 60) return t('auditLog.minutesAgo', { count: m })
   const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
+  if (h < 24) return t('auditLog.hoursAgo', { count: h })
   const d = Math.floor(h / 24)
-  if (d < 7) return `${d}d ago`
+  if (d < 7) return t('auditLog.daysAgo', { count: d })
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function diffLabel(diff: AuditLog['diff']): string | null {
+function diffLabel(diff: AuditLog['diff'], t: (key: string) => string): string | null {
   const keys = Object.keys(diff ?? {})
   if (keys.length === 0) return null
   return keys.map((k) => {
     const { from, to } = diff[k]
-    const fromStr = from === null || from === undefined ? 'none' : String(from)
-    const toStr   = to   === null || to   === undefined ? 'none' : String(to)
+    const fromStr = from === null || from === undefined ? t('common.none') : String(from)
+    const toStr   = to   === null || to   === undefined ? t('common.none') : String(to)
     return `${k}: ${fromStr} → ${toStr}`
   }).join(' · ')
 }
@@ -75,6 +61,7 @@ function diffLabel(diff: AuditLog['diff']): string | null {
 // ─── Create organisation modal ─────────────────────────────────────────────
 
 function CreateOrgModal({ onCreated, onClose }: { onCreated: () => void; onClose: () => void }) {
+  const { t } = useTranslation()
   const [name, setName] = useState('')
   const [industry, setIndustry] = useState('')
   const [locale, setLocale] = useState('en')
@@ -99,8 +86,8 @@ function CreateOrgModal({ onCreated, onClose }: { onCreated: () => void; onClose
     } catch {
       setError(
         adminEmail.trim()
-          ? 'Organisation may have been created, but the admin invite failed to send. Check the "Invite org admin" list and try again from there.'
-          : 'Could not create the organisation. Check the details and try again.',
+          ? t('platformAdmin.createOrgModal.errorWithEmail')
+          : t('platformAdmin.createOrgModal.errorWithoutEmail'),
       )
     } finally {
       setLoading(false)
@@ -111,34 +98,34 @@ function CreateOrgModal({ onCreated, onClose }: { onCreated: () => void; onClose
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-ink-900/40 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="font-display text-lg font-bold text-ink-900">New organisation</h2>
+          <h2 className="font-display text-lg font-bold text-ink-900">{t('platformAdmin.createOrgModal.title')}</h2>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-700 transition-colors"><X className="size-4" /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-ink-700">Organisation name</label>
+            <label className="block text-sm font-medium text-ink-700">{t('platformAdmin.createOrgModal.name')}</label>
             <input
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Acme Strategy Group"
+              placeholder={t('platformAdmin.createOrgModal.namePlaceholder')}
               className="w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-ink-700">Industry</label>
+              <label className="block text-sm font-medium text-ink-700">{t('platformAdmin.createOrgModal.industry')}</label>
               <input
                 value={industry}
                 onChange={(e) => setIndustry(e.target.value)}
-                placeholder="Optional"
+                placeholder={t('platformAdmin.createOrgModal.industryPlaceholder')}
                 className="w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent"
               />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-ink-700">Locale</label>
+              <label className="block text-sm font-medium text-ink-700">{t('platformAdmin.createOrgModal.locale')}</label>
               <select
                 value={locale}
                 onChange={(e) => setLocale(e.target.value)}
@@ -152,33 +139,33 @@ function CreateOrgModal({ onCreated, onClose }: { onCreated: () => void; onClose
           </div>
 
           <div className="space-y-1.5 pt-1 border-t border-ink-100">
-            <label className="block text-sm font-medium text-ink-700 pt-3">Invite admin now (optional)</label>
+            <label className="block text-sm font-medium text-ink-700 pt-3">{t('platformAdmin.createOrgModal.inviteAdminLabel')}</label>
             <input
               type="email"
               value={adminEmail}
               onChange={(e) => setAdminEmail(e.target.value)}
-              placeholder="admin@acme.com"
+              placeholder={t('platformAdmin.createOrgModal.adminEmailPlaceholder')}
               className="w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent"
             />
           </div>
 
           <p className="text-xs text-ink-400">
             {adminEmail.trim()
-              ? 'The org is created active, and an invite emails immediately to make this person its org admin.'
-              : 'The org is created active with no members. Leave this blank and use "Invite org admin" later to onboard the first admin.'}
+              ? t('platformAdmin.createOrgModal.noteWithEmail')
+              : t('platformAdmin.createOrgModal.noteWithoutEmail')}
           </p>
 
           {error && <div className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-700">{error}</div>}
 
           <div className="flex items-center justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors">Cancel</button>
+            <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors">{t('common.cancel')}</button>
             <button
               type="submit"
               disabled={loading || !name.trim()}
               className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading && <span className="size-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />}
-              Create organisation
+              {t('platformAdmin.createOrgModal.submit')}
             </button>
           </div>
         </form>
@@ -193,6 +180,7 @@ function CreateOrgModal({ onCreated, onClose }: { onCreated: () => void; onClose
 // CreateOrgModal) so this can never fabricate a new org from typed text.
 
 function InviteOrgAdminModal({ orgs, onInvited, onClose }: { orgs: Organisation[]; onInvited: () => void; onClose: () => void }) {
+  const { t } = useTranslation()
   const [orgId, setOrgId] = useState(orgs[0]?.id ?? '')
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
@@ -208,7 +196,7 @@ function InviteOrgAdminModal({ orgs, onInvited, onClose }: { orgs: Organisation[
       onInvited()
       onClose()
     } catch {
-      setError('Could not send the invitation. Check the email address and try again.')
+      setError(t('platformAdmin.inviteOrgAdminModal.error'))
     } finally {
       setLoading(false)
     }
@@ -218,18 +206,18 @@ function InviteOrgAdminModal({ orgs, onInvited, onClose }: { orgs: Organisation[
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-ink-900/40 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="font-display text-lg font-bold text-ink-900">Invite an org admin</h2>
+          <h2 className="font-display text-lg font-bold text-ink-900">{t('platformAdmin.inviteOrgAdminModal.title')}</h2>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-700 transition-colors"><X className="size-4" /></button>
         </div>
 
         {orgs.length === 0 ? (
           <p className="text-sm text-ink-500">
-            No organisations exist yet. Create one first with "New organisation", then invite its admin from here.
+            {t('platformAdmin.inviteOrgAdminModal.noOrgs')}
           </p>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-ink-700">Organisation</label>
+              <label className="block text-sm font-medium text-ink-700">{t('platformAdmin.inviteOrgAdminModal.organisation')}</label>
               <select
                 autoFocus
                 value={orgId}
@@ -237,36 +225,36 @@ function InviteOrgAdminModal({ orgs, onInvited, onClose }: { orgs: Organisation[
                 className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-900 outline-none focus:ring-2 focus:ring-accent-400"
               >
                 {orgs.map((o) => (
-                  <option key={o.id} value={o.id}>{o.name}{!o.is_active ? ' (inactive)' : ''}</option>
+                  <option key={o.id} value={o.id}>{o.name}{!o.is_active ? t('platformAdmin.inviteOrgAdminModal.inactiveSuffix') : ''}</option>
                 ))}
               </select>
             </div>
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-ink-700">Admin contact email</label>
+              <label className="block text-sm font-medium text-ink-700">{t('platformAdmin.inviteOrgAdminModal.adminEmail')}</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@acme.com"
+                placeholder={t('platformAdmin.inviteOrgAdminModal.emailPlaceholder')}
                 className="w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent"
               />
             </div>
 
             <p className="text-xs text-ink-400">
-              Emails a 7-day invite link for the selected organisation. This person becomes its org admin once they accept.
+              {t('platformAdmin.inviteOrgAdminModal.note')}
             </p>
 
             {error && <div className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-700">{error}</div>}
 
             <div className="flex items-center justify-end gap-2 pt-1">
-              <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors">Cancel</button>
+              <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors">{t('common.cancel')}</button>
               <button
                 type="submit"
                 disabled={loading || !orgId || !email.trim()}
                 className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading && <span className="size-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />}
-                Send invite
+                {t('platformAdmin.inviteOrgAdminModal.submit')}
               </button>
             </div>
           </form>
@@ -279,6 +267,7 @@ function InviteOrgAdminModal({ orgs, onInvited, onClose }: { orgs: Organisation[
 // ─── Invite platform teammate modal ─────────────────────────────────────────
 
 function InviteTeamModal({ onInvited, onClose }: { onInvited: () => void; onClose: () => void }) {
+  const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<'platform_support' | 'super_admin'>('platform_support')
   const [loading, setLoading] = useState(false)
@@ -294,35 +283,37 @@ function InviteTeamModal({ onInvited, onClose }: { onInvited: () => void; onClos
       onInvited()
       onClose()
     } catch {
-      setError('Could not send the invitation. They may already have a platform account.')
+      setError(t('platformAdmin.inviteTeamModal.error'))
     } finally {
       setLoading(false)
     }
   }
 
+  const platformRoleMeta = getPlatformRoleMeta(t)
+
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-ink-900/40 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="font-display text-lg font-bold text-ink-900">Invite a platform teammate</h2>
+          <h2 className="font-display text-lg font-bold text-ink-900">{t('platformAdmin.inviteTeamModal.title')}</h2>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-700 transition-colors"><X className="size-4" /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-ink-700">Email</label>
+            <label className="block text-sm font-medium text-ink-700">{t('platformAdmin.inviteTeamModal.email')}</label>
             <input
               autoFocus
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="teammate@yourcompany.com"
+              placeholder={t('platformAdmin.inviteTeamModal.emailPlaceholder')}
               className="w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-ink-700">Platform role</label>
+            <label className="block text-sm font-medium text-ink-700">{t('platformAdmin.inviteTeamModal.platformRole')}</label>
             <div className="grid grid-cols-2 gap-2">
               {(['platform_support', 'super_admin'] as const).map((r) => (
                 <button
@@ -334,10 +325,10 @@ function InviteTeamModal({ onInvited, onClose }: { onInvited: () => void; onClos
                   }`}
                 >
                   <p className={`text-sm font-semibold ${role === r ? 'text-accent' : 'text-ink-800'}`}>
-                    {PLATFORM_ROLE_META[r].label}
+                    {platformRoleMeta[r].label}
                   </p>
                   <p className="text-xs text-ink-400 mt-0.5">
-                    {r === 'platform_support' ? 'Read-only across all orgs' : 'Full cross-org access'}
+                    {r === 'platform_support' ? t('platformAdmin.inviteTeamModal.platformSupportDesc') : t('platformAdmin.inviteTeamModal.superAdminDesc')}
                   </p>
                 </button>
               ))}
@@ -345,20 +336,20 @@ function InviteTeamModal({ onInvited, onClose }: { onInvited: () => void; onClos
           </div>
 
           <p className="text-xs text-ink-400">
-            This grants cross-organisation access, not membership in any single org. A 7-day setup link is emailed to accept.
+            {t('platformAdmin.inviteTeamModal.note')}
           </p>
 
           {error && <div className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-sm text-red-700">{error}</div>}
 
           <div className="flex items-center justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors">Cancel</button>
+            <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors">{t('common.cancel')}</button>
             <button
               type="submit"
               disabled={loading || !email.trim()}
               className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading && <span className="size-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />}
-              Send invite
+              {t('platformAdmin.inviteTeamModal.submit')}
             </button>
           </div>
         </form>
@@ -370,6 +361,8 @@ function InviteTeamModal({ onInvited, onClose }: { onInvited: () => void; onClos
 // ─── Platform team tab ───────────────────────────────────────────────────────
 
 function TeamTab() {
+  const { t } = useTranslation()
+  const platformRoleMeta = getPlatformRoleMeta(t)
   const currentUser = useAuthStore((s) => s.user)
   const isSuperAdmin = currentUser?.role === 'super_admin'
 
@@ -423,39 +416,39 @@ function TeamTab() {
             onClick={() => setShowInvite(true)}
             className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors"
           >
-            <Send className="size-4" /> Invite teammate
+            <Send className="size-4" /> {t('platformAdmin.team.inviteTeammate')}
           </button>
         </div>
       )}
 
       {/* Members */}
       <div>
-        <h3 className="text-sm font-semibold text-ink-800 mb-3">Platform team members</h3>
+        <h3 className="text-sm font-semibold text-ink-800 mb-3">{t('platformAdmin.team.membersHeading')}</h3>
         <div className="bg-white rounded-2xl border border-ink-100 overflow-hidden">
           {loading ? (
             <div className="p-6 space-y-3">{[1, 2].map((i) => <div key={i} className="h-12 bg-ink-50 rounded-xl animate-pulse" />)}</div>
           ) : users.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Users className="size-8 text-ink-200 mb-2" />
-              <p className="text-sm font-semibold text-ink-500">No platform team members yet</p>
+              <p className="text-sm font-semibold text-ink-500">{t('platformAdmin.team.noMembers')}</p>
             </div>
           ) : (
             <table className="w-full">
               <thead className="border-b border-ink-100 bg-ink-50">
                 <tr>
-                  {['Name', 'Role', 'Status', 'Last login', ''].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">{h}</th>
+                  {[t('platformAdmin.table.name'), t('platformAdmin.table.role'), t('platformAdmin.table.status'), t('platformAdmin.table.lastLogin'), ''].map((h, i) => (
+                    <th key={i} className="px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-50">
                 {users.map((u) => {
-                  const meta = PLATFORM_ROLE_META[u.role as 'super_admin' | 'platform_support']
+                  const meta = platformRoleMeta[u.role as 'super_admin' | 'platform_support']
                   const isSelf = u.id === currentUser?.id
                   return (
                     <tr key={u.id} className={!u.is_active ? 'opacity-60' : ''}>
                       <td className="px-4 py-3.5">
-                        <p className="text-sm font-medium text-ink-900">{u.name} {isSelf && <span className="text-ink-400 font-normal">(you)</span>}</p>
+                        <p className="text-sm font-medium text-ink-900">{u.name} {isSelf && <span className="text-ink-400 font-normal">{t('admin.you')}</span>}</p>
                         <p className="text-xs text-ink-400">{u.email}</p>
                       </td>
                       <td className="px-4 py-3.5">
@@ -465,8 +458,8 @@ function TeamTab() {
                             onChange={(e) => handleRoleChange(u, e.target.value as UserRole)}
                             className={`text-xs font-semibold rounded-lg px-2 py-1 outline-none cursor-pointer ${meta?.className ?? 'bg-ink-100 text-ink-600'}`}
                           >
-                            <option value="platform_support">Platform support</option>
-                            <option value="super_admin">Super admin</option>
+                            <option value="platform_support">{t('roles.platform_support')}</option>
+                            <option value="super_admin">{t('roles.super_admin')}</option>
                           </select>
                         ) : (
                           <span className={`text-xs font-semibold rounded-lg px-2 py-1 ${meta?.className ?? 'bg-ink-100 text-ink-600'}`}>
@@ -477,10 +470,10 @@ function TeamTab() {
                       <td className="px-4 py-3.5">
                         <span className={`flex items-center gap-1.5 text-xs font-medium ${u.is_active ? 'text-p2-dark' : 'text-ink-400'}`}>
                           {u.is_active ? <CheckCircle2 className="size-3.5" /> : <XCircle className="size-3.5" />}
-                          {u.is_active ? 'Active' : 'Deactivated'}
+                          {u.is_active ? t('platformAdmin.status.active') : t('platformAdmin.status.deactivated')}
                         </span>
                       </td>
-                      <td className="px-4 py-3.5"><p className="text-xs text-ink-400">{u.last_login_at ? relativeTime(u.last_login_at) : 'Never'}</p></td>
+                      <td className="px-4 py-3.5"><p className="text-xs text-ink-400">{u.last_login_at ? relativeTime(u.last_login_at, t) : t('platformAdmin.team.never')}</p></td>
                       <td className="px-4 py-3.5 text-right">
                         {!isSuperAdmin || isSelf ? null : actionLoading === u.id ? (
                           <RefreshCw className="size-4 text-ink-300 animate-spin inline-block" />
@@ -492,7 +485,7 @@ function TeamTab() {
                             }`}
                           >
                             {u.is_active ? <ShieldOff className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
-                            {u.is_active ? 'Deactivate' : 'Activate'}
+                            {u.is_active ? t('platformAdmin.deactivate') : t('platformAdmin.activate')}
                           </button>
                         )}
                       </td>
@@ -508,12 +501,12 @@ function TeamTab() {
       {/* Pending invitations */}
       {isSuperAdmin && (
         <div>
-          <h3 className="text-sm font-semibold text-ink-800 mb-3">Pending invitations</h3>
+          <h3 className="text-sm font-semibold text-ink-800 mb-3">{t('platformAdmin.team.pendingHeading')}</h3>
           <div className="bg-white rounded-2xl border border-ink-100 overflow-hidden">
             {loading ? null : pendingInvites.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <Clock3 className="size-7 text-ink-200 mb-2" />
-                <p className="text-sm text-ink-500">No pending invitations</p>
+                <p className="text-sm text-ink-500">{t('platformAdmin.team.noPending')}</p>
               </div>
             ) : (
               <div className="divide-y divide-ink-50">
@@ -523,7 +516,7 @@ function TeamTab() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-ink-800">{inv.email}</p>
                       <p className="text-xs text-ink-400">
-                        {PLATFORM_ROLE_META[inv.role as 'super_admin' | 'platform_support']?.label ?? inv.role} · expires {new Date(inv.expires_at).toLocaleDateString()}
+                        {platformRoleMeta[inv.role as 'super_admin' | 'platform_support']?.label ?? inv.role} · {t('platformAdmin.team.expires', { date: new Date(inv.expires_at).toLocaleDateString() })}
                       </p>
                     </div>
                     {actionLoading === inv.id ? (
@@ -531,10 +524,10 @@ function TeamTab() {
                     ) : (
                       <div className="flex items-center gap-3 shrink-0">
                         <button onClick={() => handleResendInvite(inv.id)} className="flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-700">
-                          <Send className="size-3.5" /> Resend
+                          <Send className="size-3.5" /> {t('common.resend')}
                         </button>
                         <button onClick={() => handleCancelInvite(inv.id)} className="flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-700">
-                          <Trash2 className="size-3.5" /> Cancel
+                          <Trash2 className="size-3.5" /> {t('common.cancel')}
                         </button>
                       </div>
                     )}
@@ -554,6 +547,8 @@ function TeamTab() {
 // ─── Audit log tab (cross-org) ──────────────────────────────────────────────
 
 function AuditLogTab({ orgs }: { orgs: Organisation[] }) {
+  const { t } = useTranslation()
+  const ACTION_GROUPS = getActionGroups(t)
   const [logs, setLogs] = useState<AuditLog[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -602,13 +597,13 @@ function AuditLogTab({ orgs }: { orgs: Organisation[] }) {
             onChange={(e) => setOrgFilter(e.target.value)}
             className="rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm text-ink-700 outline-none focus:ring-2 focus:ring-accent-400"
           >
-            <option value="">All organisations</option>
+            <option value="">{t('auditLog.allOrganisations')}</option>
             {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         </div>
 
         <span className="text-xs text-ink-400 ml-auto">
-          {total} event{total !== 1 ? 's' : ''}{(actionFilter || orgFilter) ? ' (filtered)' : ''}
+          {t('auditLog.eventsCount', { count: total })}{(actionFilter || orgFilter) ? t('auditLog.filtered') : ''}
         </span>
       </div>
 
@@ -629,14 +624,14 @@ function AuditLogTab({ orgs }: { orgs: Organisation[] }) {
         ) : logs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-14 text-center">
             <Activity className="size-9 text-ink-200 mb-3" />
-            <p className="text-sm font-semibold text-ink-500">No events found</p>
-            <p className="text-xs text-ink-400 mt-1">Try adjusting your filters.</p>
+            <p className="text-sm font-semibold text-ink-500">{t('auditLog.noEventsFound')}</p>
+            <p className="text-xs text-ink-400 mt-1">{t('auditLog.adjustFilters')}</p>
           </div>
         ) : (
           <div className="divide-y divide-ink-50">
             {logs.map((log) => {
-              const change = diffLabel(log.diff)
-              const orgName = orgs.find((o) => o.id === log.org_id)?.name ?? 'Unknown org'
+              const change = diffLabel(log.diff, t)
+              const orgName = orgs.find((o) => o.id === log.org_id)?.name ?? t('auditLog.unknownOrg')
               return (
                 <div key={log.id} className="flex items-start gap-4 px-5 py-4 hover:bg-ink-50/50 transition-colors">
                   <div className="size-8 rounded-full bg-accent-100 flex items-center justify-center shrink-0 mt-0.5">
@@ -648,7 +643,7 @@ function AuditLogTab({ orgs }: { orgs: Organisation[] }) {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-ink-800">
                       <span className="font-semibold">{log.user_name}</span>{' '}
-                      <span className="font-medium text-ink-700">{ACTION_LABEL[log.action] ?? log.action}</span>{' '}
+                      <span className="font-medium text-ink-700">{t(`auditActions.${log.action}`, log.action)}</span>{' '}
                       <span className="inline-flex items-center gap-1 text-xs text-p3-dark bg-p3-light rounded-md px-1.5 py-0.5 align-middle">
                         <Building2 className="size-3" /> {orgName}
                       </span>
@@ -658,7 +653,7 @@ function AuditLogTab({ orgs }: { orgs: Organisation[] }) {
                   </div>
 
                   <div className="text-right shrink-0">
-                    <p className="text-xs text-ink-400">{relativeTime(log.created_at)}</p>
+                    <p className="text-xs text-ink-400">{relativeTime(log.created_at, t)}</p>
                     <p className="text-[10px] text-ink-300 mt-0.5">
                       {new Date(log.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                     </p>
@@ -671,7 +666,7 @@ function AuditLogTab({ orgs }: { orgs: Organisation[] }) {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-ink-100 bg-ink-50/50">
-            <p className="text-xs text-ink-400">Showing {page * limit + 1}–{Math.min((page + 1) * limit, total)} of {total}</p>
+            <p className="text-xs text-ink-400">{t('auditLog.showing', { from: page * limit + 1, to: Math.min((page + 1) * limit, total), total })}</p>
             <div className="flex items-center gap-2">
               <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}
                 className="p-1.5 rounded-lg text-ink-400 hover:text-ink-700 hover:bg-ink-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
@@ -693,6 +688,7 @@ function AuditLogTab({ orgs }: { orgs: Organisation[] }) {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function PlatformAdminPage() {
+  const { t } = useTranslation()
   const currentUser = useAuthStore((s) => s.user)
   const isSuperAdmin = currentUser?.role === 'super_admin'
   const isPlatformTier = isSuperAdmin || currentUser?.role === 'platform_support'
@@ -724,8 +720,8 @@ export default function PlatformAdminPage() {
     return (
       <div className="p-6 max-w-lg mx-auto text-center py-20">
         <Lock className="size-9 text-ink-200 mx-auto mb-3" />
-        <h1 className="font-display text-lg font-bold text-ink-900">Platform console</h1>
-        <p className="text-sm text-ink-500 mt-1">This area is restricted to platform-level administrators.</p>
+        <h1 className="font-display text-lg font-bold text-ink-900">{t('platformAdmin.title')}</h1>
+        <p className="text-sm text-ink-500 mt-1">{t('platformAdmin.restricted')}</p>
       </div>
     )
   }
@@ -737,10 +733,10 @@ export default function PlatformAdminPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-ink-900">Platform console</h1>
+          <h1 className="font-display text-2xl font-bold text-ink-900">{t('platformAdmin.title')}</h1>
           <p className="text-ink-500 text-sm mt-0.5">
-            {orgs.length} organisation{orgs.length !== 1 ? 's' : ''} · {activeCount} active
-            {!isSuperAdmin && <span className="text-ink-400"> · read-only</span>}
+            {t('platformAdmin.orgsCount', { count: orgs.length })} · {t('platformAdmin.activeCount', { count: activeCount })}
+            {!isSuperAdmin && <span className="text-ink-400"> · {t('platformAdmin.readOnly')}</span>}
           </p>
         </div>
         {isSuperAdmin && tab === 'organisations' && (
@@ -749,13 +745,13 @@ export default function PlatformAdminPage() {
               onClick={() => setShowInviteOrg(true)}
               className="flex items-center gap-2 rounded-xl border border-ink-200 bg-white px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50 transition-colors"
             >
-              <Mail className="size-4" /> Invite org admin
+              <Mail className="size-4" /> {t('platformAdmin.inviteOrgAdmin')}
             </button>
             <button
               onClick={() => setShowCreateOrg(true)}
               className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors"
             >
-              <Plus className="size-4" /> New organisation
+              <Plus className="size-4" /> {t('platformAdmin.newOrganisation')}
             </button>
           </div>
         )}
@@ -764,9 +760,9 @@ export default function PlatformAdminPage() {
       {/* Tabs */}
       <div className="flex gap-1 bg-ink-100 rounded-xl p-1 w-fit">
         {([
-          { id: 'organisations' as const, label: 'Organisations' },
-          { id: 'team' as const,          label: 'Platform team' },
-          { id: 'audit' as const,         label: 'Audit log' },
+          { id: 'organisations' as const, label: t('platformAdmin.tabs.organisations') },
+          { id: 'team' as const,          label: t('platformAdmin.tabs.team') },
+          { id: 'audit' as const,         label: t('platformAdmin.tabs.auditLog') },
         ]).map(({ id, label }) => (
           <button
             key={id}
@@ -791,7 +787,7 @@ export default function PlatformAdminPage() {
                 onChange={(e) => setActiveOnly(e.target.checked)}
                 className="rounded border-ink-300 text-accent focus:ring-accent-400"
               />
-              Active only
+              {t('platformAdmin.activeOnly')}
             </label>
           </div>
 
@@ -801,15 +797,15 @@ export default function PlatformAdminPage() {
             ) : orgs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-14 text-center">
                 <Building2 className="size-9 text-ink-200 mb-3" />
-                <p className="text-sm font-semibold text-ink-500">No organisations yet</p>
-                {isSuperAdmin && <p className="text-xs text-ink-400 mt-1">Create one, or invite an org admin to set one up.</p>}
+                <p className="text-sm font-semibold text-ink-500">{t('platformAdmin.noOrganisations')}</p>
+                {isSuperAdmin && <p className="text-xs text-ink-400 mt-1">{t('platformAdmin.noOrganisationsHelp')}</p>}
               </div>
             ) : (
               <table className="w-full">
                 <thead className="border-b border-ink-100 bg-ink-50">
                   <tr>
-                    {['Organisation', 'Industry', 'Locale', 'Status', 'Created', ''].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">{h}</th>
+                    {[t('platformAdmin.table.organisation'), t('platformAdmin.table.industry'), t('platformAdmin.table.locale'), t('platformAdmin.table.status'), t('platformAdmin.table.created'), ''].map((h, i) => (
+                      <th key={i} className="px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -832,7 +828,7 @@ export default function PlatformAdminPage() {
                       <td className="px-4 py-3.5">
                         <span className={`flex items-center gap-1.5 text-xs font-medium ${org.is_active ? 'text-p2-dark' : 'text-ink-400'}`}>
                           {org.is_active ? <CheckCircle2 className="size-3.5" /> : <XCircle className="size-3.5" />}
-                          {org.is_active ? 'Active' : 'Deactivated'}
+                          {org.is_active ? t('platformAdmin.status.active') : t('platformAdmin.status.deactivated')}
                         </span>
                       </td>
                       <td className="px-4 py-3.5">
@@ -851,7 +847,7 @@ export default function PlatformAdminPage() {
                             }`}
                           >
                             {org.is_active ? <ShieldOff className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
-                            {org.is_active ? 'Deactivate' : 'Activate'}
+                            {org.is_active ? t('platformAdmin.deactivate') : t('platformAdmin.activate')}
                           </button>
                         )}
                       </td>

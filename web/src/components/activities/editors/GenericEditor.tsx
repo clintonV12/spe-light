@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface Section {
   key: string
@@ -23,6 +24,7 @@ const ACCENTS = [
 ]
 
 export const GenericEditor: React.FC<GenericEditorProps> = ({ sections, value, onChange, readOnly }) => {
+  const { t } = useTranslation()
   const handleChange = (key: string, text: string) => {
     onChange({ ...value, [key]: text })
   }
@@ -42,7 +44,7 @@ export const GenericEditor: React.FC<GenericEditorProps> = ({ sections, value, o
           </div>
           <textarea
             className="min-h-24 w-full resize-none rounded-lg bg-ink-50/60 px-3 py-2.5 text-sm text-ink-800 outline-none placeholder:text-ink-400"
-            placeholder={placeholder ?? `Enter ${label.toLowerCase()}…`}
+            placeholder={placeholder ?? t('editorsCommon.enterField', { field: label.toLowerCase() })}
             value={value[key] ?? ''}
             onChange={(e) => handleChange(key, e.target.value)}
             readOnly={readOnly}

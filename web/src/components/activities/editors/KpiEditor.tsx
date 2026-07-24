@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Table2, BarChart3 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Button } from '../../ui'
@@ -21,6 +22,7 @@ interface KpiEditorProps {
 type ViewMode = 'table' | 'bar'
 
 export const KpiEditor: React.FC<KpiEditorProps> = ({ value, onChange, readOnly }) => {
+  const { t } = useTranslation()
   const [view, setView] = useState<ViewMode>('table')
 
   const addRow = () => {
@@ -35,14 +37,20 @@ export const KpiEditor: React.FC<KpiEditorProps> = ({ value, onChange, readOnly 
     onChange(value.filter((r) => r.id !== id))
   }
 
+  const seriesLabels = {
+    Baseline: t('editors.kpi.seriesBaseline'),
+    Target: t('editors.kpi.seriesTarget'),
+    Current: t('editors.kpi.seriesCurrent'),
+  }
+
   const chartData = useMemo(() => value
     .filter((r) => r.name.trim() !== '')
     .map((r) => ({
       name: r.name.length > 16 ? `${r.name.slice(0, 16)}…` : r.name,
-      Baseline: Number(r.baseline) || 0,
-      Target: Number(r.target) || 0,
-      Current: Number(r.current) || 0,
-    })), [value])
+      [seriesLabels.Baseline]: Number(r.baseline) || 0,
+      [seriesLabels.Target]: Number(r.target) || 0,
+      [seriesLabels.Current]: Number(r.current) || 0,
+    })), [value, seriesLabels.Baseline, seriesLabels.Target, seriesLabels.Current])
 
   return (
     <div className="space-y-3">
@@ -56,7 +64,7 @@ export const KpiEditor: React.FC<KpiEditorProps> = ({ value, onChange, readOnly 
             }`}
           >
             {mode === 'table' ? <Table2 className="size-3.5" /> : <BarChart3 className="size-3.5" />}
-            {mode === 'table' ? 'Table' : 'Bar'}
+            {mode === 'table' ? t('editorsCommon.table') : t('editorsCommon.bar')}
           </button>
         ))}
       </div>
@@ -67,8 +75,8 @@ export const KpiEditor: React.FC<KpiEditorProps> = ({ value, onChange, readOnly 
             <table className="w-full text-sm">
               <thead className="bg-ink-50 text-xs font-semibold text-ink-500 uppercase tracking-wide">
                 <tr>
-                  {['KPI name', 'Unit', 'Baseline', 'Target', 'Current'].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left">{h}</th>
+                  {[t('editors.kpi.headers.name'), t('editors.kpi.headers.unit'), t('editors.kpi.headers.baseline'), t('editors.kpi.headers.target'), t('editors.kpi.headers.current')].map((h, i) => (
+                    <th key={i} className="px-3 py-2 text-left">{h}</th>
                   ))}
                   {!readOnly && <th className="px-3 py-2" />}
                 </tr>
@@ -101,14 +109,14 @@ export const KpiEditor: React.FC<KpiEditorProps> = ({ value, onChange, readOnly 
           </div>
           {!readOnly && (
             <Button variant="ghost" size="sm" onClick={addRow}>
-              <Plus className="size-4" /> Add KPI
+              <Plus className="size-4" /> {t('editorsCommon.addKpi')}
             </Button>
           )}
         </div>
       ) : (
         <div className="rounded-xl border border-ink-100 bg-white p-4">
           {chartData.length === 0 ? (
-            <p className="py-16 text-center text-xs text-ink-300">Add a named KPI with numeric values to see the chart.</p>
+            <p className="py-16 text-center text-xs text-ink-300">{t('editorsCommon.addNamedKpiForChart')}</p>
           ) : (
             <ResponsiveContainer width="100%" height={340}>
               <BarChart data={chartData}>
@@ -117,13 +125,13 @@ export const KpiEditor: React.FC<KpiEditorProps> = ({ value, onChange, readOnly 
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="Baseline" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Current" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Target" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey={seriesLabels.Baseline} fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                <Bar dataKey={seriesLabels.Current} fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey={seriesLabels.Target} fill="#10b981" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
-          <p className="mt-1 text-center text-[11px] text-ink-300">Chart view only — not saved with the activity.</p>
+          <p className="mt-1 text-center text-[11px] text-ink-300">{t('editorsCommon.chartOnlyNotSaved')}</p>
         </div>
       )}
     </div>

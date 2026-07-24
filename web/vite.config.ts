@@ -38,6 +38,9 @@ export default defineConfig(({ mode }) => {
 
     server: {
       port: 5173,
+      allowedHosts: [
+        'spe-lite.dgrvcoop360.com',
+      ],
       proxy: isMock
         ? {}  // No proxy needed in mock mode
         : {

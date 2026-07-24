@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Eye, Target, Gem } from 'lucide-react'
 
 export interface VisionMissionContent {
@@ -21,6 +22,7 @@ const EMPTY: VisionMissionContent = { vision: '', mission: '', values: '' }
  * live from comma or newline separated input.
  */
 export const VisionMissionEditor: React.FC<VisionMissionEditorProps> = ({ value, onChange, readOnly }) => {
+  const { t } = useTranslation()
   const [content, setContent] = useState<VisionMissionContent>({ ...EMPTY, ...value })
 
   const set = (key: keyof VisionMissionContent, text: string) => {
@@ -39,11 +41,11 @@ export const VisionMissionEditor: React.FC<VisionMissionEditorProps> = ({ value,
       <div className="rounded-2xl border-2 border-accent bg-accent-50 p-5">
         <div className="mb-2 flex items-center gap-2">
           <Eye className="size-4 text-accent" />
-          <p className="text-xs font-bold uppercase tracking-wide text-accent">Vision</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-accent">{t('editors.visionMission.vision')}</p>
         </div>
         <textarea
           className="w-full resize-none bg-transparent text-lg font-medium italic leading-snug text-ink-800 outline-none placeholder:text-ink-400 placeholder:not-italic min-h-20"
-          placeholder="Where is the organisation headed, ultimately?"
+          placeholder={t('editors.visionMission.visionPlaceholder')}
           value={content.vision}
           onChange={(e) => set('vision', e.target.value)}
           readOnly={readOnly}
@@ -53,11 +55,11 @@ export const VisionMissionEditor: React.FC<VisionMissionEditorProps> = ({ value,
       <div className="rounded-2xl border-2 border-p2 bg-p2-light p-5">
         <div className="mb-2 flex items-center gap-2">
           <Target className="size-4 text-p2-dark" />
-          <p className="text-xs font-bold uppercase tracking-wide text-p2-dark">Mission</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-p2-dark">{t('editors.visionMission.mission')}</p>
         </div>
         <textarea
           className="w-full resize-none bg-transparent text-base leading-snug text-ink-800 outline-none placeholder:text-ink-400 min-h-20"
-          placeholder="What does the organisation do, day to day, to get there?"
+          placeholder={t('editors.visionMission.missionPlaceholder')}
           value={content.mission}
           onChange={(e) => set('mission', e.target.value)}
           readOnly={readOnly}
@@ -67,11 +69,11 @@ export const VisionMissionEditor: React.FC<VisionMissionEditorProps> = ({ value,
       <div className="rounded-2xl border-2 border-p3 bg-p3-light p-5">
         <div className="mb-2 flex items-center gap-2">
           <Gem className="size-4 text-p3-dark" />
-          <p className="text-xs font-bold uppercase tracking-wide text-p3-dark">Core Values</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-p3-dark">{t('editors.visionMission.coreValues')}</p>
         </div>
         <textarea
           className="w-full resize-none bg-transparent text-sm text-ink-800 outline-none placeholder:text-ink-400 min-h-16"
-          placeholder="Separate values with a comma or a new line…"
+          placeholder={t('editors.visionMission.valuesPlaceholder')}
           value={content.values}
           onChange={(e) => set('values', e.target.value)}
           readOnly={readOnly}

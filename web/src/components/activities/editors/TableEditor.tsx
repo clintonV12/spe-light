@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Table2, BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon } from 'lucide-react'
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -52,8 +53,9 @@ const PALETTE = ['#3b82f6', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#06b6d4
 type ViewMode = 'table' | 'bar' | 'line' | 'pie'
 
 export const TableEditor: React.FC<TableEditorProps> = ({
-  columns, value, onChange, readOnly, chart, addLabel = 'Add row', emptyRow,
+  columns, value, onChange, readOnly, chart, addLabel, emptyRow,
 }) => {
+  const { t } = useTranslation()
   const chartModes: ViewMode[] = useMemo(() => {
     if (!chart) return []
     const modes: ViewMode[] = []
@@ -122,7 +124,7 @@ export const TableEditor: React.FC<TableEditorProps> = ({
               line: <LineChartIcon className="size-3.5" />,
               pie: <PieChartIcon className="size-3.5" />,
             }[mode]
-            const label = { table: 'Table', bar: 'Bar', line: 'Line', pie: 'Pie' }[mode]
+            const label = { table: t('editorsCommon.table'), bar: t('editorsCommon.bar'), line: t('editorsCommon.line'), pie: t('editorsCommon.pie') }[mode]
             return (
               <button
                 key={mode}
@@ -189,7 +191,7 @@ export const TableEditor: React.FC<TableEditorProps> = ({
                 {value.length === 0 && (
                   <tr>
                     <td colSpan={columns.length + 1} className="px-3 py-6 text-center text-xs text-ink-300">
-                      No rows yet.
+                      {t('editorsCommon.noRowsYet')}
                     </td>
                   </tr>
                 )}
@@ -201,7 +203,7 @@ export const TableEditor: React.FC<TableEditorProps> = ({
               onClick={addRow}
               className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent-50 transition-colors"
             >
-              <Plus className="size-4" /> {addLabel}
+              <Plus className="size-4" /> {addLabel ?? t('editorsCommon.addRow')}
             </button>
           )}
         </div>
@@ -210,7 +212,7 @@ export const TableEditor: React.FC<TableEditorProps> = ({
       {view !== 'table' && (
         <div className="rounded-xl border border-ink-100 bg-white p-4">
           {!hasChartableData ? (
-            <p className="py-16 text-center text-xs text-ink-300">Add some rows to see the chart.</p>
+            <p className="py-16 text-center text-xs text-ink-300">{t('editorsCommon.addRowsToSeeChart')}</p>
           ) : (
             <ResponsiveContainer width="100%" height={320}>
               {view === 'bar' ? (
@@ -250,7 +252,7 @@ export const TableEditor: React.FC<TableEditorProps> = ({
               )}
             </ResponsiveContainer>
           )}
-          <p className="mt-1 text-center text-[11px] text-ink-300">Chart view only — not saved with the activity.</p>
+          <p className="mt-1 text-center text-[11px] text-ink-300">{t('editorsCommon.chartOnlyNotSaved')}</p>
         </div>
       )}
     </div>

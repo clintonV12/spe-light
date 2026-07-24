@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface EditorBlockProps {
   icon: React.ReactNode
@@ -22,6 +23,7 @@ interface EditorBlockProps {
 export const EditorBlock: React.FC<EditorBlockProps> = ({
   icon, label, hint, colorClasses, value, onChange, placeholder, readOnly, className, minHeight = 'min-h-24',
 }) => {
+  const { t } = useTranslation()
   return (
     <div className={`flex h-full flex-col rounded-xl border-2 p-3 transition-colors focus-within:ring-2 focus-within:ring-accent-400/50 ${colorClasses} ${className ?? ''}`}>
       <div className="mb-1.5 flex items-center gap-1.5">
@@ -31,7 +33,7 @@ export const EditorBlock: React.FC<EditorBlockProps> = ({
       {hint && <p className="mb-1.5 text-[11px] leading-snug text-ink-400">{hint}</p>}
       <textarea
         className={`w-full flex-1 resize-none bg-transparent text-sm text-ink-800 outline-none placeholder:text-ink-400 ${minHeight}`}
-        placeholder={placeholder ?? `Enter ${label.toLowerCase()}…`}
+        placeholder={placeholder ?? t('editorsCommon.enterField', { field: label.toLowerCase() })}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         readOnly={readOnly}

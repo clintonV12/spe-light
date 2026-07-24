@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Building2, Globe2, Compass } from 'lucide-react'
 import { EditorBlock } from './EditorBlock'
 
@@ -18,6 +19,7 @@ const EMPTY: StakeholderMapContent = { internal: '', external: '', strategy: '' 
 
 /** Internal / external stakeholders side by side, engagement strategy anchored below both. */
 export const StakeholderMapEditor: React.FC<StakeholderMapEditorProps> = ({ value, onChange, readOnly }) => {
+  const { t } = useTranslation()
   const [content, setContent] = useState<StakeholderMapContent>({ ...EMPTY, ...value })
 
   const set = (key: keyof StakeholderMapContent, text: string) => {
@@ -31,8 +33,8 @@ export const StakeholderMapEditor: React.FC<StakeholderMapEditorProps> = ({ valu
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <EditorBlock
           icon={<Building2 className="size-3.5" />}
-          label="Internal Stakeholders"
-          hint="Teams, leadership, and functions inside the organisation."
+          label={t('editors.stakeholderMap.internal')}
+          hint={t('editors.stakeholderMap.internalHint')}
           colorClasses="border-p2 bg-p2-light"
           value={content.internal}
           onChange={(v) => set('internal', v)}
@@ -41,8 +43,8 @@ export const StakeholderMapEditor: React.FC<StakeholderMapEditorProps> = ({ valu
         />
         <EditorBlock
           icon={<Globe2 className="size-3.5" />}
-          label="External Stakeholders"
-          hint="Customers, partners, regulators, and others outside the organisation."
+          label={t('editors.stakeholderMap.external')}
+          hint={t('editors.stakeholderMap.externalHint')}
           colorClasses="border-p3 bg-p3-light"
           value={content.external}
           onChange={(v) => set('external', v)}
@@ -52,8 +54,8 @@ export const StakeholderMapEditor: React.FC<StakeholderMapEditorProps> = ({ valu
       </div>
       <EditorBlock
         icon={<Compass className="size-3.5" />}
-        label="Engagement Strategy"
-        hint="How each group will be informed, consulted, or involved."
+        label={t('editors.stakeholderMap.strategy')}
+        hint={t('editors.stakeholderMap.strategyHint')}
         colorClasses="border-accent bg-accent-50"
         value={content.strategy}
         onChange={(v) => set('strategy', v)}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Boxes, Zap, Package, TrendingUp, Sparkles, ArrowRight, ArrowDown } from 'lucide-react'
 import { EditorBlock } from './EditorBlock'
 
@@ -20,16 +21,17 @@ const EMPTY: TheoryOfChangeContent = {
   inputs: '', activities: '', outputs: '', outcomes: '', impact: '',
 }
 
-const STEPS: { key: keyof TheoryOfChangeContent; label: string; hint: string; icon: React.ReactNode; color: string }[] = [
-  { key: 'inputs', label: 'Inputs', hint: 'Resources invested', icon: <Boxes className="size-3.5" />, color: 'border-ink-200 bg-ink-50' },
-  { key: 'activities', label: 'Activities', hint: 'What gets done', icon: <Zap className="size-3.5" />, color: 'border-p1 bg-p1-light' },
-  { key: 'outputs', label: 'Outputs', hint: 'Direct deliverables', icon: <Package className="size-3.5" />, color: 'border-p2 bg-p2-light' },
-  { key: 'outcomes', label: 'Outcomes', hint: 'Resulting change', icon: <TrendingUp className="size-3.5" />, color: 'border-p3 bg-p3-light' },
-  { key: 'impact', label: 'Impact', hint: 'Long-term effect', icon: <Sparkles className="size-3.5" />, color: 'border-accent bg-accent-50' },
+const STEPS: { key: keyof TheoryOfChangeContent; labelKey: string; hintKey: string; icon: React.ReactNode; color: string }[] = [
+  { key: 'inputs', labelKey: 'editors.theoryOfChange.inputs', hintKey: 'editors.theoryOfChange.inputsHint', icon: <Boxes className="size-3.5" />, color: 'border-ink-200 bg-ink-50' },
+  { key: 'activities', labelKey: 'editors.theoryOfChange.activities', hintKey: 'editors.theoryOfChange.activitiesHint', icon: <Zap className="size-3.5" />, color: 'border-p1 bg-p1-light' },
+  { key: 'outputs', labelKey: 'editors.theoryOfChange.outputs', hintKey: 'editors.theoryOfChange.outputsHint', icon: <Package className="size-3.5" />, color: 'border-p2 bg-p2-light' },
+  { key: 'outcomes', labelKey: 'editors.theoryOfChange.outcomes', hintKey: 'editors.theoryOfChange.outcomesHint', icon: <TrendingUp className="size-3.5" />, color: 'border-p3 bg-p3-light' },
+  { key: 'impact', labelKey: 'editors.theoryOfChange.impact', hintKey: 'editors.theoryOfChange.impactHint', icon: <Sparkles className="size-3.5" />, color: 'border-accent bg-accent-50' },
 ]
 
 /** The standard Theory of Change logic chain: Inputs → Activities → Outputs → Outcomes → Impact. */
 export const TheoryOfChangeEditor: React.FC<TheoryOfChangeEditorProps> = ({ value, onChange, readOnly }) => {
+  const { t } = useTranslation()
   const [content, setContent] = useState<TheoryOfChangeContent>({ ...EMPTY, ...value })
 
   const set = (key: keyof TheoryOfChangeContent, text: string) => {
@@ -44,8 +46,8 @@ export const TheoryOfChangeEditor: React.FC<TheoryOfChangeEditorProps> = ({ valu
         <React.Fragment key={step.key}>
           <EditorBlock
             icon={step.icon}
-            label={step.label}
-            hint={step.hint}
+            label={t(step.labelKey)}
+            hint={t(step.hintKey)}
             colorClasses={step.color}
             value={content[step.key]}
             onChange={(v) => set(step.key, v)}

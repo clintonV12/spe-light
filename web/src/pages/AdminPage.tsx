@@ -7,6 +7,7 @@ import {
   ArrowDownUp,
 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { orgApi, auditApi } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
 import { Badge } from '../components/ui'
@@ -15,38 +16,25 @@ import type { User, Invitation, UserRole, AuditLog, AuditAction } from '../types
 
 type Tab = 'users' | 'invitations' | 'audit'
 
-const ROLE_META: Record<UserRole, { label: string; icon: React.ReactNode; variant: 'neutral' | 'p1' | 'p2' | 'p3' | 'success' }> = {
-  super_admin:      { label: 'Super admin',      icon: <ShieldCheck className="size-3.5" />, variant: 'p3' },
-  platform_support: { label: 'Platform support', icon: <Shield className="size-3.5" />,      variant: 'p1' },
-  org_admin:        { label: 'Org admin',         icon: <ShieldCheck className="size-3.5" />, variant: 'p2' },
-  planner:          { label: 'Planner',           icon: <Shield className="size-3.5" />,      variant: 'success' },
-  contributor:      { label: 'Contributor',       icon: <Users className="size-3.5" />,        variant: 'neutral' },
-  viewer:           { label: 'Viewer',            icon: <Eye className="size-3.5" />,          variant: 'neutral' },
+type RoleMeta = { label: string; icon: React.ReactNode; variant: 'neutral' | 'p1' | 'p2' | 'p3' | 'success' }
+
+// Built from t() rather than a module-level constant so labels react to
+// language changes; icon/variant stay static, only the label is translated.
+function getRoleMeta(t: (key: string) => string): Record<UserRole, RoleMeta> {
+  return {
+    super_admin:      { label: t('roles.super_admin'),      icon: <ShieldCheck className="size-3.5" />, variant: 'p3' },
+    platform_support: { label: t('roles.platform_support'), icon: <Shield className="size-3.5" />,      variant: 'p1' },
+    org_admin:        { label: t('roles.org_admin'),        icon: <ShieldCheck className="size-3.5" />, variant: 'p2' },
+    planner:          { label: t('roles.planner'),          icon: <Shield className="size-3.5" />,      variant: 'success' },
+    contributor:      { label: t('roles.contributor'),      icon: <Users className="size-3.5" />,       variant: 'neutral' },
+    viewer:           { label: t('roles.viewer'),            icon: <Eye className="size-3.5" />,        variant: 'neutral' },
+  }
 }
 
 // ─── Audit helpers ────────────────────────────────────────────────────────────
-
-const ACTION_LABEL: Record<AuditAction, string> = {
-  'plan.created':         'Created plan',
-  'plan.updated':         'Updated plan',
-  'plan.archived':        'Archived plan',
-  'plan.deleted':         'Deleted plan',
-  'plan.duplicated':      'Duplicated plan',
-  'activity.created':     'Created activity',
-  'activity.updated':     'Updated activity',
-  'activity.deleted':     'Deleted activity',
-  'activity.status_changed': 'Changed activity status',
-  'user.invited':         'Invited user',
-  'user.role_changed':    'Changed role',
-  'user.deactivated':     'Deactivated user',
-  'user.reactivated':     'Reactivated user',
-  'invitation.cancelled': 'Cancelled invitation',
-  'invitation.resent':    'Resent invitation',
-  'invitation.accepted':  'Accepted invitation',
-  'report.generated':     'Generated report',
-  'link.created':         'Created link',
-  'link.deleted':         'Deleted link',
-}
+// Action labels come from t(`auditActions.${action}`) — the AuditAction
+// strings (e.g. 'plan.created') map directly onto the nested auditActions.*
+// keys in the locale files via i18next's default dot key-separator.
 
 const ACTION_COLOR: Partial<Record<AuditAction, string>> = {
   'plan.deleted':        'text-red-600',
@@ -60,36 +48,38 @@ const ACTION_COLOR: Partial<Record<AuditAction, string>> = {
   'report.generated':    'text-p1-dark',
 }
 
-const ACTION_GROUPS = [
-  { label: 'All actions', value: '' },
-  { label: 'Plans', value: 'plan' },
-  { label: 'Activities', value: 'activity' },
-  { label: 'Users', value: 'user' },
-  { label: 'Invitations', value: 'invitation' },
-  { label: 'Reports', value: 'report' },
-]
+function getActionGroups(t: (key: string) => string) {
+  return [
+    { label: t('auditLog.filterAllActions'), value: '' },
+    { label: t('auditLog.filterPlans'), value: 'plan' },
+    { label: t('auditLog.filterActivities'), value: 'activity' },
+    { label: t('auditLog.filterUsers'), value: 'user' },
+    { label: t('auditLog.filterInvitations'), value: 'invitation' },
+    { label: t('auditLog.filterReports'), value: 'report' },
+  ]
+}
 
-function diffLabel(diff: AuditLog['diff']): string | null {
+function diffLabel(diff: AuditLog['diff'], t: (key: string) => string): string | null {
   const keys = Object.keys(diff ?? {})
   if (keys.length === 0) return null
   return keys.map((k) => {
     const { from, to } = diff![k]
-    const fromStr = from === null ? 'none' : String(from)
-    const toStr   = to   === null ? 'none' : String(to)
+    const fromStr = from === null ? t('common.none') : String(from)
+    const toStr   = to   === null ? t('common.none') : String(to)
     return `${k}: ${fromStr} → ${toStr}`
   }).join(' · ')
 }
 
-function relativeTime(iso: string): string {
+function relativeTime(iso: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const s = Math.floor(diff / 1000)
-  if (s < 60) return 'just now'
+  if (s < 60) return t('auditLog.justNow')
   const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ago`
+  if (m < 60) return t('auditLog.minutesAgo', { count: m })
   const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
+  if (h < 24) return t('auditLog.hoursAgo', { count: h })
   const d = Math.floor(h / 24)
-  if (d < 7) return `${d}d ago`
+  if (d < 7) return t('auditLog.daysAgo', { count: d })
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
@@ -99,9 +89,11 @@ function UserRowMenu({ user, currentUserId, onToggleActive, onChangeRole }: {
   user: User; currentUserId: string
   onToggleActive: () => void; onChangeRole: (r: UserRole) => void
 }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   if (user.id === currentUserId) return null
   const roles: UserRole[] = ['planner', 'contributor', 'viewer', 'org_admin']
+  const roleMeta = getRoleMeta(t)
   return (
     <div className="relative">
       <button onClick={() => setOpen((v) => !v)} className="p-1.5 rounded-lg text-ink-300 hover:text-ink-700 hover:bg-ink-50 transition-colors">
@@ -111,19 +103,19 @@ function UserRowMenu({ user, currentUserId, onToggleActive, onChangeRole }: {
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute right-0 z-20 mt-1 w-48 rounded-xl border border-ink-100 bg-white shadow-lg py-1">
-            <p className="px-3 py-1.5 text-xs font-semibold text-ink-400 uppercase tracking-wide">Change role</p>
+            <p className="px-3 py-1.5 text-xs font-semibold text-ink-400 uppercase tracking-wide">{t('admin.changeRole')}</p>
             {roles.map((r) => (
               <button key={r} onClick={() => { onChangeRole(r); setOpen(false) }}
                 className={`flex items-center gap-2 w-full px-3 py-2 text-sm transition-colors ${user.role === r ? 'text-accent bg-accent-50' : 'text-ink-700 hover:bg-ink-50'}`}
               >
-                {ROLE_META[r].icon} {ROLE_META[r].label}
+                {roleMeta[r].icon} {roleMeta[r].label}
               </button>
             ))}
             <div className="my-1 border-t border-ink-100" />
             <button onClick={() => { onToggleActive(); setOpen(false) }}
               className={`flex items-center gap-2 w-full px-3 py-2 text-sm ${user.is_active ? 'text-red-600 hover:bg-red-50' : 'text-p2-dark hover:bg-p2-light'}`}
             >
-              {user.is_active ? 'Deactivate user' : 'Reactivate user'}
+              {user.is_active ? t('admin.deactivateUser') : t('admin.reactivateUser')}
             </button>
           </div>
         </>
@@ -135,6 +127,8 @@ function UserRowMenu({ user, currentUserId, onToggleActive, onChangeRole }: {
 // ─── Audit log tab ────────────────────────────────────────────────────────────
 
 function AuditLogTab({ users }: { users: User[] }) {
+  const { t } = useTranslation()
+  const ACTION_GROUPS = getActionGroups(t)
   const [logs, setLogs] = useState<AuditLog[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -186,7 +180,7 @@ function AuditLogTab({ users }: { users: User[] }) {
             onChange={(e) => setUserFilter(e.target.value)}
             className="rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm text-ink-700 outline-none focus:ring-2 focus:ring-accent-400"
           >
-            <option value="">All team members</option>
+            <option value="">{t('auditLog.allMembers')}</option>
             {users.filter((u) => u.is_active).map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
@@ -194,8 +188,8 @@ function AuditLogTab({ users }: { users: User[] }) {
         </div>
 
         <span className="text-xs text-ink-400 ml-auto">
-          {total} event{total !== 1 ? 's' : ''}
-          {(actionFilter || userFilter) ? ' (filtered)' : ''}
+          {t('auditLog.eventsCount', { count: total })}
+          {(actionFilter || userFilter) ? t('auditLog.filtered') : ''}
         </span>
       </div>
 
@@ -217,18 +211,18 @@ function AuditLogTab({ users }: { users: User[] }) {
         ) : logs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-14 text-center">
             <Activity className="size-9 text-ink-200 mb-3" />
-            <p className="text-sm font-semibold text-ink-500">No events found</p>
-            <p className="text-xs text-ink-400 mt-1">Try adjusting your filters.</p>
+            <p className="text-sm font-semibold text-ink-500">{t('auditLog.noEventsFound')}</p>
+            <p className="text-xs text-ink-400 mt-1">{t('auditLog.adjustFilters')}</p>
           </div>
         ) : (
           <div className="divide-y divide-ink-50">
             {logs.map((log) => {
               const actionColor = ACTION_COLOR[log.action] ?? 'text-ink-700'
-              const change = diffLabel(log.diff)
+              const change = diffLabel(log.diff, t)
               // Some audit actions (e.g. invitation.accepted) aren't
               // guaranteed to have a denormalised user_name/record_label
               // from the backend yet — fall back rather than crash.
-              const userName    = log.user_name || 'Unknown user'
+              const userName    = log.user_name || t('auditLog.unknownUser')
               const recordLabel = log.record_label || '—'
               return (
                 <div key={log.id} className="flex items-start gap-4 px-5 py-4 hover:bg-ink-50/50 transition-colors">
@@ -245,7 +239,7 @@ function AuditLogTab({ users }: { users: User[] }) {
                       <span className="font-semibold">{userName}</span>
                       {' '}
                       <span className={`font-medium ${actionColor}`}>
-                        {ACTION_LABEL[log.action] ?? log.action}
+                        {t(`auditActions.${log.action}`, log.action)}
                       </span>
                       {' '}
                       <span className="text-ink-500 italic truncate">"{recordLabel}"</span>
@@ -262,7 +256,7 @@ function AuditLogTab({ users }: { users: User[] }) {
 
                   {/* Timestamp */}
                   <div className="text-right shrink-0">
-                    <p className="text-xs text-ink-400">{relativeTime(log.created_at)}</p>
+                    <p className="text-xs text-ink-400">{relativeTime(log.created_at, t)}</p>
                     <p className="text-[10px] text-ink-300 mt-0.5">
                       {new Date(log.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                     </p>
@@ -277,7 +271,7 @@ function AuditLogTab({ users }: { users: User[] }) {
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-ink-100 bg-ink-50/50">
             <p className="text-xs text-ink-400">
-              Showing {page * limit + 1}–{Math.min((page + 1) * limit, total)} of {total}
+              {t('auditLog.showing', { from: page * limit + 1, to: Math.min((page + 1) * limit, total), total })}
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -306,6 +300,8 @@ function AuditLogTab({ users }: { users: User[] }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
+  const { t } = useTranslation()
+  const roleMeta = getRoleMeta(t)
   const currentUser = useAuthStore((s) => s.user)
   const [searchParams, setSearchParams] = useSearchParams()
   const paramTab = searchParams.get('tab') as Tab | null
@@ -361,9 +357,9 @@ export default function AdminPage() {
   const pendingInvitations = invitations.filter((i) => i.status === 'pending')
 
   const TABS: { id: Tab; label: string; count?: number }[] = [
-    { id: 'users',       label: 'Members',     count: users.length },
-    { id: 'invitations', label: 'Invitations', count: pendingInvitations.length },
-    { id: 'audit',       label: 'Audit log' },
+    { id: 'users',       label: t('admin.tabs.members'),     count: users.length },
+    { id: 'invitations', label: t('admin.tabs.invitations'), count: pendingInvitations.length },
+    { id: 'audit',       label: t('admin.tabs.auditLog') },
   ]
 
   return (
@@ -371,16 +367,16 @@ export default function AdminPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-ink-900">Team &amp; access</h1>
+          <h1 className="font-display text-2xl font-bold text-ink-900">{t('admin.title')}</h1>
           <p className="text-ink-500 text-sm mt-0.5">
-            {users.length} member{users.length !== 1 ? 's' : ''} · {pendingInvitations.length} pending invite{pendingInvitations.length !== 1 ? 's' : ''}
+            {t('admin.membersCount', { count: users.length })} · {t('admin.pendingInvitesCount', { count: pendingInvitations.length })}
           </p>
         </div>
         <button
           onClick={() => setShowInvite(true)}
           className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors"
         >
-          <UserPlus className="size-4" /> Invite member
+          <UserPlus className="size-4" /> {t('admin.inviteMember')}
         </button>
       </div>
 
@@ -416,14 +412,14 @@ export default function AdminPage() {
             <table className="w-full">
               <thead className="border-b border-ink-100 bg-ink-50">
                 <tr>
-                  {['Member', 'Role', 'Status', ''].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">{h}</th>
+                  {[t('admin.table.member'), t('admin.table.role'), t('admin.table.status'), ''].map((h, i) => (
+                    <th key={i} className="px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-50">
                 {users.map((user) => {
-                  const roleMeta = ROLE_META[user.role]
+                  const userRoleMeta = roleMeta[user.role]
                   const isSelf = user.id === currentUser?.id
                   return (
                     <tr key={user.id} className={!user.is_active ? 'opacity-50' : ''}>
@@ -436,25 +432,25 @@ export default function AdminPage() {
                           </div>
                           <div>
                             <p className="text-sm font-medium text-ink-900">
-                              {user.name} {isSelf && <span className="text-ink-400 font-normal">(you)</span>}
+                              {user.name} {isSelf && <span className="text-ink-400 font-normal">{t('admin.you')}</span>}
                             </p>
                             <p className="text-xs text-ink-400">{user.email}</p>
                             {user.plan_ids && user.plan_ids.length > 0 && (
                               <p className="text-[10px] text-p3-dark mt-0.5">
-                                Scoped to {user.plan_ids.length} plan{user.plan_ids.length !== 1 ? 's' : ''}
+                                {t('admin.scopedToPlans', { count: user.plan_ids.length })}
                               </p>
                             )}
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-3.5">
-                        <Badge variant={roleMeta.variant}>
-                          <span className="flex items-center gap-1">{roleMeta.icon} {roleMeta.label}</span>
+                        <Badge variant={userRoleMeta.variant}>
+                          <span className="flex items-center gap-1">{userRoleMeta.icon} {userRoleMeta.label}</span>
                         </Badge>
                       </td>
                       <td className="px-4 py-3.5">
                         <span className={`text-xs font-medium ${user.is_active ? 'text-p2-dark' : 'text-ink-400'}`}>
-                          {user.is_active ? 'Active' : 'Deactivated'}
+                          {user.is_active ? t('admin.status.active') : t('admin.status.deactivated')}
                         </span>
                       </td>
                       <td className="px-4 py-3.5 text-right">
@@ -479,32 +475,32 @@ export default function AdminPage() {
           ) : invitations.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-14 text-center">
               <Mail className="size-9 text-ink-200 mb-3" />
-              <p className="text-sm font-semibold text-ink-500">No invitations sent yet</p>
+              <p className="text-sm font-semibold text-ink-500">{t('admin.noInvitations')}</p>
             </div>
           ) : (
             <table className="w-full">
               <thead className="border-b border-ink-100 bg-ink-50">
                 <tr>
-                  {['Email', 'Role', 'Status', 'Expires', ''].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">{h}</th>
+                  {[t('admin.table.email'), t('admin.table.role'), t('admin.table.status'), t('admin.table.expires'), ''].map((h, i) => (
+                    <th key={i} className="px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-50">
                 {invitations.map((inv) => {
-                  const roleMeta = ROLE_META[inv.role]
+                  const invRoleMeta = roleMeta[inv.role]
                   const isPending = inv.status === 'pending'
                   const expired = new Date(inv.expires_at) < new Date()
                   return (
                     <tr key={inv.id} className={!isPending ? 'opacity-60' : ''}>
                       <td className="px-4 py-3.5"><p className="text-sm text-ink-800">{inv.email}</p></td>
-                      <td className="px-4 py-3.5"><Badge variant={roleMeta.variant}>{roleMeta.label}</Badge></td>
+                      <td className="px-4 py-3.5"><Badge variant={invRoleMeta.variant}>{invRoleMeta.label}</Badge></td>
                       <td className="px-4 py-3.5">
                         <span className={`text-xs font-medium capitalize ${
                           inv.status === 'accepted' ? 'text-p2-dark'
                           : inv.status === 'pending' && !expired ? 'text-p1-dark'
                           : 'text-ink-400'
-                        }`}>{expired && isPending ? 'Expired' : inv.status}</span>
+                        }`}>{expired && isPending ? t('admin.status.expired') : t(`admin.status.${inv.status}`, inv.status)}</span>
                       </td>
                       <td className="px-4 py-3.5">
                         <p className="text-xs text-ink-400">{new Date(inv.expires_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</p>
@@ -514,8 +510,8 @@ export default function AdminPage() {
                           ? <RefreshCw className="size-4 text-ink-300 animate-spin inline-block" />
                           : isPending ? (
                             <div className="flex items-center justify-end gap-2">
-                              <button onClick={() => handleResendInvite(inv)} className="text-xs text-accent hover:text-accent-700 font-medium">Resend</button>
-                              <button onClick={() => handleCancelInvite(inv)} className="text-xs text-red-500 hover:text-red-700 font-medium">Cancel</button>
+                              <button onClick={() => handleResendInvite(inv)} className="text-xs text-accent hover:text-accent-700 font-medium">{t('common.resend')}</button>
+                              <button onClick={() => handleCancelInvite(inv)} className="text-xs text-red-500 hover:text-red-700 font-medium">{t('common.cancel')}</button>
                             </div>
                           ) : null}
                       </td>

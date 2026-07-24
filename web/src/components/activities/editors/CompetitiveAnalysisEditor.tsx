@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Swords, Compass, Trophy, ArrowRight, ArrowDown } from 'lucide-react'
 import { EditorBlock } from './EditorBlock'
 
@@ -22,6 +23,7 @@ const EMPTY: CompetitiveAnalysisContent = { competitors: '', positioning: '', di
  * of three textareas with no relationship to each other.
  */
 export const CompetitiveAnalysisEditor: React.FC<CompetitiveAnalysisEditorProps> = ({ value, onChange, readOnly }) => {
+  const { t } = useTranslation()
   const [content, setContent] = useState<CompetitiveAnalysisContent>({ ...EMPTY, ...value })
 
   const set = (key: keyof CompetitiveAnalysisContent, text: string) => {
@@ -34,12 +36,12 @@ export const CompetitiveAnalysisEditor: React.FC<CompetitiveAnalysisEditorProps>
     <div className="grid grid-cols-1 items-stretch gap-2 lg:grid-cols-[1fr_auto_1fr_auto_1fr]">
       <EditorBlock
         icon={<Swords className="size-3.5" />}
-        label="Key Competitors"
+        label={t('editors.competitiveAnalysis.competitors')}
         colorClasses="border-ink-200 bg-ink-50"
         value={content.competitors}
         onChange={(v) => set('competitors', v)}
         readOnly={readOnly}
-        placeholder="Who are we up against?"
+        placeholder={t('editors.competitiveAnalysis.competitorsPlaceholder')}
         minHeight="min-h-32"
       />
 
@@ -50,12 +52,12 @@ export const CompetitiveAnalysisEditor: React.FC<CompetitiveAnalysisEditorProps>
 
       <EditorBlock
         icon={<Compass className="size-3.5" />}
-        label="Market Positioning"
+        label={t('editors.competitiveAnalysis.positioning')}
         colorClasses="border-p1 bg-p1-light"
         value={content.positioning}
         onChange={(v) => set('positioning', v)}
         readOnly={readOnly}
-        placeholder="Where do we sit in the market relative to them?"
+        placeholder={t('editors.competitiveAnalysis.positioningPlaceholder')}
         minHeight="min-h-32"
       />
 
@@ -66,12 +68,12 @@ export const CompetitiveAnalysisEditor: React.FC<CompetitiveAnalysisEditorProps>
 
       <EditorBlock
         icon={<Trophy className="size-3.5" />}
-        label="Our Differentiators"
+        label={t('editors.competitiveAnalysis.differentiators')}
         colorClasses="border-accent bg-accent-50"
         value={content.differentiators}
         onChange={(v) => set('differentiators', v)}
         readOnly={readOnly}
-        placeholder="What sets us apart?"
+        placeholder={t('editors.competitiveAnalysis.differentiatorsPlaceholder')}
         minHeight="min-h-32"
       />
     </div>

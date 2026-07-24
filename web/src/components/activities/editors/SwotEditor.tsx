@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface SwotContent {
   strengths: string
@@ -13,14 +14,15 @@ interface SwotEditorProps {
   readOnly?: boolean
 }
 
-const quadrants: { key: keyof SwotContent; label: string; color: string }[] = [
-  { key: 'strengths',     label: 'Strengths',     color: 'border-p2 bg-p2-light' },
-  { key: 'weaknesses',    label: 'Weaknesses',     color: 'border-red-300 bg-red-50' },
-  { key: 'opportunities', label: 'Opportunities',  color: 'border-p1 bg-p1-light' },
-  { key: 'threats',       label: 'Threats',        color: 'border-p3 bg-p3-light' },
+const QUADRANT_KEYS: { key: keyof SwotContent; labelKey: string; color: string }[] = [
+  { key: 'strengths',     labelKey: 'editors.swot.strengths',     color: 'border-p2 bg-p2-light' },
+  { key: 'weaknesses',    labelKey: 'editors.swot.weaknesses',    color: 'border-red-300 bg-red-50' },
+  { key: 'opportunities', labelKey: 'editors.swot.opportunities', color: 'border-p1 bg-p1-light' },
+  { key: 'threats',       labelKey: 'editors.swot.threats',       color: 'border-p3 bg-p3-light' },
 ]
 
 export const SwotEditor: React.FC<SwotEditorProps> = ({ value, onChange, readOnly }) => {
+  const { t } = useTranslation()
   const [content, setContent] = useState<SwotContent>({
     strengths: value.strengths ?? '',
     weaknesses: value.weaknesses ?? '',
@@ -36,18 +38,21 @@ export const SwotEditor: React.FC<SwotEditorProps> = ({ value, onChange, readOnl
 
   return (
     <div className="grid grid-cols-2 gap-3">
-      {quadrants.map(({ key, label, color }) => (
-        <div key={key} className={`rounded-xl border-2 p-3 ${color}`}>
-          <p className="text-xs font-bold uppercase tracking-wide text-ink-600 mb-2">{label}</p>
-          <textarea
-            className="w-full bg-transparent text-sm text-ink-800 resize-none outline-none min-h-28 placeholder:text-ink-400"
-            placeholder={`Enter ${label.toLowerCase()}…`}
-            value={content[key]}
-            onChange={(e) => handleChange(key, e.target.value)}
-            readOnly={readOnly}
-          />
-        </div>
-      ))}
+      {QUADRANT_KEYS.map(({ key, labelKey, color }) => {
+        const label = t(labelKey)
+        return (
+          <div key={key} className={`rounded-xl border-2 p-3 ${color}`}>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink-600 mb-2">{label}</p>
+            <textarea
+              className="w-full bg-transparent text-sm text-ink-800 resize-none outline-none min-h-28 placeholder:text-ink-400"
+              placeholder={t('editorsCommon.enterField', { field: label.toLowerCase() })}
+              value={content[key]}
+              onChange={(e) => handleChange(key, e.target.value)}
+              readOnly={readOnly}
+            />
+          </div>
+        )
+      })}
     </div>
   )
 }

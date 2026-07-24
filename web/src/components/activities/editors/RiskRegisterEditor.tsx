@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Table2, BarChart3, Grid3x3 } from 'lucide-react'
 import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -39,6 +40,7 @@ interface RiskRegisterEditorProps {
 type ViewMode = 'table' | 'bar' | 'matrix'
 
 export const RiskRegisterEditor: React.FC<RiskRegisterEditorProps> = ({ value, onChange, readOnly }) => {
+  const { t } = useTranslation()
   const [view, setView] = useState<ViewMode>('table')
 
   const addRow = () => {
@@ -83,7 +85,7 @@ export const RiskRegisterEditor: React.FC<RiskRegisterEditorProps> = ({ value, o
             {mode === 'table' && <Table2 className="size-3.5" />}
             {mode === 'bar' && <BarChart3 className="size-3.5" />}
             {mode === 'matrix' && <Grid3x3 className="size-3.5" />}
-            {mode === 'table' ? 'Table' : mode === 'bar' ? 'Bar' : 'Risk matrix'}
+            {mode === 'table' ? t('editorsCommon.table') : mode === 'bar' ? t('editorsCommon.bar') : t('editorsCommon.riskMatrix')}
           </button>
         ))}
       </div>
@@ -94,8 +96,8 @@ export const RiskRegisterEditor: React.FC<RiskRegisterEditorProps> = ({ value, o
             <table className="w-full text-sm">
               <thead className="bg-ink-50 text-xs font-semibold text-ink-500 uppercase tracking-wide">
                 <tr>
-                  {['Risk', 'Likelihood (1-5)', 'Impact (1-5)', 'Score', 'Mitigation', 'Owner'].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left">{h}</th>
+                  {[t('editors.riskRegister.headers.risk'), t('editors.riskRegister.headers.likelihood'), t('editors.riskRegister.headers.impact'), t('editors.riskRegister.headers.score'), t('editors.riskRegister.headers.mitigation'), t('editors.riskRegister.headers.owner')].map((h, i) => (
+                    <th key={i} className="px-3 py-2 text-left">{h}</th>
                   ))}
                   {!readOnly && <th />}
                 </tr>
@@ -104,7 +106,7 @@ export const RiskRegisterEditor: React.FC<RiskRegisterEditorProps> = ({ value, o
                 {value.map((row) => (
                   <tr key={row.id}>
                     <td className="px-2 py-1 min-w-48">
-                      <input className="w-full bg-transparent px-1 py-1 outline-none focus:bg-ink-50 rounded text-ink-800" value={row.risk} onChange={(e) => updateRow(row.id, 'risk', e.target.value)} readOnly={readOnly} placeholder="Describe the risk" />
+                      <input className="w-full bg-transparent px-1 py-1 outline-none focus:bg-ink-50 rounded text-ink-800" value={row.risk} onChange={(e) => updateRow(row.id, 'risk', e.target.value)} readOnly={readOnly} placeholder={t('editors.riskRegister.riskPlaceholder')} />
                     </td>
                     {(['likelihood', 'impact'] as const).map((field) => (
                       <td key={field} className="px-2 py-1">
@@ -115,10 +117,10 @@ export const RiskRegisterEditor: React.FC<RiskRegisterEditorProps> = ({ value, o
                       <span className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-bold ${scoreColor(row.score)}`}>{row.score}</span>
                     </td>
                     <td className="px-2 py-1 min-w-40">
-                      <input className="w-full bg-transparent px-1 py-1 outline-none focus:bg-ink-50 rounded text-ink-800" value={row.mitigation} onChange={(e) => updateRow(row.id, 'mitigation', e.target.value)} readOnly={readOnly} placeholder="Mitigation action" />
+                      <input className="w-full bg-transparent px-1 py-1 outline-none focus:bg-ink-50 rounded text-ink-800" value={row.mitigation} onChange={(e) => updateRow(row.id, 'mitigation', e.target.value)} readOnly={readOnly} placeholder={t('editors.riskRegister.mitigationPlaceholder')} />
                     </td>
                     <td className="px-2 py-1">
-                      <input className="w-full bg-transparent px-1 py-1 outline-none focus:bg-ink-50 rounded text-ink-800" value={row.owner} onChange={(e) => updateRow(row.id, 'owner', e.target.value)} readOnly={readOnly} placeholder="Owner" />
+                      <input className="w-full bg-transparent px-1 py-1 outline-none focus:bg-ink-50 rounded text-ink-800" value={row.owner} onChange={(e) => updateRow(row.id, 'owner', e.target.value)} readOnly={readOnly} placeholder={t('editors.riskRegister.ownerPlaceholder')} />
                     </td>
                     {!readOnly && (
                       <td className="px-2 py-1">
@@ -130,14 +132,14 @@ export const RiskRegisterEditor: React.FC<RiskRegisterEditorProps> = ({ value, o
               </tbody>
             </table>
           </div>
-          {!readOnly && <Button variant="ghost" size="sm" onClick={addRow}><Plus className="size-4" /> Add risk</Button>}
+          {!readOnly && <Button variant="ghost" size="sm" onClick={addRow}><Plus className="size-4" /> {t('editorsCommon.addRisk')}</Button>}
         </div>
       )}
 
       {view === 'bar' && (
         <div className="rounded-xl border border-ink-100 bg-white p-4">
           {barData.length === 0 ? (
-            <p className="py-16 text-center text-xs text-ink-300">Add a named risk to see the chart.</p>
+            <p className="py-16 text-center text-xs text-ink-300">{t('editorsCommon.addNamedRiskForChart')}</p>
           ) : (
             <ResponsiveContainer width="100%" height={340}>
               <BarChart data={barData} layout="vertical" margin={{ left: 24 }}>
@@ -151,20 +153,20 @@ export const RiskRegisterEditor: React.FC<RiskRegisterEditorProps> = ({ value, o
               </BarChart>
             </ResponsiveContainer>
           )}
-          <p className="mt-1 text-center text-[11px] text-ink-300">Chart view only — not saved with the activity.</p>
+          <p className="mt-1 text-center text-[11px] text-ink-300">{t('editorsCommon.chartOnlyNotSaved')}</p>
         </div>
       )}
 
       {view === 'matrix' && (
         <div className="rounded-xl border border-ink-100 bg-white p-4">
           {matrixData.length === 0 ? (
-            <p className="py-16 text-center text-xs text-ink-300">Add a named risk to see the risk matrix.</p>
+            <p className="py-16 text-center text-xs text-ink-300">{t('editorsCommon.addNamedRiskForMatrix')}</p>
           ) : (
             <ResponsiveContainer width="100%" height={360}>
               <ScatterChart margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis type="number" dataKey="likelihood" name="Likelihood" domain={[0, 6]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 11 }} label={{ value: 'Likelihood', position: 'insideBottom', offset: -5, fontSize: 11 }} />
-                <YAxis type="number" dataKey="impact" name="Impact" domain={[0, 6]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 11 }} label={{ value: 'Impact', angle: -90, position: 'insideLeft', fontSize: 11 }} />
+                <XAxis type="number" dataKey="likelihood" name={t('editors.riskRegister.axisLikelihood')} domain={[0, 6]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 11 }} label={{ value: t('editors.riskRegister.axisLikelihood'), position: 'insideBottom', offset: -5, fontSize: 11 }} />
+                <YAxis type="number" dataKey="impact" name={t('editors.riskRegister.axisImpact')} domain={[0, 6]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 11 }} label={{ value: t('editors.riskRegister.axisImpact'), angle: -90, position: 'insideLeft', fontSize: 11 }} />
                 <ZAxis type="number" dataKey="score" range={[80, 400]} />
                 <Tooltip
                   cursor={{ strokeDasharray: '3 3' }}
@@ -176,7 +178,7 @@ export const RiskRegisterEditor: React.FC<RiskRegisterEditorProps> = ({ value, o
                     return (
                       <div className="rounded-lg border border-ink-200 bg-white px-3 py-2 text-xs shadow-md">
                         <p className="font-semibold text-ink-800">{d.name}</p>
-                        <p className="text-ink-500">Likelihood {d.likelihood} · Impact {d.impact} · Score {d.score}</p>
+                        <p className="text-ink-500">{t('editors.riskRegister.tooltip', { likelihood: d.likelihood, impact: d.impact, score: d.score })}</p>
                       </div>
                     )
                   }}
@@ -187,7 +189,7 @@ export const RiskRegisterEditor: React.FC<RiskRegisterEditorProps> = ({ value, o
               </ScatterChart>
             </ResponsiveContainer>
           )}
-          <p className="mt-1 text-center text-[11px] text-ink-300">Bubble size = score. Chart view only — not saved with the activity.</p>
+          <p className="mt-1 text-center text-[11px] text-ink-300">{t('editorsCommon.bubbleSizeScore')}</p>
         </div>
       )}
     </div>
