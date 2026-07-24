@@ -557,5 +557,73 @@
       "costStructure": "Estrutura de Custos",
       "revenueStreams": "Fontes de Receita"
     }
+  },
+  "linkedActivities": {
+    "title": "Atividades ligadas",
+    "fedByCount": "Alimentada por ({{count}})",
+    "feedsIntoCount": "Alimenta ({{count}})",
+    "addUpstreamLink": "Adicionar ligação a montante",
+    "addDownstreamLink": "Adicionar ligação a jusante",
+    "noUpstream": "Sem atividades a montante — esta é uma raiz.",
+    "noDownstream": "Nada depende disto por enquanto.",
+    "searchPlaceholder": "Pesquisar atividades…",
+    "noMatching": "Nenhuma atividade correspondente",
+    "removeLink": "Remover ligação",
+    "footNote": "As ligações são independentes da ordem — a fase é uma etiqueta, não uma sequência.",
+    "linkAdded": "Ligação adicionada",
+    "linkAddFailed": "Falha ao adicionar a ligação",
+    "linkRemoved": "Ligação removida",
+    "linkRemoveFailed": "Falha ao remover a ligação",
+    "linkType": {
+      "auto": "Auto",
+      "manual": "Manual",
+      "ai_suggested": "IA"
+    }
+  },
+  "createActivityModal": {
+    "title": "Adicionar atividade",
+    "phase": "Fase",
+    "activityType": "Tipo de atividade",
+    "titleLabel": "Título",
+    "titlePlaceholder": "Introduza um título para esta atividade",
+    "dueDate": "Data limite",
+    "submit": "Criar atividade",
+    "created": "Atividade criada",
+    "createFailed": "Falha ao criar a atividade"
+  },
+  "activityTypes": {
+    "swot": "Análise SWOT",
+    "pestle": "Análise PESTEL",
+    "business_model_canvas": "Business Model Canvas",
+    "stakeholder_map": "Mapa de Partes Interessadas",
+    "competitive_analysis": "Análise Competitiva",
+    "risk_register": "Registo de Riscos",
+    "market_analysis": "Análise de Mercado",
+    "vision_mission": "Visão e Missão",
+    "strategic_objectives": "Objetivos Estratégicos",
+    "kpi_framework": "Estrutura de KPI",
+    "okr_balanced_scorecard": "OKR / Balanced Scorecard",
+    "theory_of_change": "Teoria da Mudança",
+    "value_proposition": "Proposta de Valor",
+    "strategic_initiatives": "Iniciativas Estratégicas",
+    "financial_projections": "Projeções Financeiras",
+    "budget_allocation": "Alocação Orçamental",
+    "operational_roadmap": "Roteiro Operacional",
+    "resource_plan": "Plano de Recursos",
+    "action_items": "Ações e Tarefas",
+    "implementation_timeline": "Cronograma de Implementação",
+    "procurement_plan": "Plano de Aquisições"
+  },
+  "shortcutsModal": {
+    "title": "Atalhos de teclado",
+    "then": "depois",
+    "footerPre": "Prima",
+    "footerMid": "em qualquer lugar para alternar este painel",
+    "footerPost": "para fechar",
+    "groups": {
+      "Navigate": "Navegar",
+      "Actions": "Ações",
+      "Editor": "Editor"
+    }
   }
 }

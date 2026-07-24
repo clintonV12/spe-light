@@ -557,5 +557,73 @@
       "costStructure": "Cost Structure",
       "revenueStreams": "Revenue Streams"
     }
+  },
+  "linkedActivities": {
+    "title": "Linked activities",
+    "fedByCount": "Fed by ({{count}})",
+    "feedsIntoCount": "Feeds into ({{count}})",
+    "addUpstreamLink": "Add upstream link",
+    "addDownstreamLink": "Add downstream link",
+    "noUpstream": "No upstream activities — this is a root.",
+    "noDownstream": "Nothing depends on this yet.",
+    "searchPlaceholder": "Search activities…",
+    "noMatching": "No matching activities",
+    "removeLink": "Remove link",
+    "footNote": "Links are order-independent — phase is a label, not a sequence.",
+    "linkAdded": "Link added",
+    "linkAddFailed": "Failed to add link",
+    "linkRemoved": "Link removed",
+    "linkRemoveFailed": "Failed to remove link",
+    "linkType": {
+      "auto": "Auto",
+      "manual": "Manual",
+      "ai_suggested": "AI"
+    }
+  },
+  "createActivityModal": {
+    "title": "Add activity",
+    "phase": "Phase",
+    "activityType": "Activity type",
+    "titleLabel": "Title",
+    "titlePlaceholder": "Enter a title for this activity",
+    "dueDate": "Due date",
+    "submit": "Create activity",
+    "created": "Activity created",
+    "createFailed": "Failed to create activity"
+  },
+  "activityTypes": {
+    "swot": "SWOT Analysis",
+    "pestle": "PESTLE Analysis",
+    "business_model_canvas": "Business Model Canvas",
+    "stakeholder_map": "Stakeholder Map",
+    "competitive_analysis": "Competitive Analysis",
+    "risk_register": "Risk Register",
+    "market_analysis": "Market Analysis",
+    "vision_mission": "Vision & Mission",
+    "strategic_objectives": "Strategic Objectives",
+    "kpi_framework": "KPI Framework",
+    "okr_balanced_scorecard": "OKR / Balanced Scorecard",
+    "theory_of_change": "Theory of Change",
+    "value_proposition": "Value Proposition",
+    "strategic_initiatives": "Strategic Initiatives",
+    "financial_projections": "Financial Projections",
+    "budget_allocation": "Budget Allocation",
+    "operational_roadmap": "Operational Roadmap",
+    "resource_plan": "Resource Plan",
+    "action_items": "Action Items & Tasks",
+    "implementation_timeline": "Implementation Timeline",
+    "procurement_plan": "Procurement Plan"
+  },
+  "shortcutsModal": {
+    "title": "Keyboard shortcuts",
+    "then": "then",
+    "footerPre": "Press",
+    "footerMid": "anywhere to toggle this panel",
+    "footerPost": "to close",
+    "groups": {
+      "Navigate": "Navigate",
+      "Actions": "Actions",
+      "Editor": "Editor"
+    }
   }
 }

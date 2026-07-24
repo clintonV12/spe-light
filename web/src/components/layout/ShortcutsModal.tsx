@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { X, Keyboard } from 'lucide-react'
 import { SHORTCUT_DEFS } from '../../hooks/useKeyboardShortcuts'
 import type { ShortcutDefinition } from '../../hooks/useKeyboardShortcuts'
@@ -16,7 +17,13 @@ function Kbd({ children }: { children: string }) {
   )
 }
 
+// Group values here ('Navigate' | 'Actions' | 'Editor') are the raw group
+// ids defined on SHORTCUT_DEFS in useKeyboardShortcuts.ts — translated for
+// display via shortcutsModal.groups.*. Note: shortcut.description strings
+// themselves come from that hook file and aren't translated here; if that
+// file is shared later, its descriptions should route through t() too.
 export default function ShortcutsModal({ open, onClose }: ShortcutsModalProps) {
+  const { t } = useTranslation()
   // Close on Escape
   useEffect(() => {
     if (!open) return
@@ -54,7 +61,7 @@ export default function ShortcutsModal({ open, onClose }: ShortcutsModalProps) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100">
           <div className="flex items-center gap-2.5">
             <Keyboard className="size-4 text-ink-400" />
-            <h2 className="font-display text-sm font-bold text-ink-800">Keyboard shortcuts</h2>
+            <h2 className="font-display text-sm font-bold text-ink-800">{t('shortcutsModal.title')}</h2>
           </div>
           <button onClick={onClose} className="text-ink-300 hover:text-ink-600 transition-colors">
             <X className="size-4" />
@@ -66,7 +73,7 @@ export default function ShortcutsModal({ open, onClose }: ShortcutsModalProps) {
           {groups.map((group) => (
             <div key={group}>
               <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-widest mb-3">
-                {group}
+                {t(`shortcutsModal.groups.${group}`, group)}
               </p>
               <div className="space-y-2">
                 {(deduped[group] ?? []).map((shortcut: ShortcutDefinition, idx: number) => (
@@ -77,7 +84,7 @@ export default function ShortcutsModal({ open, onClose }: ShortcutsModalProps) {
                         <span key={ki} className="flex items-center gap-1">
                           <Kbd>{key}</Kbd>
                           {ki < shortcut.keys.length - 1 && (
-                            <span className="text-[10px] text-ink-300 mx-0.5">then</span>
+                            <span className="text-[10px] text-ink-300 mx-0.5">{t('shortcutsModal.then')}</span>
                           )}
                         </span>
                       ))}
@@ -92,7 +99,7 @@ export default function ShortcutsModal({ open, onClose }: ShortcutsModalProps) {
         {/* Footer */}
         <div className="px-5 py-3 border-t border-ink-100 bg-ink-50/50">
           <p className="text-xs text-ink-400 text-center">
-            Press <Kbd>?</Kbd> anywhere to toggle this panel · <Kbd>Esc</Kbd> to close
+            {t('shortcutsModal.footerPre')} <Kbd>?</Kbd> {t('shortcutsModal.footerMid')} · <Kbd>Esc</Kbd> {t('shortcutsModal.footerPost')}
           </p>
         </div>
       </div>

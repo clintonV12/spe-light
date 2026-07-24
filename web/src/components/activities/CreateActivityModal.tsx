@@ -1,37 +1,40 @@
 import React, { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { Button, Input, Select } from '../ui'
 import { activitiesApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
 import type { Phase, ActivityType } from '../../types'
 
-const PHASE_ACTIVITY_TYPES: Record<Phase, { value: ActivityType; label: string }[]> = {
+// Labels come from t(`activityTypes.${value}`) — value stays the raw
+// ActivityType id so the API contract and toastError etc are unaffected.
+const PHASE_ACTIVITY_TYPES: Record<Phase, { value: ActivityType }[]> = {
   P1: [
-    { value: 'swot', label: 'SWOT Analysis' },
-    { value: 'pestle', label: 'PESTLE Analysis' },
-    { value: 'business_model_canvas', label: 'Business Model Canvas' },
-    { value: 'stakeholder_map', label: 'Stakeholder Map' },
-    { value: 'competitive_analysis', label: 'Competitive Analysis' },
-    { value: 'risk_register', label: 'Risk Register' },
-    { value: 'market_analysis', label: 'Market Analysis' },
+    { value: 'swot' },
+    { value: 'pestle' },
+    { value: 'business_model_canvas' },
+    { value: 'stakeholder_map' },
+    { value: 'competitive_analysis' },
+    { value: 'risk_register' },
+    { value: 'market_analysis' },
   ],
   P2: [
-    { value: 'vision_mission', label: 'Vision & Mission' },
-    { value: 'strategic_objectives', label: 'Strategic Objectives' },
-    { value: 'kpi_framework', label: 'KPI Framework' },
-    { value: 'okr_balanced_scorecard', label: 'OKR / Balanced Scorecard' },
-    { value: 'theory_of_change', label: 'Theory of Change' },
-    { value: 'value_proposition', label: 'Value Proposition' },
-    { value: 'strategic_initiatives', label: 'Strategic Initiatives' },
+    { value: 'vision_mission' },
+    { value: 'strategic_objectives' },
+    { value: 'kpi_framework' },
+    { value: 'okr_balanced_scorecard' },
+    { value: 'theory_of_change' },
+    { value: 'value_proposition' },
+    { value: 'strategic_initiatives' },
   ],
   P3: [
-    { value: 'financial_projections', label: 'Financial Projections' },
-    { value: 'budget_allocation', label: 'Budget Allocation' },
-    { value: 'operational_roadmap', label: 'Operational Roadmap' },
-    { value: 'resource_plan', label: 'Resource Plan' },
-    { value: 'action_items', label: 'Action Items & Tasks' },
-    { value: 'implementation_timeline', label: 'Implementation Timeline' },
-    { value: 'procurement_plan', label: 'Procurement Plan' },
+    { value: 'financial_projections' },
+    { value: 'budget_allocation' },
+    { value: 'operational_roadmap' },
+    { value: 'resource_plan' },
+    { value: 'action_items' },
+    { value: 'implementation_timeline' },
+    { value: 'procurement_plan' },
   ],
 }
 
@@ -48,6 +51,7 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
   onCreated,
   onClose,
 }) => {
+  const { t } = useTranslation()
   const [phase, setPhase] = useState<Phase>(defaultPhase)
   const [type, setType] = useState<ActivityType>(PHASE_ACTIVITY_TYPES[defaultPhase][0].value)
   const [title, setTitle] = useState('')
@@ -71,26 +75,26 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
         due_date: dueDate || undefined,
         content: {},
       })
-      success('Activity created')
+      success(t('createActivityModal.created'))
       onCreated()
       onClose()
     } catch {
-      error('Failed to create activity')
+      error(t('createActivityModal.createFailed'))
     } finally {
       setLoading(false)
     }
   }
 
-  const typeOptions = PHASE_ACTIVITY_TYPES[phase].map((t) => ({
-    value: t.value,
-    label: t.label,
+  const typeOptions = PHASE_ACTIVITY_TYPES[phase].map((tItem) => ({
+    value: tItem.value,
+    label: t(`activityTypes.${tItem.value}`),
   }))
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="font-display text-lg font-bold text-ink-900">Add activity</h2>
+          <h2 className="font-display text-lg font-bold text-ink-900">{t('createActivityModal.title')}</h2>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-700">
             <X className="size-5" />
           </button>
@@ -99,7 +103,7 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
         <div className="space-y-4">
           {/* Phase selector */}
           <div>
-            <p className="text-sm font-medium text-ink-700 mb-1.5">Phase</p>
+            <p className="text-sm font-medium text-ink-700 mb-1.5">{t('createActivityModal.phase')}</p>
             <div className="flex gap-2">
               {(['P1', 'P2', 'P3'] as Phase[]).map((p) => (
                 <button
@@ -120,21 +124,21 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
           </div>
 
           <Select
-            label="Activity type"
+            label={t('createActivityModal.activityType')}
             options={typeOptions}
             value={type}
             onChange={(e) => setType(e.target.value as ActivityType)}
           />
 
           <Input
-            label="Title"
-            placeholder="Enter a title for this activity"
+            label={t('createActivityModal.titleLabel')}
+            placeholder={t('createActivityModal.titlePlaceholder')}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
 
           <Input
-            label="Due date"
+            label={t('createActivityModal.dueDate')}
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
@@ -143,7 +147,7 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
 
         <div className="flex gap-2 mt-6">
           <Button variant="secondary" className="flex-1" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             className="flex-1"
@@ -151,7 +155,7 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
             disabled={!title.trim()}
             onClick={handleSubmit}
           >
-            Create activity
+            {t('createActivityModal.submit')}
           </Button>
         </div>
       </div>
