@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
-  ArrowLeft, Sparkles, Clock, User, AlertTriangle, ChevronDown, Check, X,
+  ArrowLeft, Sparkles, Clock, User, AlertTriangle, ChevronDown, Check, X, Trash2,
 } from 'lucide-react'
 import { activitiesApi } from '../api/endpoints'
 import { useOfflineStore } from '../store/offline'
@@ -328,6 +328,10 @@ export default function ActivityEditorPage() {
   const [planLinks, setPlanLinks] = useState<ActivityLink[]>([])
   const [linksLoading, setLinksLoading] = useState(true)
 
+  // ── Delete ───────────────────────────────────────────────────────────────
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
   // ── AI draft approval gate ────────────────────────────────────────────────
   // Accepting an AI draft only fills the editable fields — it does NOT save.
   // Autosave stays disabled until the user explicitly approves (or discards,
@@ -439,6 +443,17 @@ export default function ActivityEditorPage() {
     setPendingApproval(false)
     setPreDraftContent(null)
   }, [preDraftContent])
+
+  const handleDelete = useCallback(async () => {
+    if (!activityId || !planId) return
+    setDeleting(true)
+    try {
+      await activitiesApi.delete(activityId)
+      navigate(`/plans/${planId}`)
+    } catch {
+      setDeleting(false)
+    }
+  }, [activityId, planId, navigate])
 
   // ── Cmd+S instant save ──────────────────────────────────────────────────────
 
@@ -557,6 +572,17 @@ export default function ActivityEditorPage() {
               <Sparkles className="size-4" /> {t('activityEditor.aiDraft')}
             </button>
           )}
+
+          {/* Delete */}
+          {can.createPlan && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm font-medium text-ink-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors"
+              title={t('activityEditor.delete')}
+            >
+              <Trash2 className="size-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -641,6 +667,29 @@ export default function ActivityEditorPage() {
           />
         )}
       </div>
+
+      {/* Delete confirm */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-white rounded-2xl border border-ink-100 shadow-xl p-6 space-y-4">
+            <div className="size-12 rounded-full bg-red-100 flex items-center justify-center">
+              <Trash2 className="size-5 text-red-600" />
+            </div>
+            <div>
+              <h3 className="font-display font-bold text-ink-900">{t('activityEditor.deleteConfirmTitle')}</h3>
+              <p className="text-sm text-ink-500 mt-1">
+                {t('activityEditor.deleteConfirmDesc', { title: activity.title })}
+              </p>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 rounded-xl border border-ink-200 px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50 transition-colors">{t('common.cancel')}</button>
+              <button onClick={handleDelete} disabled={deleting} className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition-colors disabled:opacity-50">
+                {deleting ? t('planDetail.deleting') : t('activityEditor.deleteConfirmButton')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

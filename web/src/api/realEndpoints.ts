@@ -19,6 +19,8 @@
  *   POST  /api/v1/invitations/accept            → invitationsApi.accept
  *
  * AUTHENTICATED — Org admin
+ *   GET   /api/v1/org                            → orgApi.getOrg
+ *   PATCH /api/v1/org                            → orgApi.updateOrg
  *   GET   /api/v1/org/users                     → orgApi.listUsers
  *   PATCH /api/v1/org/users/{userID}            → orgApi.updateUser
  *   GET   /api/v1/org/invitations               → orgApi.listInvitations
@@ -56,16 +58,19 @@
  * AUTHENTICATED — Activities
  *   GET   /api/v1/activities/{activityID}             (via list, no standalone GET)
  *   PUT   /api/v1/activities/{activityID}             → activitiesApi.update
+ *   DELETE /api/v1/activities/{activityID}            → activitiesApi.delete (planner+)
  *   POST  /api/v1/activities/{activityID}/links       → activitiesApi.createLink
  *   GET   /api/v1/activities/{activityID}/links       → activitiesApi.listActivityLinks
+ *   DELETE /api/v1/activities/{activityID}/links/{linkID} → activitiesApi.deleteLink (planner+)
  *
  * AUTHENTICATED — Milestones
  *   PUT   /api/v1/milestones/{milestoneID}            → milestonesApi.update (planner+)
  *   DELETE /api/v1/milestones/{milestoneID}           → milestonesApi.delete (org_admin)
  *
- * AUTHENTICATED — AI  (not yet implemented — returns 501)
+ * AUTHENTICATED — AI (Sprint C, Ollama-backed)
  *   POST  /api/v1/ai/draft                      → aiApi.draft
  *   POST  /api/v1/ai/summary                    → aiApi.summary
+ *   POST  /api/v1/ai/suggest-links               → aiApi.suggestLinks
  *
  * AUTHENTICATED — Reports (polling)
  *   GET   /api/v1/reports/{jobID}               → reportsApi.poll
@@ -82,7 +87,7 @@ import type {
   Activity, ActivityLink,
   AiDraftRequest, AiDraftResponse, AiSummaryRequest, AiSummaryResponse,
   AiSuggestLinksRequest, AiSuggestLinksResponse,
-  Invitation, Organisation,
+  Invitation, Organisation, OrgProfileUpdate,
   Report, ReportType, ReportFormat, ReportJobStatus, ReportSectionConfig,
   User, UserRole,
   AuditLog, AuditListResponse,
@@ -218,9 +223,13 @@ export const activitiesApi = {
     'title' | 'status' | 'content' | 'assigned_to' | 'due_date' | 'user_order'
   >>) => apiClient.put<Activity>(`/activities/${activityId}`, payload).then((r) => r.data),
 
-  /** DELETE — not in the current router; will need a future sprint route */
-  delete: (_activityId: string): Promise<void> =>
-    Promise.reject(new Error('Activity delete not yet implemented on the backend')),
+  /**
+   * DELETE /api/v1/activities/{activityID} — requires planner or org_admin.
+   * Soft-deletes the activity and cascades cleanup of any activity_links
+   * that reference it (handled server-side — see plansvc.DeleteActivity).
+   */
+  delete: (activityId: string): Promise<void> =>
+    apiClient.delete(`/activities/${activityId}`).then(() => undefined),
 
   /** POST /api/v1/activities/{activityID}/links */
   createLink: (activityId: string, payload: {
@@ -243,9 +252,9 @@ export const activitiesApi = {
   listAutoLinks: (planId: string) =>
     apiClient.get<ActivityLink[]>(`/plans/${planId}/auto-links`).then((r) => r.data),
 
-  /** DELETE link — not in the current router */
-  deleteLink: (_activityId: string, _linkId: string): Promise<void> =>
-    Promise.reject(new Error('Link delete not yet implemented on the backend')),
+  /** DELETE /api/v1/activities/{activityID}/links/{linkID} — requires planner or org_admin */
+  deleteLink: (activityId: string, linkId: string): Promise<void> =>
+    apiClient.delete(`/activities/${activityId}/links/${linkId}`).then(() => undefined),
 }
 
 // ── Milestones ────────────────────────────────────────────────────────────────
@@ -336,6 +345,19 @@ export const aiApi = {
 // ── Org / Users ───────────────────────────────────────────────────────────────
 
 export const orgApi = {
+  /** GET /api/v1/org — the caller's own organisation, no role gate */
+  getOrg: () =>
+    apiClient.get<Organisation>('/org').then((r) => r.data),
+
+  /**
+   * PATCH /api/v1/org — requires org_admin. Self-service profile fields
+   * (address, country, contact info, industry, org structure, member
+   * count) — folded into AI draft/summary/suggest-links prompts on the
+   * backend so results are grounded in what the org actually is.
+   */
+  updateOrg: (payload: OrgProfileUpdate) =>
+    apiClient.patch<Organisation>('/org', payload).then((r) => r.data),
+
   /** GET /api/v1/org/users — requires org_admin */
   listUsers: () =>
     apiClient.get<User[]>('/org/users').then((r) => r.data),

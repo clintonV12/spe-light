@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   Plus, Search, SlidersHorizontal, ChevronUp, ChevronDown,
   MoreHorizontal, Archive, Copy, Trash2, AlertTriangle, CheckSquare,
@@ -13,21 +14,12 @@ import CreatePlanModal from '../components/plans/CreatePlanModal'
 import { SHORTCUT_CREATE_EVENT } from '../components/layout/AppShell'
 import type { Plan, PlanStatus } from '../types'
 
-const STATUS_OPTIONS: { value: PlanStatus | 'all'; label: string }[] = [
-  { value: 'all', label: 'All statuses' },
-  { value: 'draft', label: 'Draft' },
-  { value: 'active', label: 'Active' },
-  { value: 'review', label: 'Review' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'archived', label: 'Archived' },
-]
-
-const STATUS_META: Record<PlanStatus, { label: string; variant: 'neutral' | 'p1' | 'p2' | 'p3' | 'success' }> = {
-  draft:     { label: 'Draft',     variant: 'neutral' },
-  active:    { label: 'Active',    variant: 'p2' },
-  review:    { label: 'Review',    variant: 'p1' },
-  completed: { label: 'Completed', variant: 'success' },
-  archived:  { label: 'Archived',  variant: 'neutral' },
+const STATUS_VARIANT: Record<PlanStatus, 'neutral' | 'p1' | 'p2' | 'p3' | 'success'> = {
+  draft:     'neutral',
+  active:    'p2',
+  review:    'p1',
+  completed: 'success',
+  archived:  'neutral',
 }
 
 type SortKey = 'title' | 'status' | 'progress' | 'updated_at'
@@ -44,6 +36,7 @@ function PlanRowMenu({ onArchive, onDuplicate, onDelete }: {
   onDuplicate: () => void
   onDelete: () => void
 }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -98,14 +91,14 @@ function PlanRowMenu({ onArchive, onDuplicate, onDelete }: {
             style={{ top: coords.top, left: coords.left }}
           >
             <button onClick={(e) => { e.stopPropagation(); onDuplicate(); setOpen(false) }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-ink-700 hover:bg-ink-50">
-              <Copy className="size-4 text-ink-400" /> Duplicate
+              <Copy className="size-4 text-ink-400" /> {t('plansPage.duplicate')}
             </button>
             <button onClick={(e) => { e.stopPropagation(); onArchive(); setOpen(false) }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-ink-700 hover:bg-ink-50">
-              <Archive className="size-4 text-ink-400" /> Archive
+              <Archive className="size-4 text-ink-400" /> {t('plansPage.archive')}
             </button>
             <div className="my-1 border-t border-ink-100" />
             <button onClick={(e) => { e.stopPropagation(); onDelete(); setOpen(false) }} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50">
-              <Trash2 className="size-4" /> Delete
+              <Trash2 className="size-4" /> {t('common.delete')}
             </button>
           </div>
         </>,
@@ -125,10 +118,11 @@ function BulkActionBar({
   onClear: () => void
   loading: boolean
 }) {
+  const { t } = useTranslation()
   return (
     <div className="flex items-center gap-3 px-4 py-3 bg-accent-50 border border-accent-200 rounded-xl">
       <span className="text-sm font-semibold text-accent">
-        {count} plan{count !== 1 ? 's' : ''} selected
+        {t('plansPage.selectedCount', { count })}
       </span>
       <div className="flex items-center gap-2 ml-2">
         <button
@@ -136,14 +130,14 @@ function BulkActionBar({
           disabled={loading}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ink-200 bg-white text-sm text-ink-700 hover:bg-ink-50 transition-colors disabled:opacity-50"
         >
-          <Archive className="size-3.5" /> Archive all
+          <Archive className="size-3.5" /> {t('plansPage.archiveAll')}
         </button>
         <button
           onClick={onDelete}
           disabled={loading}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 bg-white text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
         >
-          <Trash2 className="size-3.5" /> Delete all
+          <Trash2 className="size-3.5" /> {t('plansPage.deleteAll')}
         </button>
       </div>
       {loading && <span className="size-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />}
@@ -155,8 +149,18 @@ function BulkActionBar({
 }
 
 export default function PlansPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { can } = usePermission()
+
+  const STATUS_OPTIONS: { value: PlanStatus | 'all'; label: string }[] = [
+    { value: 'all',       label: t('plansPage.statusAll') },
+    { value: 'draft',     label: t('plan.status.draft') },
+    { value: 'active',    label: t('plan.status.active') },
+    { value: 'review',    label: t('plan.status.review') },
+    { value: 'completed', label: t('plan.status.completed') },
+    { value: 'archived',  label: t('plan.status.archived') },
+  ]
 
   const [plans, setPlans] = useState<Plan[]>([])
   const [loading, setLoading] = useState(true)
@@ -332,15 +336,15 @@ export default function PlansPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-ink-900">Plans</h1>
-          <p className="text-ink-500 text-sm mt-0.5">{plans.length} strategic plan{plans.length !== 1 ? 's' : ''}</p>
+          <h1 className="font-display text-2xl font-bold text-ink-900">{t('plansPage.title')}</h1>
+          <p className="text-ink-500 text-sm mt-0.5">{t('plansPage.countSub', { count: plans.length })}</p>
         </div>
         {can.createPlan && (
           <button
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors"
           >
-            <Plus className="size-4" /> New plan
+            <Plus className="size-4" /> {t('plansPage.newPlan')}
           </button>
         )}
       </div>
@@ -361,7 +365,7 @@ export default function PlansPage() {
         <div className="relative flex-1 min-w-52">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-ink-400" />
           <input
-            type="text" placeholder="Search plans…" value={search}
+            type="text" placeholder={t('plansPage.searchPlaceholder')} value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-xl border border-ink-200 bg-white pl-9 pr-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent"
           />
@@ -385,11 +389,11 @@ export default function PlansPage() {
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
-          title={search || statusFilter !== 'all' ? 'No plans match your filters' : 'No plans yet'}
-          description={search || statusFilter !== 'all' ? 'Try adjusting your search or filter.' : 'Create your first strategic plan to get started.'}
+          title={search || statusFilter !== 'all' ? t('plansPage.emptyFilteredTitle') : t('plansPage.emptyTitle')}
+          description={search || statusFilter !== 'all' ? t('plansPage.emptyFilteredDesc') : t('plansPage.emptyDesc')}
           action={!search && !statusFilter && can.createPlan ? (
             <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors">
-              <Plus className="size-4" /> New plan
+              <Plus className="size-4" /> {t('plansPage.newPlan')}
             </button>
           ) : undefined}
         />
@@ -409,10 +413,10 @@ export default function PlansPage() {
                   </button>
                 </th>
                 {[
-                  { k: 'title' as SortKey,      label: 'Plan' },
-                  { k: 'status' as SortKey,     label: 'Status' },
-                  { k: 'progress' as SortKey,   label: 'Progress' },
-                  { k: 'updated_at' as SortKey, label: 'Last updated' },
+                  { k: 'title' as SortKey,      label: t('plansPage.colPlan') },
+                  { k: 'status' as SortKey,     label: t('plansPage.colStatus') },
+                  { k: 'progress' as SortKey,   label: t('plansPage.colProgress') },
+                  { k: 'updated_at' as SortKey, label: t('plansPage.colLastUpdated') },
                 ].map(({ k, label }) => (
                   <th key={k} className={`${thClass} cursor-pointer hover:text-ink-800`} onClick={() => toggleSort(k)}>
                     <span className="flex items-center gap-1">{label} <SortIcon k={k} /></span>
@@ -423,7 +427,8 @@ export default function PlansPage() {
             </thead>
             <tbody className="divide-y divide-ink-50">
               {paginated.map((plan) => {
-                const meta = STATUS_META[plan.status]
+                const statusLabel = t(`plan.status.${plan.status}`)
+                const statusVariant = STATUS_VARIANT[plan.status]
                 const overallPct = plan.progress?.overall.percent_complete ?? 0
                 const overdue = plan.progress?.overall.overdue ?? 0
                 const isSelected = selected.has(plan.id)
@@ -450,12 +455,12 @@ export default function PlansPage() {
                       {plan.description && <p className="text-xs text-ink-400 mt-0.5 line-clamp-1">{plan.description}</p>}
                       {overdue > 0 && (
                         <span className="inline-flex items-center gap-1 text-xs text-red-500 mt-1">
-                          <AlertTriangle className="size-3" /> {overdue} overdue
+                          <AlertTriangle className="size-3" /> {t('plansPage.overdueCount', { count: overdue })}
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-4">
-                      <Badge variant={meta.variant}>{meta.label}</Badge>
+                      <Badge variant={statusVariant}>{statusLabel}</Badge>
                     </td>
                     <td className="px-4 py-4 w-52">
                       <ProgressBar value={overallPct} className="w-full" />
@@ -487,7 +492,11 @@ export default function PlansPage() {
       {!loading && filtered.length > PAGE_SIZE && (
         <div className="flex items-center justify-between px-1">
           <p className="text-xs text-ink-400">
-            Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+            {t('plansPage.showing', {
+              from: (page - 1) * PAGE_SIZE + 1,
+              to: Math.min(page * PAGE_SIZE, filtered.length),
+              total: filtered.length,
+            })}
           </p>
           <div className="flex items-center gap-1">
             <button
@@ -495,17 +504,17 @@ export default function PlansPage() {
               disabled={page === 1}
               className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-500 hover:bg-ink-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
-              <ChevronLeft className="size-3.5" /> Prev
+              <ChevronLeft className="size-3.5" /> {t('plansPage.prev')}
             </button>
             <span className="px-2 text-xs text-ink-500 tabular-nums">
-              Page {page} of {totalPages}
+              {t('plansPage.pageOf', { page, total: totalPages })}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
               className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-500 hover:bg-ink-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
-              Next <ChevronRight className="size-3.5" />
+              {t('plansPage.next')} <ChevronRight className="size-3.5" />
             </button>
           </div>
         </div>
@@ -519,14 +528,14 @@ export default function PlansPage() {
               <Trash2 className="size-5 text-red-600" />
             </div>
             <div>
-              <h3 className="font-display font-bold text-ink-900">Delete plan?</h3>
+              <h3 className="font-display font-bold text-ink-900">{t('plansPage.deletePlanTitle')}</h3>
               <p className="text-sm text-ink-500 mt-1">
-                <span className="font-medium text-ink-700">"{deleteTarget.title}"</span> and all its activities will be permanently deleted. This can't be undone.
+                {t('plansPage.deletePlanDesc', { title: deleteTarget.title })}
               </p>
             </div>
             <div className="flex gap-2 pt-1">
-              <button onClick={() => setDeleteTarget(null)} className="flex-1 rounded-xl border border-ink-200 px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50 transition-colors">Cancel</button>
-              <button onClick={() => handleDelete(deleteTarget)} className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition-colors">Delete plan</button>
+              <button onClick={() => setDeleteTarget(null)} className="flex-1 rounded-xl border border-ink-200 px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50 transition-colors">{t('common.cancel')}</button>
+              <button onClick={() => handleDelete(deleteTarget)} className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition-colors">{t('plansPage.deletePlanConfirm')}</button>
             </div>
           </div>
         </div>
@@ -540,13 +549,13 @@ export default function PlansPage() {
               <Trash2 className="size-5 text-red-600" />
             </div>
             <div>
-              <h3 className="font-display font-bold text-ink-900">Delete {selected.size} plans?</h3>
-              <p className="text-sm text-ink-500 mt-1">All selected plans and every activity inside them will be permanently deleted. This can't be undone.</p>
+              <h3 className="font-display font-bold text-ink-900">{t('plansPage.deleteBulkTitle', { count: selected.size })}</h3>
+              <p className="text-sm text-ink-500 mt-1">{t('plansPage.deleteBulkDesc')}</p>
             </div>
             <div className="flex gap-2 pt-1">
-              <button onClick={() => setBulkDeleteConfirm(false)} className="flex-1 rounded-xl border border-ink-200 px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50 transition-colors">Cancel</button>
+              <button onClick={() => setBulkDeleteConfirm(false)} className="flex-1 rounded-xl border border-ink-200 px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50 transition-colors">{t('common.cancel')}</button>
               <button onClick={handleBulkDelete} disabled={bulkLoading} className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition-colors disabled:opacity-50">
-                {bulkLoading ? 'Deleting…' : `Delete ${selected.size} plans`}
+                {bulkLoading ? t('plansPage.deleting') : t('plansPage.deleteBulkConfirm', { count: selected.size })}
               </button>
             </div>
           </div>

@@ -62,7 +62,7 @@ export const AiDraftPanel: React.FC<AiDraftPanelProps> = ({
     <div className="rounded-xl border border-accent-200 bg-accent-50 p-4 space-y-3">
       <div className="flex items-center gap-2">
         <Sparkles className="size-4 text-accent shrink-0" />
-        <p className="text-sm font-semibold text-ink-800">Generate with AI</p>
+        <p className="text-sm font-semibold text-ink-800">Call Lwazi</p>
       </div>
 
       <Input
@@ -79,7 +79,7 @@ export const AiDraftPanel: React.FC<AiDraftPanelProps> = ({
         onClick={generate}
         className="w-full"
       >
-        {loading ? 'Generating…' : 'Generate draft'}
+        {loading ? 'Generating…' : 'Generate ideas'}
       </Button>
 
       {draft && (

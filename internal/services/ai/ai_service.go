@@ -133,10 +133,24 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 		activities, links = nil, nil
 	}
 
+	// Org-wide context: the caller's own organisation profile (industry,
+	// structure, size, location — see orgsvc.UpdateOrgProfile /
+	// PATCH /api/v1/org), so the draft is grounded in what kind of
+	// organisation it's actually for rather than the plan text alone. Same
+	// best-effort treatment as loadPlanContext: a lookup failure just means
+	// drafting without it.
+	orgCtx, orgErr := s.loadOrgProfile(ctx, orgID)
+	if orgErr != nil {
+		orgCtx = orgProfile{}
+	}
+
 	schema, instructions := draftSchemaFor(req.ActivityType)
 
 	var sb strings.Builder
 	sb.WriteString("You are a strategic planning assistant helping draft content for one section of a company's strategic plan.\n\n")
+	if orgSection := buildOrgContextSection(orgCtx); orgSection != "" {
+		sb.WriteString(orgSection + "\n")
+	}
 	fmt.Fprintf(&sb, "Plan title: %s\n", planTitle)
 	if planDesc != nil && *planDesc != "" {
 		fmt.Fprintf(&sb, "Plan description: %s\n", *planDesc)
@@ -316,11 +330,19 @@ func (s *Service) Summary(ctx context.Context, orgID uuid.UUID, req SummaryReque
 		return nil, err
 	}
 
+	orgCtx, orgErr := s.loadOrgProfile(ctx, orgID)
+	if orgErr != nil {
+		orgCtx = orgProfile{}
+	}
+
 	var sb strings.Builder
 	sb.WriteString("You are a strategic planning assistant. Write a concise, plain-language progress summary ")
 	sb.WriteString("(3-6 sentences, no bullet points, no markdown headers) for a stakeholder who has not been ")
 	sb.WriteString("closely following the day-to-day work. Mention overall status, what's complete, what's still ")
 	sb.WriteString("outstanding, and any notable risk if activity statuses suggest one.\n\n")
+	if orgSection := buildOrgContextSection(orgCtx); orgSection != "" {
+		sb.WriteString(orgSection + "\n")
+	}
 	fmt.Fprintf(&sb, "Plan title: %s\n", planTitle)
 	if planDesc != nil && *planDesc != "" {
 		fmt.Fprintf(&sb, "Plan description: %s\n", *planDesc)

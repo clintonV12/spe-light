@@ -133,14 +133,30 @@ const (
 
 // ── Organisation ──────────────────────────────────────────────────────────
 
+// Organisation's profile fields (Address through TotalMembers) are
+// self-service — the org's own org_admin fills these in via
+// PATCH /api/v1/org (see orgsvc.UpdateOrgProfile) — as opposed to
+// Name/Slug/IsActive, which only a platform super_admin can change (see
+// adminsvc.UpdateOrg). All profile fields are optional: an org that hasn't
+// filled them in yet just omits that context from AI prompts (see
+// aisvc.buildOrgContextSection in context.go) rather than failing anything.
 type Organisation struct {
-	ID        uuid.UUID  `json:"id"                   db:"id"`
-	Name      string     `json:"name"                 db:"name"`
-	Slug      string     `json:"slug"                 db:"slug"`
-	LogoURL   *string    `json:"logo_url,omitempty"   db:"logo_url"`
-	Locale    string     `json:"locale"               db:"locale"`
-	Industry  *string    `json:"industry,omitempty"   db:"industry"`
-	IsActive  bool       `json:"is_active"            db:"is_active"`
+	ID       uuid.UUID `json:"id"                   db:"id"`
+	Name     string    `json:"name"                 db:"name"`
+	Slug     string    `json:"slug"                 db:"slug"`
+	LogoURL  *string   `json:"logo_url,omitempty"   db:"logo_url"`
+	Locale   string    `json:"locale"               db:"locale"`
+	Industry *string   `json:"industry,omitempty"   db:"industry"`
+	IsActive bool      `json:"is_active"            db:"is_active"`
+
+	// ── Org profile (self-service, org_admin editable) ──────────────────
+	Address      *string `json:"address,omitempty"       db:"address"`
+	Country      *string `json:"country,omitempty"       db:"country"`
+	ContactEmail *string `json:"contact_email,omitempty" db:"contact_email"`
+	ContactPhone *string `json:"contact_phone,omitempty" db:"contact_phone"`
+	OrgStructure *string `json:"org_structure,omitempty" db:"org_structure"`
+	TotalMembers *int    `json:"total_members,omitempty" db:"total_members"`
+
 	CreatedAt time.Time  `json:"created_at"           db:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"           db:"updated_at"`
 	DeletedAt *time.Time `json:"deleted_at,omitempty" db:"deleted_at"`

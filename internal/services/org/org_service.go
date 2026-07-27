@@ -364,14 +364,20 @@ func (s *Service) GetUserByID(ctx context.Context, userID uuid.UUID) (*models.Us
 }
 
 // GetOrgByID fetches an organisation's public details for display in the
-// caller's own app shell (name, logo, locale, etc).
+// caller's own app shell (name, logo, locale, etc), including the
+// self-service profile fields (address, country, contact info, structure,
+// member count) an org_admin fills in via UpdateOrgProfile below.
 func (s *Service) GetOrgByID(ctx context.Context, orgID uuid.UUID) (*models.Organisation, error) {
 	var org models.Organisation
 	err := s.db.QueryRow(ctx,
-		`SELECT id, name, slug, logo_url, locale, industry, is_active, created_at, updated_at
+		`SELECT id, name, slug, logo_url, locale, industry, is_active,
+		        address, country, contact_email, contact_phone, org_structure, total_members,
+		        created_at, updated_at
 		 FROM organisations WHERE id = $1 AND deleted_at IS NULL`,
 		orgID,
-	).Scan(&org.ID, &org.Name, &org.Slug, &org.LogoURL, &org.Locale, &org.Industry, &org.IsActive, &org.CreatedAt, &org.UpdatedAt)
+	).Scan(&org.ID, &org.Name, &org.Slug, &org.LogoURL, &org.Locale, &org.Industry, &org.IsActive,
+		&org.Address, &org.Country, &org.ContactEmail, &org.ContactPhone, &org.OrgStructure, &org.TotalMembers,
+		&org.CreatedAt, &org.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("organisation not found")
 	}
@@ -379,6 +385,77 @@ func (s *Service) GetOrgByID(ctx context.Context, orgID uuid.UUID) (*models.Orga
 		return nil, fmt.Errorf("get organisation: %w", err)
 	}
 	return &org, nil
+}
+
+// ── Org profile (self-service) ────────────────────────────────────────────
+
+// UpdateOrgProfileRequest carries the fields an org_admin can set about
+// their own organisation. Every field is optional — supply only what needs
+// changing. Unlike adminsvc.UpdateOrgRequest (platform-level: name,
+// is_active), this never touches Name or IsActive — an org can describe
+// itself, but renaming or (de)activating the org is a platform_admin action.
+type UpdateOrgProfileRequest struct {
+	Industry     *string `json:"industry,omitempty"`
+	Address      *string `json:"address,omitempty"`
+	Country      *string `json:"country,omitempty"`
+	ContactEmail *string `json:"contact_email,omitempty"`
+	ContactPhone *string `json:"contact_phone,omitempty"`
+	OrgStructure *string `json:"org_structure,omitempty"`
+	TotalMembers *int    `json:"total_members,omitempty"`
+}
+
+// UpdateOrgProfile lets an org_admin fill in/edit descriptive information
+// about their own organisation. This context is picked up by the AI service
+// (see aisvc.buildOrgContextSection in context.go) and folded into every
+// draft/summary/suggest-links prompt, so the model grounds its output in
+// what kind of organisation it's actually writing for instead of guessing.
+//
+// actorID is the org_admin performing the change, recorded in the audit log.
+func (s *Service) UpdateOrgProfile(ctx context.Context, orgID, actorID uuid.UUID, req UpdateOrgProfileRequest) (*models.Organisation, error) {
+	if req.Industry == nil && req.Address == nil && req.Country == nil &&
+		req.ContactEmail == nil && req.ContactPhone == nil &&
+		req.OrgStructure == nil && req.TotalMembers == nil {
+		return nil, fmt.Errorf("nothing to update")
+	}
+	if req.TotalMembers != nil && *req.TotalMembers < 0 {
+		return nil, fmt.Errorf("total_members cannot be negative")
+	}
+
+	var exists int
+	err := s.db.QueryRow(ctx,
+		`SELECT 1 FROM organisations WHERE id = $1 AND deleted_at IS NULL`, orgID,
+	).Scan(&exists)
+	if err == pgx.ErrNoRows {
+		return nil, fmt.Errorf("organisation not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fetch org: %w", err)
+	}
+
+	_, err = s.db.Exec(ctx,
+		`UPDATE organisations SET
+		    industry       = COALESCE($1, industry),
+		    address        = COALESCE($2, address),
+		    country        = COALESCE($3, country),
+		    contact_email  = COALESCE($4, contact_email),
+		    contact_phone  = COALESCE($5, contact_phone),
+		    org_structure  = COALESCE($6, org_structure),
+		    total_members  = COALESCE($7, total_members),
+		    updated_at     = NOW()
+		 WHERE id = $8`,
+		req.Industry, req.Address, req.Country, req.ContactEmail, req.ContactPhone,
+		req.OrgStructure, req.TotalMembers, orgID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("update org profile: %w", err)
+	}
+
+	auditlog.Record(ctx, s.db, auditlog.Entry{
+		OrgID: orgID, UserID: actorID, Action: "organisation.profile_updated",
+		TableName: "organisations", RecordID: orgID,
+	})
+
+	return s.GetOrgByID(ctx, orgID)
 }
 
 // ── Audit log ──────────────────────────────────────────────────────────────

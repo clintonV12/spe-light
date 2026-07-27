@@ -1,0 +1,735 @@
+{
+  "common": {
+    "save": "Londoloza izinguquko",
+    "saving": "Iyalondoloza…",
+    "cancel": "Khansela",
+    "delete": "Susa",
+    "edit": "Hlela",
+    "create": "Dala",
+    "loading": "Iyalayisha…",
+    "error": "Kukhona okungahambanga kahle",
+    "offline": "Awuxhunyiwe ku-inthanethi",
+    "sync": "Vumelanisa manje",
+    "pending": "{{count}} okusalindile",
+    "resend": "Thumela futhi",
+    "none": "Lutho"
+  },
+  "nav": {
+    "dashboard": "Ideshibhodi",
+    "plans": "Amasu",
+    "progress": "Inqubekelaphambili",
+    "reports": "Imibiko",
+    "admin": "Ukuphathwa",
+    "platformConsole": "Ipulatifomu yokuphatha"
+  },
+  "plan": {
+    "status": {
+      "draft": "Uhlaka",
+      "active": "Iyasebenza",
+      "review": "Kubuyekezwa",
+      "completed": "Kuqediwe",
+      "archived": "Kugcinwe"
+    },
+    "phases": {
+      "P1": "Ukuhlaziya",
+      "P2": "Isu",
+      "P3": "Ukusebenza"
+    }
+  },
+  "activity": {
+    "status": {
+      "not_started": "Akukaqaliswa",
+      "in_progress": "Kuyaqhubeka",
+      "under_review": "Kubuyekezwa",
+      "complete": "Kuqediwe"
+    }
+  },
+  "ai": {
+    "generate": "Yakha nge-AI",
+    "generating": "Iyakha…",
+    "accept": "Yamukela uhlaka",
+    "retry": "Zama futhi",
+    "discard": "Lahla",
+    "offline": "I-AI ayitholakali ungaxhunyiwe ku-inthanethi"
+  },
+  "auth": {
+    "tagline": "Ukuhlela nokuphumelelisa amasu",
+    "headline1": "Kusuka ekuhlaziyeni",
+    "headline2": "kuya esenzweni,",
+    "headline3": "kundawo eyodwa.",
+    "heroDescription": "Izigaba u-P1 · P2 · P3. Amadrafu asizwa yi-AI. Ukulandelela inqubekelaphambili okwakhelwe amaqembu asebenzisa amasu ngempela, hhayi izithombe-mfundiso kuphela.",
+    "selfHosted": "Kubekwe uqobo · I-AI isebenza kuseva yakho · Akukho datha ephuma ku-infrastructure yakho",
+    "phaseAnalysis": "Ukuhlaziya",
+    "phaseAnalysisDesc": "I-SWOT · I-PESTLE · Uhlu Lobungozi",
+    "phaseStrategy": "Isu",
+    "phaseStrategyDesc": "Umbono · Ama-OKR · Uhlaka lwe-KPI",
+    "phaseOperations": "Ukusebenza",
+    "phaseOperationsDesc": "Uhlelo · Isabelomali · Izinto Ezizokwenziwa",
+    "signIn": "Ngena",
+    "signInSubtitle": "Faka i-imeyili yakho yomsebenzi nephasiwedi.",
+    "email": "I-imeyili",
+    "emailPlaceholder": "wena@inhlangano.com",
+    "password": "Iphasiwedi",
+    "signInButton": "Ngena",
+    "signInError": "I-imeyili noma iphasiwedi engalungile. Hlola imininingwane yakho uphinde uzame futhi.",
+    "noAccount": "Awunayo i-akhawunti?",
+    "noAccountHelp": "Cela umlawuli wenhlangano yakho akuthumelele isimemo."
+  },
+  "activityEditor": {
+    "backToPlan": "Buyela ohlelweni",
+    "overdue": "Kudlule isikhathi",
+    "assigned": "{{count}} abelwe",
+    "aiDraft": "Uhlaka lwe-AI",
+    "offlineNotice": "Awuxhunyiwe ku-inthanethi. Izinguquko zizolondolozwa ngokuzenzakalela uma usuxhunyiwe futhi.",
+    "delete": "Susa umsebenzi",
+    "deleteConfirmTitle": "Susa umsebenzi?",
+    "deleteConfirmDesc": "\"{{title}}\" izosuswa unomphela, kanye nanoma yikuphi ukuxhumana nemisebenzi eminye. Lokhu akunakuguqulwa.",
+    "deleteConfirmButton": "Susa umsebenzi",
+    "sections": {
+      "vision": "Umbono",
+      "mission": "Umgomo",
+      "coreValues": "Amagugu ayisisekelo",
+      "strategicObjectives": "Izinjongo zamasu",
+      "rationale": "Isizathu",
+      "political": "Ezepolitiki",
+      "economic": "Ezomnotho",
+      "social": "Ezenhlalo",
+      "technological": "Ezobuchwepheshe",
+      "legal": "Ezomthetho",
+      "environmental": "Ezemvelo",
+      "internalStakeholders": "Ababambiqhaza abangaphakathi",
+      "externalStakeholders": "Ababambiqhaza abangaphandle",
+      "engagementStrategy": "Isu lokubandakanya",
+      "keyCompetitors": "Abancintisana nabo abasemqoka",
+      "marketPositioning": "Ukubekwa emakethe",
+      "ourDifferentiators": "Okusihlukanisa nabanye",
+      "targetCustomer": "Ikhasimende elihloswe",
+      "problemSolved": "Inkinga exazululiwe",
+      "ourSolution": "Isixazululo sethu",
+      "whyUs": "Kungani thina",
+      "q1Milestones": "Izimpumelelo zeKota 1",
+      "q2Milestones": "Izimpumelelo zeKota 2",
+      "q3Milestones": "Izimpumelelo zeKota 3",
+      "q4Milestones": "Izimpumelelo zeKota 4",
+      "actionItems": "Izinto ezizokwenziwa",
+      "owners": "Abaphethe",
+      "blockers": "Izithiyo",
+      "content": "Okuqukethwe",
+      "contentPlaceholder": "Faka okuqukethwe kwalo msebenzi…",
+      "notes": "Amanothi"
+    }
+  },
+  "progressPage": {
+    "title": "Inqubekelaphambili",
+    "subtitle": "Kumasu {{count}} asebenzayo",
+    "overall": "sekukonke",
+    "target": "Umgomo: {{date}}",
+    "done": "{{complete}}/{{total}} kuqediwe",
+    "statAvgCompletion": "Isilinganiso sokuqedwa",
+    "statActivitiesComplete": "Imisebenzi eqediwe",
+    "statTotalActivities": "Inani lemisebenzi",
+    "statOverdue": "Kudlule isikhathi",
+    "complete": "kuqediwe",
+    "inProgress": "kuyaqhubeka",
+    "overdueCount": "{{count}} kudlule isikhathi",
+    "phaseBreakdown": "Ukuhlukaniswa kwezigaba — wonke amasu",
+    "dependencyNetwork": "Inethiwekhi yokuncikana kwemisebenzi",
+    "emptyTitle": "Awekho amasu asebenzayo",
+    "emptyDesc": "Idatha yenqubekelaphambili ivela uma amasu esebenza noma ebuyekezwa.",
+    "perPlanDetail": "Imininingwane ngohlelo ngalunye"
+  },
+  "reportsPage": {
+    "title": "Imibiko",
+    "subtitle": "Yakha imibiko ye-PDF, i-Word, noma i-Excel evela kumasu akho.",
+    "generateNew": "Yakha umbiko omusha",
+    "plan": "Uhlelo",
+    "reportType": "Uhlobo lombiko",
+    "format": "Ifomethi",
+    "queuing": "Kulayini…",
+    "generateReport": "Yakha umbiko",
+    "inProgress": "Kuyaqhubeka",
+    "generating": "Iyakha…",
+    "download": "Layisha",
+    "previousReports": "Imibiko yangaphambilini",
+    "noReports": "Akukho mibiko esakhiwe kulolu hlelo okwamanje.",
+    "colType": "Uhlobo",
+    "colFormat": "Ifomethi",
+    "colGenerated": "Yakhiwe",
+    "toastReportReady": "Umbiko usulungile — {{title}}",
+    "toastGenerateFailed": "Kwehlulekile ukuqalisa ukwakhiwa kombiko.",
+    "toastMockDownload": "(Kuzenzisiwe) ukulayishwa kwefayela kulinganiselwe",
+    "types": {
+      "fullPlan": {
+        "label": "Uhlelo oluphelele",
+        "desc": "Zonke izigaba, yonke imisebenzi"
+      },
+      "executiveSummary": {
+        "label": "Isifinyezo sabaphathi",
+        "desc": "Indaba ephakeme yabaholi"
+      },
+      "perPhase": {
+        "label": "Umbiko ngesigaba",
+        "desc": "Ukuhlukaniswa okuningiliziwe nge-P1/P2/P3"
+      },
+      "progressStatus": {
+        "label": "Isimo senqubekelaphambili",
+        "desc": "Ama-KPI, iphesenti lokuqedwa, izinto ezidlule isikhathi"
+      },
+      "activityDetail": {
+        "label": "Imininingwane yomsebenzi",
+        "desc": "Umsebenzi ngamunye nokuqukethwe kwawo okuphelele"
+      }
+    }
+  },
+  "acceptInvite": {
+    "successTitle": "Usungenile",
+    "successDesc": "I-akhawunti yakho isilungiselelwe futhi isilungele. Yiya kudeshibhodi yakho ukuze uqalise.",
+    "goToDashboard": "Yiya kudeshibhodi",
+    "title": "Yamukela isimemo sakho",
+    "creatingFor": "Iyadala i-akhawunti ye",
+    "yourName": "Igama lakho",
+    "choosePassword": "Khetha iphasiwedi",
+    "passwordHint": "Okungenani izinhlamvu ezingu-8",
+    "confirmPassword": "Qinisekisa iphasiwedi",
+    "confirmPasswordHint": "Iphasiwedi efanayo futhi",
+    "passwordMismatch": "Amaphasiwedi awafani",
+    "invalidLink": "Lesi sixhumanisi sesimemo asisebenzi noma sesiphelelwe yisikhathi. Cela umlawuli wakho asithumele futhi.",
+    "createAccount": "Dala i-akhawunti"
+  },
+  "roles": {
+    "super_admin": "Umlawuli omkhulu",
+    "platform_support": "Ukusekelwa kwepulatifomu",
+    "org_admin": "Umlawuli wenhlangano",
+    "planner": "Umhleli",
+    "contributor": "Umnikeli",
+    "viewer": "Umbukeli"
+  },
+  "auditActions": {
+    "plan": {
+      "created": "Udale uhlelo",
+      "updated": "Ubuyekeze uhlelo",
+      "archived": "Ugcine uhlelo",
+      "deleted": "Ususe uhlelo",
+      "duplicated": "Uphinde uhlelo"
+    },
+    "activity": {
+      "created": "Udale umsebenzi",
+      "updated": "Ubuyekeze umsebenzi",
+      "deleted": "Ususe umsebenzi",
+      "status_changed": "Ushintshe isimo somsebenzi"
+    },
+    "user": {
+      "invited": "Umenywe umsebenzisi",
+      "role_changed": "Ushintshe indima",
+      "deactivated": "Uvale umsebenzisi",
+      "reactivated": "Uvule umsebenzisi futhi"
+    },
+    "invitation": {
+      "cancelled": "Ukhansele isimemo",
+      "resent": "Uthumele isimemo futhi",
+      "accepted": "Wamukele isimemo"
+    },
+    "report": {
+      "generated": "Wakhe umbiko"
+    },
+    "link": {
+      "created": "Udale isixhumanisi",
+      "deleted": "Ususe isixhumanisi"
+    }
+  },
+  "auditLog": {
+    "filterAllActions": "Zonke izenzo",
+    "filterPlans": "Amasu",
+    "filterActivities": "Imisebenzi",
+    "filterUsers": "Abasebenzisi",
+    "filterInvitations": "Izimemo",
+    "filterReports": "Imibiko",
+    "allMembers": "Onke amalungu eqembu",
+    "allOrganisations": "Zonke izinhlangano",
+    "eventsCount_one": "{{count}} isenzakalo",
+    "eventsCount_other": "{{count}} izenzakalo",
+    "filtered": " (kuhloliwe)",
+    "noEventsFound": "Awekho izenzakalo ezitholakele",
+    "adjustFilters": "Zama ukulungisa izihlungi zakho.",
+    "showing": "Kubonisa {{from}}–{{to}} kwangu-{{total}}",
+    "justNow": "manje nje",
+    "minutesAgo": "kwedlule {{count}}m",
+    "hoursAgo": "kwedlule {{count}}h",
+    "daysAgo": "kwedlule {{count}}d",
+    "unknownUser": "Umsebenzisi ongaziwa",
+    "unknownOrg": "Inhlangano engaziwa"
+  },
+  "admin": {
+    "title": "Iqembu nokufinyelela",
+    "membersCount_one": "{{count}} ilungu",
+    "membersCount_other": "{{count}} amalungu",
+    "pendingInvitesCount_one": "{{count}} isimemo esisalindile",
+    "pendingInvitesCount_other": "{{count}} izimemo ezisalindile",
+    "inviteMember": "Mema ilungu",
+    "tabs": {
+      "members": "Amalungu",
+      "invitations": "Izimemo",
+      "auditLog": "Ilog yokucwaninga",
+      "organisation": "Inhlangano"
+    },
+    "organisation": {
+      "title": "Iphrofayela yenhlangano",
+      "description": "Sitshele ngenhlangano yakho. Lokhu kusiza ukulungisa amadrafu, izifinyezo, neziphakamiso ezenziwe yi-AI ukuze kuhambisane nesimo sakho.",
+      "industry": "Umkhakha",
+      "totalMembers": "Inani lamalungu",
+      "address": "Ikheli",
+      "country": "Izwe",
+      "contactEmail": "I-imeyili yokuxhumana",
+      "contactPhone": "Inombolo yocingo yokuxhumana",
+      "orgStructure": "Isakhiwo senhlangano",
+      "orgStructureHint": "isb. -nyathelo linye, ngomnyango, i-matrix — incazelo emfushane yendlela inhlangano yakho ehlelwe ngayo",
+      "saved": "Kulondoloziwe",
+      "loadError": "Ayikwazanga ukulayisha imininingwane yenhlangano. Sicela uzame futhi.",
+      "saveError": "Ayikwazanga ukulondoloza izinguquko zakho. Sicela uzame futhi."
+    },
+    "table": {
+      "member": "Ilungu",
+      "role": "Indima",
+      "status": "Isimo",
+      "email": "I-imeyili",
+      "expires": "Iphelelwa"
+    },
+    "status": {
+      "active": "Iyasebenza",
+      "deactivated": "Ivaliwe",
+      "expired": "Iphelelwe yisikhathi",
+      "pending": "Isalindile",
+      "accepted": "Yamukelwe",
+      "cancelled": "Ikhanseliwe"
+    },
+    "you": "(wena)",
+    "scopedToPlans_one": "Kumelwe kuhlelo olu-{{count}}",
+    "scopedToPlans_other": "Kumelwe kumasu angu-{{count}}",
+    "noInvitations": "Azikho izimemo ezisathunyelwe",
+    "changeRole": "Shintsha indima",
+    "deactivateUser": "Vala umsebenzisi",
+    "reactivateUser": "Vula umsebenzisi futhi"
+  },
+  "platformAdmin": {
+    "title": "Ipulatifomu yokuphatha",
+    "restricted": "Le ndawo ivinjelwe kubalawuli bepulatifomu kuphela.",
+    "orgsCount_one": "{{count}} inhlangano",
+    "orgsCount_other": "{{count}} izinhlangano",
+    "activeCount": "{{count}} ezisebenzayo",
+    "readOnly": "ukufunda kuphela",
+    "inviteOrgAdmin": "Mema umlawuli wenhlangano",
+    "newOrganisation": "Inhlangano entsha",
+    "tabs": {
+      "organisations": "Izinhlangano",
+      "team": "Iqembu lepulatifomu",
+      "auditLog": "Ilog yokucwaninga"
+    },
+    "activeOnly": "Ezisebenzayo kuphela",
+    "table": {
+      "organisation": "Inhlangano",
+      "industry": "Imboni",
+      "locale": "Ulimi",
+      "status": "Isimo",
+      "created": "Yadalwa",
+      "name": "Igama",
+      "role": "Indima",
+      "lastLogin": "Ukungena kokugcina"
+    },
+    "status": {
+      "active": "Iyasebenza",
+      "deactivated": "Ivaliwe"
+    },
+    "activate": "Vula",
+    "deactivate": "Vala",
+    "noOrganisations": "Azikho izinhlangano okwamanje",
+    "noOrganisationsHelp": "Dala eyodwa, noma umeme umlawuli wenhlangano ukuyilungisa.",
+    "createOrgModal": {
+      "title": "Inhlangano entsha",
+      "name": "Igama lenhlangano",
+      "namePlaceholder": "Acme Strategy Group",
+      "industry": "Imboni",
+      "industryPlaceholder": "Akuphoqelekile",
+      "locale": "Ulimi",
+      "inviteAdminLabel": "Mema umlawuli manje (akuphoqelekile)",
+      "adminEmailPlaceholder": "admin@acme.com",
+      "noteWithEmail": "Inhlangano idalwa isebenza, futhi isimemo sithunyelwa nge-imeyili ngokushesha ukwenza lo muntu abe ngumlawuli wayo.",
+      "noteWithoutEmail": "Inhlangano idalwa isebenza ingenamalungu. Shiya lokhu kungenalutho usebenzise \"Mema umlawuli wenhlangano\" kamuva ukungenisa umlawuli wokuqala.",
+      "errorWithEmail": "Inhlangano mhlawumbe idaliwe, kodwa isimemo somlawuli sehlulekile ukuthunyelwa. Hlola uhlu \"Mema umlawuli wenhlangano\" uzame futhi lapho.",
+      "errorWithoutEmail": "Ayikwazanga ukudala inhlangano. Hlola imininingwane uzame futhi.",
+      "submit": "Dala inhlangano"
+    },
+    "inviteOrgAdminModal": {
+      "title": "Mema umlawuli wenhlangano",
+      "noOrgs": "Azikho izinhlangano ezikhona okwamanje. Dala eyodwa kuqala nge \"Inhlangano entsha\", bese umema umlawuli wayo lapha.",
+      "organisation": "Inhlangano",
+      "inactiveSuffix": " (ayisebenzi)",
+      "adminEmail": "I-imeyili yoxhumana yomlawuli",
+      "emailPlaceholder": "admin@acme.com",
+      "note": "Ithumela isixhumanisi sesimemo esisebenza izinsuku ezi-7 senhlangano ekhethiwe. Lo muntu uba ngumlawuli wayo uma esevumile.",
+      "error": "Ayikwazanga ukuthumela isimemo. Hlola ikheli le-imeyili uzame futhi.",
+      "submit": "Thumela isimemo"
+    },
+    "inviteTeamModal": {
+      "title": "Mema umlingani wepulatifomu",
+      "email": "I-imeyili",
+      "emailPlaceholder": "umlingani@inkampani-yakho.com",
+      "platformRole": "Indima yepulatifomu",
+      "platformSupportDesc": "Ukufunda kuphela kuzo zonke izinhlangano",
+      "superAdminDesc": "Ukufinyelela okugcwele kuzo zonke izinhlangano",
+      "note": "Lokhu kunika ukufinyelela phakathi kwezinhlangano, hhayi ubulungu kunhlangano eyodwa. Isixhumanisi sokulungiselela esisebenza izinsuku ezi-7 sithunyelwa nge-imeyili ukuvuma.",
+      "error": "Ayikwazanga ukuthumela isimemo. Mhlawumbe usenayo i-akhawunti yepulatifomu.",
+      "submit": "Thumela isimemo"
+    },
+    "team": {
+      "inviteTeammate": "Mema umlingani",
+      "membersHeading": "Amalungu eqembu lepulatifomu",
+      "noMembers": "Awekho amalungu eqembu lepulatifomu okwamanje",
+      "never": "Akwaze",
+      "pendingHeading": "Izimemo ezisalindile",
+      "noPending": "Azikho izimemo ezisalindile",
+      "expires": "iphelelwa {{date}}"
+    }
+  },
+  "dashboard": {
+    "greetingMorning": "Sawubona ekuseni",
+    "greetingAfternoon": "Sawubona emini",
+    "greetingEvening": "Sawubona kusihlwa",
+    "orgFallback": "Inhlangano yakho",
+    "subtitle": "Uvo lwamasu",
+    "newPlan": "Uhlelo olusha",
+    "statActivePlans": "Amasu asebenzayo",
+    "statActivePlansSub_one": "{{count}} uhlelo oluqhubekayo",
+    "statActivePlansSub_other": "{{count}} amasu aqhubekayo",
+    "statAvgProgress": "Isilinganiso senqubekelaphambili",
+    "statAvgProgressSub": "Kuwo wonke amasu asebenzayo",
+    "statOverdue": "Kudlule isikhathi",
+    "statOverdueSubAlert": "Kudinga ukunakwa",
+    "statOverdueSubOk": "Konke kuhamba ngesikhathi",
+    "statTotalPlans": "Inani lamasu",
+    "statTotalPlansSub": "{{count}} aqediwe",
+    "overdueAlert_one": "Umsebenzi ongu-{{count}} udlule isikhathi.",
+    "overdueAlert_other": "Imisebenzi engu-{{count}} idlule isikhathi.",
+    "overdueAlertSub": "Buyekeza amasu akho ukuze uphinde wabele noma uhlele kabusha.",
+    "viewPlans": "Buka amasu",
+    "recentPlans": "Amasu wamuva",
+    "viewAll": "Buka konke",
+    "emptyTitle": "Awekho amasu okwamanje",
+    "emptyDesc": "Dala uhlelo lwakho lwamasu lokuqala ukuze uqalise ngokuhlaziya kwe-P1, isu le-P2, nokusebenza kwe-P3.",
+    "createFirstPlan": "Dala uhlelo lwakho lokuqala",
+    "overdueBadge_one": "{{count}} kudlule isikhathi",
+    "overdueBadge_other": "{{count}} kudlule isikhathi",
+    "onTrack": "Kuhamba kahle",
+    "activityFeed": {
+      "title": "Umsebenzi wamuva",
+      "refresh": "Vuselela",
+      "empty": "Awukho umsebenzi okwamanje",
+      "emptySub": "Izinguquko zizovela lapha njengoba iqembu lakho lisebenza.",
+      "someone": "Othile",
+      "today": "Namuhla",
+      "yesterday": "Izolo",
+      "more_one": "{{count}} okunye",
+      "more_other": "{{count}} okunye",
+      "fullAuditLog": "Ilog yokucwaninga egcwele"
+    }
+  },
+  "activityVerbs": {
+    "plan": {
+      "created": "udalile",
+      "updated": "ubuyekezile",
+      "archived": "ugcinile",
+      "deleted": "ususile",
+      "duplicated": "uphindile"
+    },
+    "activity": {
+      "created": "ungezelele",
+      "updated": "uhlele",
+      "deleted": "ususile",
+      "status_changed": "ubuyekezile"
+    },
+    "link": {
+      "created": "uxhumanisile",
+      "deleted": "uqamule uxhumano"
+    },
+    "user": {
+      "invited": "umemile",
+      "role_changed": "ushintshe indima ka",
+      "deactivated": "uvalile",
+      "reactivated": "uvule futhi"
+    },
+    "invitation": {
+      "cancelled": "ukhansele isimemo sika",
+      "resent": "uthumele futhi isimemo ku"
+    },
+    "report": {
+      "generated": "wakhe umbiko we"
+    }
+  },
+  "editorsCommon": {
+    "table": "Ithebula",
+    "bar": "Ibha",
+    "line": "Umugqa",
+    "pie": "Iphayi",
+    "riskMatrix": "Imatrikisi yobungozi",
+    "addRow": "Engeza umugqa",
+    "addRisk": "Engeza ubungozi",
+    "addKpi": "Engeza i-KPI",
+    "noRowsYet": "Ayikho imigqa okwamanje.",
+    "addRowsToSeeChart": "Engeza imigqa ukuze ubone ishadi.",
+    "addNamedRiskForChart": "Engeza ubungozi obunegama ukuze ubone ishadi.",
+    "addNamedRiskForMatrix": "Engeza ubungozi obunegama ukuze ubone imatrikisi yobungozi.",
+    "addNamedKpiForChart": "Engeza i-KPI enegama namanani ukuze ubone ishadi.",
+    "chartOnlyNotSaved": "Ukubuka ishadi kuphela — akulondolozwa nomsebenzi.",
+    "bubbleSizeScore": "Usayizi webhamuza = amaphuzu. Ukubuka ishadi kuphela — akulondolozwa nomsebenzi.",
+    "enterField": "Faka {{field}}…"
+  },
+  "editors": {
+    "riskRegister": {
+      "headers": {
+        "risk": "Ubungozi",
+        "likelihood": "Amathuba (1-5)",
+        "impact": "Umthelela (1-5)",
+        "score": "Amaphuzu",
+        "mitigation": "Ukunciphisa",
+        "owner": "Umphathi"
+      },
+      "riskPlaceholder": "Chaza ubungozi",
+      "mitigationPlaceholder": "Isenzo sokunciphisa",
+      "ownerPlaceholder": "Umphathi",
+      "axisLikelihood": "Amathuba",
+      "axisImpact": "Umthelela",
+      "tooltip": "Amathuba {{likelihood}} · Umthelela {{impact}} · Amaphuzu {{score}}"
+    },
+    "kpi": {
+      "headers": {
+        "name": "Igama le-KPI",
+        "unit": "Iyunithi",
+        "baseline": "Isisekelo",
+        "target": "Umgomo",
+        "current": "Okwamanje"
+      },
+      "seriesBaseline": "Isisekelo",
+      "seriesTarget": "Umgomo",
+      "seriesCurrent": "Okwamanje"
+    },
+    "swot": {
+      "strengths": "Amandla",
+      "weaknesses": "Ubuthakathaka",
+      "opportunities": "Amathuba",
+      "threats": "Izingozi"
+    },
+    "roadmap": {
+      "q1": "Q1",
+      "q2": "Q2",
+      "q3": "Q3",
+      "q4": "Q4",
+      "milestonesSuffix": "Izimpumelelo",
+      "placeholder": "Yini ethunyelwa noma eyenzeka ku-{{quarter}}?"
+    },
+    "theoryOfChange": {
+      "inputs": "Okufakiwe",
+      "inputsHint": "Izinsiza ezitshalwe",
+      "activities": "Imisebenzi",
+      "activitiesHint": "Okwenziwayo",
+      "outputs": "Imiphumela ephuma",
+      "outputsHint": "Okutholakalayo ngokuqondile",
+      "outcomes": "Imiphumela",
+      "outcomesHint": "Ushintsho oluvelayo",
+      "impact": "Umthelela",
+      "impactHint": "Umphumela wesikhathi eside"
+    },
+    "objectives": {
+      "title": "Izinjongo Zamasu",
+      "count_one": "{{count}} inhloso",
+      "count_other": "{{count}} izinhloso",
+      "placeholder": "Inhloso eyodwa emugqeni ngamunye…",
+      "rationale": "Isizathu",
+      "rationalePlaceholder": "Kungani lezi zinhloso, futhi kungani manje?"
+    },
+    "visionMission": {
+      "vision": "Umbono",
+      "visionPlaceholder": "Inhlangano iya kuphi, ekugcineni?",
+      "mission": "Umgomo",
+      "missionPlaceholder": "Yini eyenziwa yinhlangano, usuku nosuku, ukuze ifike lapho?",
+      "coreValues": "Amagugu Ayisisekelo",
+      "valuesPlaceholder": "Hlukanisa amagugu ngekhefu noma umugqa omusha…"
+    },
+    "competitiveAnalysis": {
+      "competitors": "Abancintisana Nabo Abasemqoka",
+      "competitorsPlaceholder": "Sincintisana nobani?",
+      "positioning": "Ukubekwa Emakethe",
+      "positioningPlaceholder": "Sibekwe kuphi emakethe uma kuqhathaniswa nabo?",
+      "differentiators": "Okusihlukanisa Nabanye",
+      "differentiatorsPlaceholder": "Yini esenza sihluke?"
+    },
+    "stakeholderMap": {
+      "internal": "Ababambiqhaza Abangaphakathi",
+      "internalHint": "Amaqembu, ubuholi, nemisebenzi ngaphakathi kwenhlangano.",
+      "external": "Ababambiqhaza Abangaphandle",
+      "externalHint": "Amakhasimende, abalingani, abalawuli, nabanye ngaphandle kwenhlangano.",
+      "strategy": "Isu Lokubandakanya",
+      "strategyHint": "Indlela iqembu ngalinye elizokwaziswa, elibuzwe, noma elibandakanywe ngayo."
+    },
+    "valueProposition": {
+      "customer": "Ikhasimende",
+      "who": "Bangobani",
+      "whoPlaceholder": "Chaza ikhasimende elihloswe…",
+      "problem": "Inkinga ababhekana nayo",
+      "problemPlaceholder": "Yini ubuhlungu noma isidingo esingagcwaliswanga esibashayelayo?",
+      "fit": "Ukufaneleka",
+      "ourSolution": "Isixazululo Sethu",
+      "what": "Esikunikeza",
+      "whatPlaceholder": "Chaza umkhiqizo noma isevisi…",
+      "whyUs": "Kungani thina",
+      "whyUsPlaceholder": "Yini eyenza lokhu kube ngcono kunezinye izinketho?"
+    },
+    "bmc": {
+      "keyPartners": "Abalingani Abasemqoka",
+      "keyActivities": "Imisebenzi Esemqoka",
+      "keyResources": "Izinsiza Ezisemqoka",
+      "valuePropositions": "Iziphakamiso Zamagugu",
+      "customerRelationships": "Ubudlelwane Namakhasimende",
+      "channels": "Izindlela",
+      "customerSegments": "Amaqembu Amakhasimende",
+      "costStructure": "Isakhiwo Sezindleko",
+      "revenueStreams": "Imithombo Yemali Engenayo"
+    }
+  },
+  "linkedActivities": {
+    "title": "Imisebenzi exhunyaniswe",
+    "fedByCount": "Yondliwa yi ({{count}})",
+    "feedsIntoCount": "Yondla ku ({{count}})",
+    "addUpstreamLink": "Engeza isixhumanisi esingaphambili",
+    "addDownstreamLink": "Engeza isixhumanisi esilandelayo",
+    "noUpstream": "Ayikho imisebenzi engaphambili — lena iyimpande.",
+    "noDownstream": "Akukho okuncike kulokhu okwamanje.",
+    "searchPlaceholder": "Sesha imisebenzi…",
+    "noMatching": "Ayikho imisebenzi efanayo",
+    "removeLink": "Susa isixhumanisi",
+    "footNote": "Izixhumanisi azincikile ku-oda — isigaba iwuphawu, hhayi uchungechunge.",
+    "linkAdded": "Isixhumanisi sengeziwe",
+    "linkAddFailed": "Kwehlulekile ukwengeza isixhumanisi",
+    "linkRemoved": "Isixhumanisi sisusiwe",
+    "linkRemoveFailed": "Kwehlulekile ukususa isixhumanisi",
+    "linkType": {
+      "auto": "Okuzenzakalelayo",
+      "manual": "Ngesandla",
+      "ai_suggested": "I-AI"
+    }
+  },
+  "createActivityModal": {
+    "title": "Engeza umsebenzi",
+    "phase": "Isigaba",
+    "activityType": "Uhlobo lomsebenzi",
+    "titleLabel": "Isihloko",
+    "titlePlaceholder": "Faka isihloko salo msebenzi",
+    "dueDate": "Usuku lokuphela",
+    "submit": "Dala umsebenzi",
+    "created": "Umsebenzi udaliwe",
+    "createFailed": "Kwehlulekile ukudala umsebenzi"
+  },
+  "activityTypes": {
+    "swot": "Ukuhlaziya kwe-SWOT",
+    "pestle": "Ukuhlaziya kwe-PESTLE",
+    "business_model_canvas": "I-Business Model Canvas",
+    "stakeholder_map": "Imephu Yababambiqhaza",
+    "competitive_analysis": "Ukuhlaziya Ukuncintisana",
+    "risk_register": "Uhlu Lobungozi",
+    "market_analysis": "Ukuhlaziya Imakethe",
+    "vision_mission": "Umbono Nomgomo",
+    "strategic_objectives": "Izinjongo Zamasu",
+    "kpi_framework": "Uhlaka Lwe-KPI",
+    "okr_balanced_scorecard": "I-OKR / Ikhadi Lokulinganisela",
+    "theory_of_change": "Injulalwazi Yoshintsho",
+    "value_proposition": "Isiphakamiso Segugu",
+    "strategic_initiatives": "Amasu Aqalisiwe",
+    "financial_projections": "Ukubikezela Kwezimali",
+    "budget_allocation": "Ukwabiwa Kwesabelomali",
+    "operational_roadmap": "Uhlelo Lokusebenza",
+    "resource_plan": "Uhlelo Lwezinsiza",
+    "action_items": "Izinto Ezizokwenziwa Namatasks",
+    "implementation_timeline": "Uchungechunge Lokuqalisa",
+    "procurement_plan": "Uhlelo Lokuthenga"
+  },
+  "shortcutsModal": {
+    "title": "Izinqumo zekhibhodi",
+    "then": "bese",
+    "footerPre": "Cindezela",
+    "footerMid": "noma kuphi ukuze uguqule leli phaneli",
+    "footerPost": "ukuvala",
+    "groups": {
+      "Navigate": "Zulazula",
+      "Actions": "Izenzo",
+      "Editor": "Isihleli"
+    }
+  },
+  "plansPage": {
+    "title": "Amasu",
+    "countSub_one": "{{count}} uhlelo lwamasu",
+    "countSub_other": "{{count}} amasu wamasu",
+    "searchPlaceholder": "Sesha amasu…",
+    "statusAll": "Zonke izimo",
+    "newPlan": "Uhlelo olusha",
+    "colPlan": "Uhlelo",
+    "colStatus": "Isimo",
+    "colProgress": "Inqubekelaphambili",
+    "colLastUpdated": "Kubuyekezwe kokugcina",
+    "overdueCount": "{{count}} kudlule isikhathi",
+    "showing": "Kubonisa {{from}}–{{to}} kwangu-{{total}}",
+    "prev": "Okudlule",
+    "next": "Okulandelayo",
+    "pageOf": "Ikhasi {{page}} kwangu-{{total}}",
+    "selectedCount_one": "{{count}} uhlelo olukhethiwe",
+    "selectedCount_other": "{{count}} amasu akhethiwe",
+    "archiveAll": "Gcina konke",
+    "deleteAll": "Susa konke",
+    "duplicate": "Phinda",
+    "archive": "Gcina",
+    "emptyTitle": "Awekho amasu okwamanje",
+    "emptyFilteredTitle": "Akukho hlelo elifana nezihlungi zakho",
+    "emptyFilteredDesc": "Zama ukulungisa usesho noma isihlungi sakho.",
+    "emptyDesc": "Dala uhlelo lwakho lwamasu lokuqala ukuze uqalise.",
+    "deletePlanTitle": "Susa uhlelo?",
+    "deletePlanDesc": "\"{{title}}\" nayo yonke imisebenzi yalo kuzosuswa unomphela. Lokhu akunakuguqulwa.",
+    "deletePlanConfirm": "Susa uhlelo",
+    "deleting": "Kuyasuswa…",
+    "deleteBulkTitle_one": "Susa uhlelo olungu-{{count}}?",
+    "deleteBulkTitle_other": "Susa amasu angu-{{count}}?",
+    "deleteBulkDesc": "Wonke amasu akhethiwe nawo wonke umsebenzi ophakathi kwawo kuzosuswa unomphela. Lokhu akunakuguqulwa.",
+    "deleteBulkConfirm_one": "Susa uhlelo olungu-{{count}}",
+    "deleteBulkConfirm_other": "Susa amasu angu-{{count}}"
+  },
+  "planDetail": {
+    "backToPlans": "Amasu",
+    "deleteAll": "Susa konke",
+    "deleting": "Kuyasuswa…",
+    "deleteActivityTitle": "Susa umsebenzi?",
+    "deleteActivityDesc": "\"{{title}}\" izosuswa unomphela, kanye nanoma yikuphi ukuxhumana nemisebenzi eminye. Lokhu akunakuguqulwa.",
+    "deleteActivityConfirm": "Susa umsebenzi",
+    "deleteBulkActivitiesTitle_one": "Susa umsebenzi ongu-{{count}}?",
+    "deleteBulkActivitiesTitle_other": "Susa imisebenzi engu-{{count}}?",
+    "deleteBulkActivitiesDesc": "Yonke imisebenzi ekhethiwe nanoma yikuphi ukuxhumana nemisebenzi eminye kuzosuswa unomphela. Lokhu akunakuguqulwa.",
+    "deleteBulkActivitiesConfirm_one": "Susa umsebenzi ongu-{{count}}",
+    "deleteBulkActivitiesConfirm_other": "Susa imisebenzi engu-{{count}}",
+    "progress": "Inqubekelaphambili",
+    "addActivity": "Engeza umsebenzi",
+    "done": "kuqediwe",
+    "overdue": "Kudlule isikhathi",
+    "selectAll": "Khetha konke",
+    "deselectAll": "Sula ukukhetha konke",
+    "activitiesCount_one": "{{count}} umsebenzi",
+    "activitiesCount_other": "{{count}} imisebenzi",
+    "setStatus": "Setha isimo",
+    "selectedCount": "{{count}} okukhethiwe",
+    "emptyPhaseTitle": "Ayikho imisebenzi ye-{{phase}} okwamanje",
+    "emptyPhaseDesc": "Engeza umsebenzi we-{{phase}} onjenge-{{examples}} ukuze uqalise.",
+    "addPhaseActivity": "Engeza umsebenzi we-{{phase}}",
+    "phaseExamplesP1": "ukuhlaziya kwe-SWOT noma i-PESTLE",
+    "phaseExamplesP2": "isitatimende sombono noma uhlaka lwe-KPI",
+    "phaseExamplesP3": "uhlelo noma uhlelo lwesenzo",
+    "phaseDesc": {
+      "P1": "Qonda isimo samanje",
+      "P2": "Chaza ikusasa elifisekayo",
+      "P3": "Hlela ukuthi ungafika kanjani lapho"
+    }
+  }
+}

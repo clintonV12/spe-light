@@ -46,13 +46,13 @@ export type ActivityType =
   | 'theory_of_change'
   | 'value_proposition'
   | 'strategic_initiatives'
+  | 'action_items'
+  | 'implementation_timeline'
   // P3 — Operations
   | 'financial_projections'
   | 'budget_allocation'
   | 'operational_roadmap'
   | 'resource_plan'
-  | 'action_items'
-  | 'implementation_timeline'
   | 'procurement_plan'
 
 export type ActivityLinkType = 'manual' | 'ai_suggested'
@@ -110,9 +110,34 @@ export interface Organisation {
   locale:      string
   industry?:   string
   is_active:   boolean
+
+  // ── Org profile (self-service, org_admin editable via orgApi.updateOrg /
+  //    PATCH /api/v1/org). Folded into AI draft/summary/suggest-links
+  //    prompts on the backend so results are grounded in what the org
+  //    actually is, not just the plan text. ──────────────────────────────
+  address?:       string
+  country?:       string
+  contact_email?: string
+  contact_phone?: string
+  org_structure?: string
+  total_members?: number
+
   created_at:  string
   updated_at:  string
   deleted_at?: string
+}
+
+// Fields an org_admin can edit about their own organisation via
+// PATCH /api/v1/org (orgApi.updateOrg). Distinct from adminApi.updateOrg's
+// payload (name/is_active), which is platform_admin-only.
+export interface OrgProfileUpdate {
+  industry?:       string
+  address?:        string
+  country?:        string
+  contact_email?:  string
+  contact_phone?:  string
+  org_structure?:  string
+  total_members?:  number
 }
 
 // ── User ──────────────────────────────────────────────────────────────────────

@@ -104,11 +104,22 @@ func (s *Service) SuggestLinks(ctx context.Context, orgID uuid.UUID, req Suggest
 		idOf[tag] = a
 	}
 
+	// Org-wide context (industry, structure, size, location — see
+	// orgsvc.UpdateOrgProfile / PATCH /api/v1/org). Best-effort, same as
+	// Draft/Summary: a lookup failure just means suggesting without it.
+	orgCtx, orgErr := s.loadOrgProfile(ctx, orgID)
+	if orgErr != nil {
+		orgCtx = orgProfile{}
+	}
+
 	var sb strings.Builder
 	sb.WriteString("You are a strategic planning assistant. Look at the activities already in this plan below " +
 		"and propose new directed links between them. A link means the source activity's output should feed " +
 		"into, inform, or be considered by the target activity — for example a SWOT analysis's threats feeding " +
 		"a Risk Register, or Strategic Objectives feeding a KPI Framework.\n\n")
+	if orgSection := buildOrgContextSection(orgCtx); orgSection != "" {
+		sb.WriteString(orgSection + "\n")
+	}
 	fmt.Fprintf(&sb, "Plan title: %s\n", planTitle)
 	if planDesc != nil && *planDesc != "" {
 		fmt.Fprintf(&sb, "Plan description: %s\n", *planDesc)

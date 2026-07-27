@@ -26,14 +26,14 @@ const PHASE_ACTIVITY_TYPES: Record<Phase, { value: ActivityType }[]> = {
     { value: 'theory_of_change' },
     { value: 'value_proposition' },
     { value: 'strategic_initiatives' },
+    { value: 'action_items' },
+    { value: 'implementation_timeline' },
   ],
   P3: [
     { value: 'financial_projections' },
     { value: 'budget_allocation' },
     { value: 'operational_roadmap' },
     { value: 'resource_plan' },
-    { value: 'action_items' },
-    { value: 'implementation_timeline' },
     { value: 'procurement_plan' },
   ],
 }

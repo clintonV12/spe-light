@@ -8,8 +8,10 @@ import { Globe, Check, ChevronDown } from 'lucide-react'
 // registered in src/i18n/index.ts.
 const LANGUAGES = [
   { code: 'en', label: 'English' },
+  { code: 'es', label: 'Español' },
   { code: 'fr', label: 'Français' },
   { code: 'pt', label: 'Português' },
+  { code: 'zu', label: 'isiZulu' },
 ] as const
 
 const LOCALE_STORAGE_KEY = 'stratplan-locale' // must match src/i18n/index.ts

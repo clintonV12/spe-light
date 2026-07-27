@@ -4,7 +4,7 @@ import {
 import {
   UserPlus, RefreshCw, MoreHorizontal, ShieldCheck, Shield, Eye,
   Users, Mail, Activity, ChevronLeft, ChevronRight, Filter,
-  ArrowDownUp,
+  ArrowDownUp, Building2, Save,
 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -12,9 +12,9 @@ import { orgApi, auditApi } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
 import { Badge } from '../components/ui'
 import InviteUserModal from '../components/admin/InviteUserModal'
-import type { User, Invitation, UserRole, AuditLog, AuditAction } from '../types'
+import type { User, Invitation, UserRole, AuditLog, AuditAction, Organisation, OrgProfileUpdate } from '../types'
 
-type Tab = 'users' | 'invitations' | 'audit'
+type Tab = 'users' | 'invitations' | 'audit' | 'organisation'
 
 type RoleMeta = { label: string; icon: React.ReactNode; variant: 'neutral' | 'p1' | 'p2' | 'p3' | 'success' }
 
@@ -297,6 +297,176 @@ function AuditLogTab({ users }: { users: User[] }) {
   )
 }
 
+// ─── Organisation profile tab ─────────────────────────────────────────────────
+//
+// Lets an org_admin fill in descriptive info about their own organisation —
+// address, country, contact info, industry, org structure, and total
+// member count. This isn't just a display profile: the backend folds it
+// into every AI draft/summary/suggest-links prompt (see aisvc's use of
+// orgsvc-backed context) so AI output is grounded in what the organisation
+// actually is, instead of just the plan text. Fields are entirely optional;
+// leaving them blank just means the AI prompts carry less context, nothing
+// breaks.
+
+type OrgProfileForm = {
+  industry:       string
+  address:        string
+  country:        string
+  contact_email:  string
+  contact_phone:  string
+  org_structure:  string
+  total_members:  string
+}
+
+const emptyOrgForm: OrgProfileForm = {
+  industry: '', address: '', country: '', contact_email: '',
+  contact_phone: '', org_structure: '', total_members: '',
+}
+
+function orgToForm(org: Organisation): OrgProfileForm {
+  return {
+    industry:      org.industry ?? '',
+    address:       org.address ?? '',
+    country:       org.country ?? '',
+    contact_email: org.contact_email ?? '',
+    contact_phone: org.contact_phone ?? '',
+    org_structure: org.org_structure ?? '',
+    total_members: org.total_members !== undefined ? String(org.total_members) : '',
+  }
+}
+
+function OrganisationTab() {
+  const { t } = useTranslation()
+  const [org, setOrg] = useState<Organisation | null>(null)
+  const [form, setForm] = useState<OrgProfileForm>(emptyOrgForm)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await orgApi.getOrg()
+      setOrg(data)
+      setForm(orgToForm(data))
+    } catch {
+      setError(t('admin.organisation.loadError'))
+    } finally {
+      setLoading(false)
+    }
+  }, [t])
+
+  useEffect(() => { load() }, [load])
+
+  const handleChange = (field: keyof OrgProfileForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setSaved(false)
+    setForm((f) => ({ ...f, [field]: e.target.value }))
+  }
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      const payload: OrgProfileUpdate = {
+        industry:      form.industry || undefined,
+        address:       form.address || undefined,
+        country:       form.country || undefined,
+        contact_email: form.contact_email || undefined,
+        contact_phone: form.contact_phone || undefined,
+        org_structure: form.org_structure || undefined,
+        total_members: form.total_members ? Number(form.total_members) : undefined,
+      }
+      const updated = await orgApi.updateOrg(payload)
+      setOrg(updated)
+      setForm(orgToForm(updated))
+      setSaved(true)
+    } catch {
+      setError(t('admin.organisation.saveError'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl border border-ink-100 p-6 space-y-3">
+        {[1, 2, 3].map((i) => <div key={i} className="h-10 bg-ink-50 rounded-xl animate-pulse" />)}
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-ink-100 p-6 max-w-2xl">
+      <div className="flex items-center gap-2 mb-1">
+        <Building2 className="size-5 text-ink-400" />
+        <h2 className="font-display text-lg font-bold text-ink-900">{org?.name ?? t('admin.organisation.title')}</h2>
+      </div>
+      <p className="text-ink-500 text-sm mb-6">{t('admin.organisation.description')}</p>
+
+      <form onSubmit={handleSave} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <Field label={t('admin.organisation.industry')}>
+            <input value={form.industry} onChange={handleChange('industry')}
+              className="w-full rounded-xl border border-ink-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-200" />
+          </Field>
+          <Field label={t('admin.organisation.totalMembers')}>
+            <input type="number" min={0} value={form.total_members} onChange={handleChange('total_members')}
+              className="w-full rounded-xl border border-ink-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-200" />
+          </Field>
+        </div>
+
+        <Field label={t('admin.organisation.address')}>
+          <input value={form.address} onChange={handleChange('address')}
+            className="w-full rounded-xl border border-ink-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-200" />
+        </Field>
+
+        <Field label={t('admin.organisation.country')}>
+          <input value={form.country} onChange={handleChange('country')}
+            className="w-full rounded-xl border border-ink-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-200" />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label={t('admin.organisation.contactEmail')}>
+            <input type="email" value={form.contact_email} onChange={handleChange('contact_email')}
+              className="w-full rounded-xl border border-ink-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-200" />
+          </Field>
+          <Field label={t('admin.organisation.contactPhone')}>
+            <input type="tel" value={form.contact_phone} onChange={handleChange('contact_phone')}
+              className="w-full rounded-xl border border-ink-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-200" />
+          </Field>
+        </div>
+
+        <Field label={t('admin.organisation.orgStructure')} hint={t('admin.organisation.orgStructureHint')}>
+          <textarea rows={3} value={form.org_structure} onChange={handleChange('org_structure')}
+            className="w-full rounded-xl border border-ink-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-200" />
+        </Field>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <div className="flex items-center gap-3 pt-2">
+          <button type="submit" disabled={saving}
+            className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors disabled:opacity-60">
+            <Save className="size-4" /> {saving ? t('common.saving') : t('common.save')}
+          </button>
+          {saved && !saving && <span className="text-sm text-p2-dark">{t('admin.organisation.saved')}</span>}
+        </div>
+      </form>
+    </div>
+  )
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="block text-sm font-medium text-ink-700 mb-1">{label}</span>
+      {children}
+      {hint && <span className="block text-xs text-ink-400 mt-1">{hint}</span>}
+    </label>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -357,9 +527,10 @@ export default function AdminPage() {
   const pendingInvitations = invitations.filter((i) => i.status === 'pending')
 
   const TABS: { id: Tab; label: string; count?: number }[] = [
-    { id: 'users',       label: t('admin.tabs.members'),     count: users.length },
-    { id: 'invitations', label: t('admin.tabs.invitations'), count: pendingInvitations.length },
-    { id: 'audit',       label: t('admin.tabs.auditLog') },
+    { id: 'users',        label: t('admin.tabs.members'),      count: users.length },
+    { id: 'invitations',  label: t('admin.tabs.invitations'),  count: pendingInvitations.length },
+    { id: 'audit',        label: t('admin.tabs.auditLog') },
+    { id: 'organisation', label: t('admin.tabs.organisation') },
   ]
 
   return (
@@ -526,6 +697,9 @@ export default function AdminPage() {
 
       {/* ── Audit log tab ── */}
       {tab === 'audit' && <AuditLogTab users={users} />}
+
+      {/* ── Organisation profile tab ── */}
+      {tab === 'organisation' && <OrganisationTab />}
 
       {showInvite && <InviteUserModal onInvited={loadUsers} onClose={() => setShowInvite(false)} />}
     </div>

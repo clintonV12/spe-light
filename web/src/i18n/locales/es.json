@@ -1,0 +1,735 @@
+{
+  "common": {
+    "save": "Guardar cambios",
+    "saving": "Guardando…",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "loading": "Cargando…",
+    "error": "Algo salió mal",
+    "offline": "Estás sin conexión",
+    "sync": "Sincronizar ahora",
+    "pending": "{{count}} pendientes",
+    "resend": "Reenviar",
+    "none": "Ninguno"
+  },
+  "nav": {
+    "dashboard": "Panel",
+    "plans": "Planes",
+    "progress": "Progreso",
+    "reports": "Informes",
+    "admin": "Administración",
+    "platformConsole": "Consola de la plataforma"
+  },
+  "plan": {
+    "status": {
+      "draft": "Borrador",
+      "active": "Activo",
+      "review": "En revisión",
+      "completed": "Completado",
+      "archived": "Archivado"
+    },
+    "phases": {
+      "P1": "Análisis",
+      "P2": "Estrategia",
+      "P3": "Operaciones"
+    }
+  },
+  "activity": {
+    "status": {
+      "not_started": "No iniciado",
+      "in_progress": "En curso",
+      "under_review": "En revisión",
+      "complete": "Completado"
+    }
+  },
+  "ai": {
+    "generate": "Generar con IA",
+    "generating": "Generando…",
+    "accept": "Aceptar borrador",
+    "retry": "Reintentar",
+    "discard": "Descartar",
+    "offline": "IA no disponible sin conexión"
+  },
+  "auth": {
+    "tagline": "Planificación y ejecución estratégica",
+    "headline1": "Del análisis",
+    "headline2": "a la acción,",
+    "headline3": "en un solo lugar.",
+    "heroDescription": "Fases P1 · P2 · P3. Borradores asistidos por IA. Seguimiento de progreso creado para equipos que ejecutan estrategia, no solo presentaciones.",
+    "selfHosted": "Autoalojado · La IA se ejecuta en tu servidor · Ningún dato sale de tu infraestructura",
+    "phaseAnalysis": "Análisis",
+    "phaseAnalysisDesc": "FODA · PESTEL · Registro de riesgos",
+    "phaseStrategy": "Estrategia",
+    "phaseStrategyDesc": "Visión · OKR · Marco de KPI",
+    "phaseOperations": "Operaciones",
+    "phaseOperationsDesc": "Hoja de ruta · Presupuesto · Acciones",
+    "signIn": "Iniciar sesión",
+    "signInSubtitle": "Introduce tu correo de trabajo y contraseña.",
+    "email": "Correo electrónico",
+    "emailPlaceholder": "tu@organizacion.com",
+    "password": "Contraseña",
+    "signInButton": "Iniciar sesión",
+    "signInError": "Correo o contraseña incorrectos. Comprueba tus datos e inténtalo de nuevo.",
+    "noAccount": "¿No tienes una cuenta?",
+    "noAccountHelp": "Pide al administrador de tu organización que te envíe una invitación."
+  },
+  "activityEditor": {
+    "backToPlan": "Volver al plan",
+    "overdue": "Atrasada",
+    "assigned": "{{count}} asignadas",
+    "aiDraft": "Borrador de IA",
+    "offlineNotice": "Estás sin conexión. Los cambios se guardarán automáticamente al reconectar.",
+    "delete": "Eliminar actividad",
+    "deleteConfirmTitle": "¿Eliminar actividad?",
+    "deleteConfirmDesc": "\"{{title}}\" se eliminará permanentemente, junto con cualquier enlace a otras actividades. Esta acción no se puede deshacer.",
+    "deleteConfirmButton": "Eliminar actividad",
+    "sections": {
+      "vision": "Visión",
+      "mission": "Misión",
+      "coreValues": "Valores fundamentales",
+      "strategicObjectives": "Objetivos estratégicos",
+      "rationale": "Justificación",
+      "political": "Político",
+      "economic": "Económico",
+      "social": "Social",
+      "technological": "Tecnológico",
+      "legal": "Legal",
+      "environmental": "Ambiental",
+      "internalStakeholders": "Partes interesadas internas",
+      "externalStakeholders": "Partes interesadas externas",
+      "engagementStrategy": "Estrategia de participación",
+      "keyCompetitors": "Competidores clave",
+      "marketPositioning": "Posicionamiento de mercado",
+      "ourDifferentiators": "Nuestros diferenciadores",
+      "targetCustomer": "Cliente objetivo",
+      "problemSolved": "Problema resuelto",
+      "ourSolution": "Nuestra solución",
+      "whyUs": "Por qué nosotros",
+      "q1Milestones": "Hitos T1",
+      "q2Milestones": "Hitos T2",
+      "q3Milestones": "Hitos T3",
+      "q4Milestones": "Hitos T4",
+      "actionItems": "Acciones",
+      "owners": "Responsables",
+      "blockers": "Bloqueos",
+      "content": "Contenido",
+      "contentPlaceholder": "Introduce el contenido de esta actividad…",
+      "notes": "Notas"
+    }
+  },
+  "progressPage": {
+    "title": "Progreso",
+    "subtitle": "En {{count}} planes activos",
+    "overall": "general",
+    "target": "Objetivo: {{date}}",
+    "done": "{{complete}}/{{total}} completadas",
+    "statAvgCompletion": "Finalización media",
+    "statActivitiesComplete": "Actividades completadas",
+    "statTotalActivities": "Total de actividades",
+    "statOverdue": "Atrasadas",
+    "complete": "completado",
+    "inProgress": "en curso",
+    "overdueCount": "{{count}} atrasadas",
+    "phaseBreakdown": "Desglose por fase — todos los planes",
+    "dependencyNetwork": "Red de dependencias de actividades",
+    "emptyTitle": "No hay planes activos",
+    "emptyDesc": "Los datos de progreso aparecen cuando los planes están activos o en revisión.",
+    "perPlanDetail": "Detalle por plan"
+  },
+  "reportsPage": {
+    "title": "Informes",
+    "subtitle": "Genera informes en PDF, Word o Excel a partir de tus planes.",
+    "generateNew": "Generar un nuevo informe",
+    "plan": "Plan",
+    "reportType": "Tipo de informe",
+    "format": "Formato",
+    "queuing": "En cola…",
+    "generateReport": "Generar informe",
+    "inProgress": "En curso",
+    "generating": "Generando…",
+    "download": "Descargar",
+    "previousReports": "Informes anteriores",
+    "noReports": "Aún no se han generado informes para este plan.",
+    "colType": "Tipo",
+    "colFormat": "Formato",
+    "colGenerated": "Generado",
+    "toastReportReady": "Informe listo — {{title}}",
+    "toastGenerateFailed": "No se pudo iniciar la generación del informe.",
+    "toastMockDownload": "(Simulado) descarga de archivo simulada",
+    "types": {
+      "fullPlan": {
+        "label": "Plan completo",
+        "desc": "Todas las fases, todas las actividades"
+      },
+      "executiveSummary": {
+        "label": "Resumen ejecutivo",
+        "desc": "Narrativa de alto nivel para la dirección"
+      },
+      "perPhase": {
+        "label": "Informe por fase",
+        "desc": "Desglose detallado por P1/P2/P3"
+      },
+      "progressStatus": {
+        "label": "Estado de progreso",
+        "desc": "KPI, % de finalización, elementos atrasados"
+      },
+      "activityDetail": {
+        "label": "Detalle de actividad",
+        "desc": "Cada actividad con su contenido completo"
+      }
+    }
+  },
+  "acceptInvite": {
+    "successTitle": "Ya estás dentro",
+    "successDesc": "Tu cuenta está configurada y lista. Ve a tu panel para empezar.",
+    "goToDashboard": "Ir al panel",
+    "title": "Acepta tu invitación",
+    "creatingFor": "Creando cuenta para",
+    "yourName": "Tu nombre",
+    "choosePassword": "Elige una contraseña",
+    "passwordHint": "Al menos 8 caracteres",
+    "confirmPassword": "Confirma la contraseña",
+    "confirmPasswordHint": "La misma contraseña otra vez",
+    "passwordMismatch": "Las contraseñas no coinciden",
+    "invalidLink": "Este enlace de invitación no es válido o ha caducado. Pide a tu administrador que lo reenvíe.",
+    "createAccount": "Crear cuenta"
+  },
+  "roles": {
+    "super_admin": "Superadministrador",
+    "platform_support": "Soporte de plataforma",
+    "org_admin": "Administrador de organización",
+    "planner": "Planificador",
+    "contributor": "Colaborador",
+    "viewer": "Observador"
+  },
+  "auditActions": {
+    "plan": {
+      "created": "Plan creado",
+      "updated": "Plan actualizado",
+      "archived": "Plan archivado",
+      "deleted": "Plan eliminado",
+      "duplicated": "Plan duplicado"
+    },
+    "activity": {
+      "created": "Actividad creada",
+      "updated": "Actividad actualizada",
+      "deleted": "Actividad eliminada",
+      "status_changed": "Estado de actividad cambiado"
+    },
+    "user": {
+      "invited": "Usuario invitado",
+      "role_changed": "Rol cambiado",
+      "deactivated": "Usuario desactivado",
+      "reactivated": "Usuario reactivado"
+    },
+    "invitation": {
+      "cancelled": "Invitación cancelada",
+      "resent": "Invitación reenviada",
+      "accepted": "Invitación aceptada"
+    },
+    "report": {
+      "generated": "Informe generado"
+    },
+    "link": {
+      "created": "Enlace creado",
+      "deleted": "Enlace eliminado"
+    }
+  },
+  "auditLog": {
+    "filterAllActions": "Todas las acciones",
+    "filterPlans": "Planes",
+    "filterActivities": "Actividades",
+    "filterUsers": "Usuarios",
+    "filterInvitations": "Invitaciones",
+    "filterReports": "Informes",
+    "allMembers": "Todos los miembros del equipo",
+    "allOrganisations": "Todas las organizaciones",
+    "eventsCount_one": "{{count}} evento",
+    "eventsCount_other": "{{count}} eventos",
+    "filtered": " (filtrado)",
+    "noEventsFound": "No se encontraron eventos",
+    "adjustFilters": "Intenta ajustar tus filtros.",
+    "showing": "Mostrando {{from}}–{{to}} de {{total}}",
+    "justNow": "justo ahora",
+    "minutesAgo": "hace {{count}}m",
+    "hoursAgo": "hace {{count}}h",
+    "daysAgo": "hace {{count}}d",
+    "unknownUser": "Usuario desconocido",
+    "unknownOrg": "Organización desconocida"
+  },
+  "admin": {
+    "title": "Equipo y acceso",
+    "membersCount_one": "{{count}} miembro",
+    "membersCount_other": "{{count}} miembros",
+    "pendingInvitesCount_one": "{{count}} invitación pendiente",
+    "pendingInvitesCount_other": "{{count}} invitaciones pendientes",
+    "inviteMember": "Invitar miembro",
+    "tabs": {
+      "members": "Miembros",
+      "invitations": "Invitaciones",
+      "auditLog": "Registro de auditoría",
+      "organisation": "Organización"
+    },
+    "organisation": {
+      "title": "Perfil de la organización",
+      "description": "Cuéntanos sobre tu organización. Esto ayuda a adaptar los borradores, resúmenes y sugerencias generados por IA a tu contexto.",
+      "industry": "Sector",
+      "totalMembers": "Número total de miembros",
+      "address": "Dirección",
+      "country": "País",
+      "contactEmail": "Correo electrónico de contacto",
+      "contactPhone": "Teléfono de contacto",
+      "orgStructure": "Estructura organizativa",
+      "orgStructureHint": "p. ej., plana, departamental, matricial: una breve descripción de cómo está organizada tu organización",
+      "saved": "Guardado",
+      "loadError": "No se pudieron cargar los datos de la organización. Inténtalo de nuevo.",
+      "saveError": "No se pudieron guardar los cambios. Inténtalo de nuevo."
+    },
+    "table": {
+      "member": "Miembro",
+      "role": "Rol",
+      "status": "Estado",
+      "email": "Correo electrónico",
+      "expires": "Caduca"
+    },
+    "status": {
+      "active": "Activo",
+      "deactivated": "Desactivado",
+      "expired": "Caducado",
+      "pending": "Pendiente",
+      "accepted": "Aceptada",
+      "cancelled": "Cancelada"
+    },
+    "you": "(tú)",
+    "scopedToPlans_one": "Limitado a {{count}} plan",
+    "scopedToPlans_other": "Limitado a {{count}} planes",
+    "noInvitations": "Aún no se han enviado invitaciones",
+    "changeRole": "Cambiar rol",
+    "deactivateUser": "Desactivar usuario",
+    "reactivateUser": "Reactivar usuario"
+  },
+  "platformAdmin": {
+    "title": "Consola de la plataforma",
+    "restricted": "Esta área está restringida a administradores a nivel de plataforma.",
+    "orgsCount_one": "{{count}} organización",
+    "orgsCount_other": "{{count}} organizaciones",
+    "activeCount": "{{count}} activas",
+    "readOnly": "solo lectura",
+    "inviteOrgAdmin": "Invitar administrador de organización",
+    "newOrganisation": "Nueva organización",
+    "tabs": {
+      "organisations": "Organizaciones",
+      "team": "Equipo de la plataforma",
+      "auditLog": "Registro de auditoría"
+    },
+    "activeOnly": "Solo activas",
+    "table": {
+      "organisation": "Organización",
+      "industry": "Sector",
+      "locale": "Idioma",
+      "status": "Estado",
+      "created": "Creada",
+      "name": "Nombre",
+      "role": "Rol",
+      "lastLogin": "Último acceso"
+    },
+    "status": {
+      "active": "Activa",
+      "deactivated": "Desactivada"
+    },
+    "activate": "Activar",
+    "deactivate": "Desactivar",
+    "noOrganisations": "Aún no hay organizaciones",
+    "noOrganisationsHelp": "Crea una, o invita a un administrador de organización para configurarla.",
+    "createOrgModal": {
+      "title": "Nueva organización",
+      "name": "Nombre de la organización",
+      "namePlaceholder": "Acme Strategy Group",
+      "industry": "Sector",
+      "industryPlaceholder": "Opcional",
+      "locale": "Idioma",
+      "inviteAdminLabel": "Invitar administrador ahora (opcional)",
+      "adminEmailPlaceholder": "admin@acme.com",
+      "noteWithEmail": "La organización se crea activa y se envía de inmediato una invitación por correo para convertir a esta persona en su administrador.",
+      "noteWithoutEmail": "La organización se crea activa sin miembros. Deja esto en blanco y usa \"Invitar administrador de organización\" más tarde para incorporar al primer administrador.",
+      "errorWithEmail": "Es posible que la organización se haya creado, pero no se pudo enviar la invitación al administrador. Consulta la lista \"Invitar administrador de organización\" e inténtalo de nuevo desde allí.",
+      "errorWithoutEmail": "No se pudo crear la organización. Comprueba los datos e inténtalo de nuevo.",
+      "submit": "Crear organización"
+    },
+    "inviteOrgAdminModal": {
+      "title": "Invitar a un administrador de organización",
+      "noOrgs": "Aún no existen organizaciones. Crea una primero con \"Nueva organización\" y luego invita a su administrador desde aquí.",
+      "organisation": "Organización",
+      "inactiveSuffix": " (inactiva)",
+      "adminEmail": "Correo de contacto del administrador",
+      "emailPlaceholder": "admin@acme.com",
+      "note": "Envía un enlace de invitación válido por 7 días para la organización seleccionada. Esta persona será su administrador una vez que acepte.",
+      "error": "No se pudo enviar la invitación. Comprueba la dirección de correo e inténtalo de nuevo.",
+      "submit": "Enviar invitación"
+    },
+    "inviteTeamModal": {
+      "title": "Invitar a un compañero de la plataforma",
+      "email": "Correo electrónico",
+      "emailPlaceholder": "companero@tuempresa.com",
+      "platformRole": "Rol de plataforma",
+      "platformSupportDesc": "Solo lectura en todas las organizaciones",
+      "superAdminDesc": "Acceso completo a todas las organizaciones",
+      "note": "Esto otorga acceso multiorganización, no la pertenencia a una organización concreta. Se envía por correo un enlace de configuración válido por 7 días.",
+      "error": "No se pudo enviar la invitación. Es posible que ya tenga una cuenta de plataforma.",
+      "submit": "Enviar invitación"
+    },
+    "team": {
+      "inviteTeammate": "Invitar compañero",
+      "membersHeading": "Miembros del equipo de la plataforma",
+      "noMembers": "Aún no hay miembros del equipo de la plataforma",
+      "never": "Nunca",
+      "pendingHeading": "Invitaciones pendientes",
+      "noPending": "No hay invitaciones pendientes",
+      "expires": "caduca {{date}}"
+    }
+  },
+  "dashboard": {
+    "greetingMorning": "Buenos días",
+    "greetingAfternoon": "Buenas tardes",
+    "greetingEvening": "Buenas noches",
+    "orgFallback": "Tu organización",
+    "subtitle": "Panorama estratégico",
+    "newPlan": "Nuevo plan",
+    "statActivePlans": "Planes activos",
+    "statActivePlansSub_one": "{{count}} plan en marcha",
+    "statActivePlansSub_other": "{{count}} planes en marcha",
+    "statAvgProgress": "Progreso medio",
+    "statAvgProgressSub": "En todos los planes activos",
+    "statOverdue": "Atrasadas",
+    "statOverdueSubAlert": "Requiere atención",
+    "statOverdueSubOk": "Todo según lo previsto",
+    "statTotalPlans": "Total de planes",
+    "statTotalPlansSub": "{{count}} completados",
+    "overdueAlert_one": "{{count}} actividad está atrasada.",
+    "overdueAlert_other": "{{count}} actividades están atrasadas.",
+    "overdueAlertSub": "Revisa tus planes para reasignar o reprogramar.",
+    "viewPlans": "Ver planes",
+    "recentPlans": "Planes recientes",
+    "viewAll": "Ver todos",
+    "emptyTitle": "Aún no hay planes",
+    "emptyDesc": "Crea tu primer plan estratégico para empezar con el análisis P1, la estrategia P2 y la ejecución P3.",
+    "createFirstPlan": "Crea tu primer plan",
+    "overdueBadge_one": "{{count}} atrasada",
+    "overdueBadge_other": "{{count}} atrasadas",
+    "onTrack": "Según lo previsto",
+    "activityFeed": {
+      "title": "Actividad reciente",
+      "refresh": "Actualizar",
+      "empty": "Aún no hay actividad",
+      "emptySub": "Los cambios aparecerán aquí a medida que tu equipo trabaje.",
+      "someone": "Alguien",
+      "today": "Hoy",
+      "yesterday": "Ayer",
+      "more_one": "{{count}} más",
+      "more_other": "{{count}} más",
+      "fullAuditLog": "Registro de auditoría completo"
+    }
+  },
+  "activityVerbs": {
+    "plan": {
+      "created": "creó",
+      "updated": "actualizó",
+      "archived": "archivó",
+      "deleted": "eliminó",
+      "duplicated": "duplicó"
+    },
+    "activity": {
+      "created": "añadió",
+      "updated": "editó",
+      "deleted": "eliminó",
+      "status_changed": "actualizó"
+    },
+    "link": {
+      "created": "enlazó",
+      "deleted": "desenlazó"
+    },
+    "user": {
+      "invited": "invitó a",
+      "role_changed": "cambió el rol de",
+      "deactivated": "desactivó a",
+      "reactivated": "reactivó a"
+    },
+    "invitation": {
+      "cancelled": "canceló la invitación de",
+      "resent": "reenvió la invitación a"
+    },
+    "report": {
+      "generated": "generó un informe de"
+    }
+  },
+  "editorsCommon": {
+    "table": "Tabla",
+    "bar": "Barras",
+    "line": "Líneas",
+    "pie": "Circular",
+    "riskMatrix": "Matriz de riesgo",
+    "addRow": "Añadir fila",
+    "addRisk": "Añadir riesgo",
+    "addKpi": "Añadir KPI",
+    "noRowsYet": "Aún no hay filas.",
+    "addRowsToSeeChart": "Añade algunas filas para ver el gráfico.",
+    "addNamedRiskForChart": "Añade un riesgo con nombre para ver el gráfico.",
+    "addNamedRiskForMatrix": "Añade un riesgo con nombre para ver la matriz de riesgo.",
+    "addNamedKpiForChart": "Añade un KPI con nombre y valores numéricos para ver el gráfico.",
+    "chartOnlyNotSaved": "Solo vista de gráfico — no se guarda con la actividad.",
+    "bubbleSizeScore": "El tamaño de la burbuja = puntuación. Solo vista de gráfico — no se guarda con la actividad.",
+    "enterField": "Introduce {{field}}…"
+  },
+  "editors": {
+    "riskRegister": {
+      "headers": {
+        "risk": "Riesgo",
+        "likelihood": "Probabilidad (1-5)",
+        "impact": "Impacto (1-5)",
+        "score": "Puntuación",
+        "mitigation": "Mitigación",
+        "owner": "Responsable"
+      },
+      "riskPlaceholder": "Describe el riesgo",
+      "mitigationPlaceholder": "Acción de mitigación",
+      "ownerPlaceholder": "Responsable",
+      "axisLikelihood": "Probabilidad",
+      "axisImpact": "Impacto",
+      "tooltip": "Probabilidad {{likelihood}} · Impacto {{impact}} · Puntuación {{score}}"
+    },
+    "kpi": {
+      "headers": {
+        "name": "Nombre del KPI",
+        "unit": "Unidad",
+        "baseline": "Línea base",
+        "target": "Objetivo",
+        "current": "Actual"
+      },
+      "seriesBaseline": "Línea base",
+      "seriesTarget": "Objetivo",
+      "seriesCurrent": "Actual"
+    },
+    "swot": {
+      "strengths": "Fortalezas",
+      "weaknesses": "Debilidades",
+      "opportunities": "Oportunidades",
+      "threats": "Amenazas"
+    },
+    "roadmap": {
+      "q1": "T1",
+      "q2": "T2",
+      "q3": "T3",
+      "q4": "T4",
+      "milestonesSuffix": "Hitos",
+      "placeholder": "¿Qué se lanza o sucede en {{quarter}}?"
+    },
+    "theoryOfChange": {
+      "inputs": "Entradas",
+      "inputsHint": "Recursos invertidos",
+      "activities": "Actividades",
+      "activitiesHint": "Qué se hace",
+      "outputs": "Productos",
+      "outputsHint": "Entregables directos",
+      "outcomes": "Resultados",
+      "outcomesHint": "Cambio resultante",
+      "impact": "Impacto",
+      "impactHint": "Efecto a largo plazo"
+    },
+    "objectives": {
+      "title": "Objetivos Estratégicos",
+      "count_one": "{{count}} objetivo",
+      "count_other": "{{count}} objetivos",
+      "placeholder": "Un objetivo por línea…",
+      "rationale": "Justificación",
+      "rationalePlaceholder": "¿Por qué estos objetivos, y por qué ahora?"
+    },
+    "visionMission": {
+      "vision": "Visión",
+      "visionPlaceholder": "¿Hacia dónde se dirige la organización, en última instancia?",
+      "mission": "Misión",
+      "missionPlaceholder": "¿Qué hace la organización, día a día, para llegar allí?",
+      "coreValues": "Valores Fundamentales",
+      "valuesPlaceholder": "Separa los valores con una coma o un salto de línea…"
+    },
+    "competitiveAnalysis": {
+      "competitors": "Competidores Clave",
+      "competitorsPlaceholder": "¿Contra quién competimos?",
+      "positioning": "Posicionamiento de Mercado",
+      "positioningPlaceholder": "¿Dónde nos situamos en el mercado en relación con ellos?",
+      "differentiators": "Nuestros Diferenciadores",
+      "differentiatorsPlaceholder": "¿Qué nos distingue?"
+    },
+    "stakeholderMap": {
+      "internal": "Partes Interesadas Internas",
+      "internalHint": "Equipos, dirección y funciones dentro de la organización.",
+      "external": "Partes Interesadas Externas",
+      "externalHint": "Clientes, socios, reguladores y otros fuera de la organización.",
+      "strategy": "Estrategia de Participación",
+      "strategyHint": "Cómo se informará, consultará o involucrará a cada grupo."
+    },
+    "valueProposition": {
+      "customer": "Cliente",
+      "who": "Quiénes son",
+      "whoPlaceholder": "Describe al cliente objetivo…",
+      "problem": "Problema que enfrentan",
+      "problemPlaceholder": "¿Qué dolor o necesidad insatisfecha los impulsa?",
+      "fit": "Encaje",
+      "ourSolution": "Nuestra Solución",
+      "what": "Qué ofrecemos",
+      "whatPlaceholder": "Describe el producto o servicio…",
+      "whyUs": "Por qué nosotros",
+      "whyUsPlaceholder": "¿Qué hace que esto sea mejor que las alternativas?"
+    },
+    "bmc": {
+      "keyPartners": "Socios Clave",
+      "keyActivities": "Actividades Clave",
+      "keyResources": "Recursos Clave",
+      "valuePropositions": "Propuestas de Valor",
+      "customerRelationships": "Relaciones con Clientes",
+      "channels": "Canales",
+      "customerSegments": "Segmentos de Clientes",
+      "costStructure": "Estructura de Costes",
+      "revenueStreams": "Fuentes de Ingresos"
+    }
+  },
+  "linkedActivities": {
+    "title": "Actividades enlazadas",
+    "fedByCount": "Alimentada por ({{count}})",
+    "feedsIntoCount": "Alimenta a ({{count}})",
+    "addUpstreamLink": "Añadir enlace previo",
+    "addDownstreamLink": "Añadir enlace posterior",
+    "noUpstream": "No hay actividades previas — esta es una raíz.",
+    "noDownstream": "Nada depende de esto todavía.",
+    "searchPlaceholder": "Buscar actividades…",
+    "noMatching": "No hay actividades coincidentes",
+    "removeLink": "Quitar enlace",
+    "footNote": "Los enlaces son independientes del orden — la fase es una etiqueta, no una secuencia.",
+    "linkAdded": "Enlace añadido",
+    "linkAddFailed": "No se pudo añadir el enlace",
+    "linkRemoved": "Enlace eliminado",
+    "linkRemoveFailed": "No se pudo eliminar el enlace",
+    "linkType": {
+      "auto": "Automático",
+      "manual": "Manual",
+      "ai_suggested": "IA"
+    }
+  },
+  "createActivityModal": {
+    "title": "Añadir actividad",
+    "phase": "Fase",
+    "activityType": "Tipo de actividad",
+    "titleLabel": "Título",
+    "titlePlaceholder": "Introduce un título para esta actividad",
+    "dueDate": "Fecha límite",
+    "submit": "Crear actividad",
+    "created": "Actividad creada",
+    "createFailed": "No se pudo crear la actividad"
+  },
+  "activityTypes": {
+    "swot": "Análisis FODA",
+    "pestle": "Análisis PESTEL",
+    "business_model_canvas": "Business Model Canvas",
+    "stakeholder_map": "Mapa de partes interesadas",
+    "competitive_analysis": "Análisis competitivo",
+    "risk_register": "Registro de riesgos",
+    "market_analysis": "Análisis de mercado",
+    "vision_mission": "Visión y misión",
+    "strategic_objectives": "Objetivos estratégicos",
+    "kpi_framework": "Marco de KPI",
+    "okr_balanced_scorecard": "OKR / Cuadro de mando integral",
+    "theory_of_change": "Teoría del cambio",
+    "value_proposition": "Propuesta de valor",
+    "strategic_initiatives": "Iniciativas estratégicas",
+    "financial_projections": "Proyecciones financieras",
+    "budget_allocation": "Asignación presupuestaria",
+    "operational_roadmap": "Hoja de ruta operativa",
+    "resource_plan": "Plan de recursos",
+    "action_items": "Acciones y tareas",
+    "implementation_timeline": "Cronograma de implementación",
+    "procurement_plan": "Plan de adquisiciones"
+  },
+  "shortcutsModal": {
+    "title": "Atajos de teclado",
+    "then": "luego",
+    "footerPre": "Pulsa",
+    "footerMid": "en cualquier lugar para alternar este panel",
+    "footerPost": "para cerrar",
+    "groups": {
+      "Navigate": "Navegar",
+      "Actions": "Acciones",
+      "Editor": "Editor"
+    }
+  },
+  "plansPage": {
+    "title": "Planes",
+    "countSub_one": "{{count}} plan estratégico",
+    "countSub_other": "{{count}} planes estratégicos",
+    "searchPlaceholder": "Buscar planes…",
+    "statusAll": "Todos los estados",
+    "newPlan": "Nuevo plan",
+    "colPlan": "Plan",
+    "colStatus": "Estado",
+    "colProgress": "Progreso",
+    "colLastUpdated": "Última actualización",
+    "overdueCount": "{{count}} atrasadas",
+    "showing": "Mostrando {{from}}–{{to}} de {{total}}",
+    "prev": "Anterior",
+    "next": "Siguiente",
+    "pageOf": "Página {{page}} de {{total}}",
+    "selectedCount_one": "{{count}} plan seleccionado",
+    "selectedCount_other": "{{count}} planes seleccionados",
+    "archiveAll": "Archivar todo",
+    "deleteAll": "Eliminar todo",
+    "duplicate": "Duplicar",
+    "archive": "Archivar",
+    "emptyTitle": "Aún no hay planes",
+    "emptyFilteredTitle": "Ningún plan coincide con tus filtros",
+    "emptyFilteredDesc": "Intenta ajustar tu búsqueda o filtro.",
+    "emptyDesc": "Crea tu primer plan estratégico para empezar.",
+    "deletePlanTitle": "¿Eliminar plan?",
+    "deletePlanDesc": "\"{{title}}\" y todas sus actividades se eliminarán permanentemente. Esta acción no se puede deshacer.",
+    "deletePlanConfirm": "Eliminar plan",
+    "deleting": "Eliminando…",
+    "deleteBulkTitle_one": "¿Eliminar {{count}} plan?",
+    "deleteBulkTitle_other": "¿Eliminar {{count}} planes?",
+    "deleteBulkDesc": "Todos los planes seleccionados y cada actividad que contienen se eliminarán permanentemente. Esta acción no se puede deshacer.",
+    "deleteBulkConfirm_one": "Eliminar {{count}} plan",
+    "deleteBulkConfirm_other": "Eliminar {{count}} planes"
+  },
+  "planDetail": {
+    "backToPlans": "Planes",
+    "deleteAll": "Eliminar todo",
+    "deleting": "Eliminando…",
+    "deleteActivityTitle": "¿Eliminar actividad?",
+    "deleteActivityDesc": "\"{{title}}\" se eliminará permanentemente, junto con cualquier enlace a otras actividades. Esta acción no se puede deshacer.",
+    "deleteActivityConfirm": "Eliminar actividad",
+    "deleteBulkActivitiesTitle_one": "¿Eliminar {{count}} actividad?",
+    "deleteBulkActivitiesTitle_other": "¿Eliminar {{count}} actividades?",
+    "deleteBulkActivitiesDesc": "Todas las actividades seleccionadas y cualquier enlace a otras actividades se eliminarán permanentemente. Esta acción no se puede deshacer.",
+    "deleteBulkActivitiesConfirm_one": "Eliminar {{count}} actividad",
+    "deleteBulkActivitiesConfirm_other": "Eliminar {{count}} actividades",
+    "progress": "Progreso",
+    "addActivity": "Añadir actividad",
+    "done": "completadas",
+    "overdue": "Atrasada",
+    "selectAll": "Seleccionar todo",
+    "deselectAll": "Deseleccionar todo",
+    "activitiesCount_one": "{{count}} actividad",
+    "activitiesCount_other": "{{count}} actividades",
+    "setStatus": "Definir estado",
+    "selectedCount": "{{count}} seleccionadas",
+    "emptyPhaseTitle": "Aún no hay actividades de {{phase}}",
+    "emptyPhaseDesc": "Añade una actividad de {{phase}} como {{examples}} para empezar.",
+    "addPhaseActivity": "Añadir actividad de {{phase}}",
+    "phaseExamplesP1": "un análisis FODA o PESTEL",
+    "phaseExamplesP2": "una declaración de visión o un marco de KPI",
+    "phaseExamplesP3": "una hoja de ruta o plan de acción",
+    "phaseDesc": {
+      "P1": "Comprender la situación actual",
+      "P2": "Definir el futuro deseado",
+      "P3": "Planificar cómo llegar allí"
+    }
+  }
+}

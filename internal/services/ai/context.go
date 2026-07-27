@@ -74,6 +74,107 @@ type activityLink struct {
 	targetID uuid.UUID
 }
 
+// orgProfile is a compact stand-in for the organisation's own self-service
+// profile (see orgsvc.UpdateOrgProfile / PATCH /api/v1/org), used to ground
+// every AI prompt in what kind of organisation it's actually writing for —
+// its industry, structure, size, and location — rather than just the plan's
+// own text. Every field is optional; an org that hasn't filled its profile
+// in yet simply contributes nothing here (see buildOrgContextSection).
+type orgProfile struct {
+	name         string
+	industry     string
+	address      string
+	country      string
+	orgStructure string
+	totalMembers int // 0 = not set
+}
+
+// loadOrgProfile fetches the calling org's self-service profile fields.
+// Like loadPlanContext, this is an enhancement rather than a hard
+// requirement — a failed lookup degrades to no org context instead of
+// failing the AI request outright, so callers should ignore the error and
+// proceed with a zero-value orgProfile.
+func (s *Service) loadOrgProfile(ctx context.Context, orgID uuid.UUID) (orgProfile, error) {
+	var p orgProfile
+	var industry, address, country, structure *string
+	var totalMembers *int
+	err := s.db.QueryRow(ctx,
+		`SELECT name, industry, address, country, org_structure, total_members
+		 FROM organisations WHERE id = $1 AND deleted_at IS NULL`,
+		orgID,
+	).Scan(&p.name, &industry, &address, &country, &structure, &totalMembers)
+	if err != nil {
+		return orgProfile{}, fmt.Errorf("load org profile: %w", err)
+	}
+	if industry != nil {
+		p.industry = *industry
+	}
+	if address != nil {
+		p.address = *address
+	}
+	if country != nil {
+		p.country = *country
+	}
+	if structure != nil {
+		p.orgStructure = *structure
+	}
+	if totalMembers != nil {
+		p.totalMembers = *totalMembers
+	}
+	return p, nil
+}
+
+// buildOrgContextSection renders the "here's who this plan is for" block
+// prepended to draft/summary/suggest-links prompts. Returns "" if the org
+// hasn't filled in any profile info yet, so callers can skip the section
+// entirely rather than adding an empty/near-empty header.
+func buildOrgContextSection(p orgProfile) string {
+	var parts []string
+	if p.industry != "" {
+		parts = append(parts, fmt.Sprintf("Industry: %s", p.industry))
+	}
+	if p.orgStructure != "" {
+		parts = append(parts, fmt.Sprintf("Organisational structure: %s", truncate(p.orgStructure, maxFieldChars)))
+	}
+	if p.totalMembers > 0 {
+		parts = append(parts, fmt.Sprintf("Size: approximately %d members", p.totalMembers))
+	}
+	location := strings.TrimSpace(strings.Join(nonEmpty(p.address, p.country), ", "))
+	if location != "" {
+		parts = append(parts, fmt.Sprintf("Location: %s", location))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Organisation: %s\n", firstNonEmptyStr(p.name, "(unnamed)"))
+	sb.WriteString(strings.Join(parts, "\n") + "\n")
+	return sb.String()
+}
+
+// nonEmpty filters out empty strings, preserving order — used to join
+// address/country into a single "Location:" line without stray ", " when
+// one side is unset.
+func nonEmpty(vals ...string) []string {
+	out := make([]string, 0, len(vals))
+	for _, v := range vals {
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func firstNonEmptyStr(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // loadPlanContext loads every non-deleted activity in the plan (each
 // reduced to an activitySynopsis) plus the activity_links dependency graph.
 // Returns nil slices (not an error) when the plan simply has no activities

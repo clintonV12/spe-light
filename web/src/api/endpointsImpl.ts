@@ -19,7 +19,7 @@ import type {
   Plan, PlanProgress,
   Activity, ActivityLink,
   AiDraftRequest, AiSummaryRequest, AiSuggestLinksRequest, AiLinkSuggestion,
-  Invitation, Organisation,
+  Invitation, Organisation, OrgProfileUpdate,
   Report, ReportType, ReportFormat, ReportJobStatus, ReportSectionConfig,
   User, UserRole,
   AuditListResponse,
@@ -139,6 +139,11 @@ export const aiApi = {
 // ── Org / Users ───────────────────────────────────────────────────────────────
 
 export const orgApi = {
+  /** GET /api/v1/org — the caller's own organisation, including profile fields */
+  getOrg:           ()                                              => api().then((m) => m.orgApi.getOrg())                   as Promise<Organisation>,
+  /** PATCH /api/v1/org — org_admin self-service profile update (address, country,
+   *  contact info, industry, org structure, member count). Used as AI context. */
+  updateOrg:        (p: OrgProfileUpdate)                           => api().then((m) => m.orgApi.updateOrg(p))               as Promise<Organisation>,
   listUsers:        ()                                              => api().then((m) => m.orgApi.listUsers())                as Promise<User[]>,
   updateUser:       (id: string, p: { role?: UserRole; is_active?: boolean }) =>
                       api().then((m) => m.orgApi.updateUser(id, p))                                                           as Promise<User>,

@@ -56,6 +56,33 @@ func (h *Org) GetOrg(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, org)
 }
 
+// PATCH /api/v1/org
+// Lets an org_admin fill in / edit descriptive profile info about their own
+// organisation (address, country, contact info, industry, org structure,
+// total member count). This is distinct from PATCH /api/v1/admin/orgs/{id},
+// which is platform-admin-only and covers name/is_active. The profile info
+// captured here is folded into AI draft/summary/suggest-links prompts (see
+// aisvc's use of orgsvc-backed context in context.go) so results are grounded
+// in what the organisation actually is, not just the plan text.
+// Requires org_admin.
+func (h *Org) UpdateOrgProfile(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFrom(r.Context())
+	if claims == nil || claims.OrgID == nil {
+		response.ErrorJSON(w, "no organisation context", http.StatusForbidden)
+		return
+	}
+	var req orgsvc.UpdateOrgProfileRequest
+	if !response.DecodeJSON(w, r, &req) {
+		return
+	}
+	org, err := h.svc.UpdateOrgProfile(r.Context(), *claims.OrgID, claims.UserID, req)
+	if err != nil {
+		response.ErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	response.JSON(w, http.StatusOK, org)
+}
+
 // GET /api/v1/org/audit-log
 // Returns a paginated list of audit log entries for the caller's org.
 // Requires org_admin.

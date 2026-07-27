@@ -154,6 +154,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 			// Org admin only.
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireRole(models.RoleOrgAdmin))
+				r.Patch("/", orgH.UpdateOrgProfile)
 				r.Get("/users", orgH.ListUsers)
 				r.Patch("/users/{userID}", orgH.UpdateUser)
 				r.Get("/invitations", orgH.ListInvitations)
