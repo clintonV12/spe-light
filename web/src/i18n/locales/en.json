@@ -12,7 +12,9 @@
     "sync": "Sync now",
     "pending": "{{count}} pending",
     "resend": "Resend",
-    "none": "None"
+    "none": "None",
+    "add": "Add",
+    "remove": "Remove"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -41,7 +43,8 @@
       "not_started": "Not started",
       "in_progress": "In progress",
       "under_review": "Under review",
-      "complete": "Complete"
+      "complete": "Complete",
+      "review": "Under review"
     }
   },
   "ai": {
@@ -117,7 +120,11 @@
       "content": "Content",
       "contentPlaceholder": "Enter content for this activity…",
       "notes": "Notes"
-    }
+    },
+    "aiPendingApproval": "AI draft filled in below — review or edit, then approve to save.",
+    "approveDraft": "Approve & Save",
+    "approving": "Saving…",
+    "discardDraft": "Discard"
   },
   "progressPage": {
     "title": "Progress",
@@ -159,11 +166,43 @@
     "toastGenerateFailed": "Failed to start report generation.",
     "toastMockDownload": "(Mock) file download simulated",
     "types": {
-      "fullPlan": { "label": "Full plan", "desc": "All phases, all activities" },
-      "executiveSummary": { "label": "Executive summary", "desc": "High-level narrative for leadership" },
-      "perPhase": { "label": "Per-phase report", "desc": "Detailed breakdown by P1/P2/P3" },
-      "progressStatus": { "label": "Progress status", "desc": "KPIs, completion %, overdue items" },
-      "activityDetail": { "label": "Activity detail", "desc": "Every activity with full content" }
+      "fullPlan": {
+        "label": "Full plan",
+        "desc": "All phases, all activities"
+      },
+      "executiveSummary": {
+        "label": "Executive summary",
+        "desc": "High-level narrative for leadership"
+      },
+      "perPhase": {
+        "label": "Per-phase report",
+        "desc": "Detailed breakdown by P1/P2/P3"
+      },
+      "progressStatus": {
+        "label": "Progress status",
+        "desc": "KPIs, completion %, overdue items"
+      },
+      "activityDetail": {
+        "label": "Activity detail",
+        "desc": "Every activity with full content"
+      },
+      "custom": {
+        "label": "Custom",
+        "desc": "Choose exactly which sections to include"
+      }
+    },
+    "customSections": "Custom sections",
+    "sectionsCount_one": "{{count}} section",
+    "sectionsCount_other": "{{count}} sections",
+    "toastDownloadFailed": "Failed to download report",
+    "toastNoSectionsSelected": "Select at least one section",
+    "sections": {
+      "executiveSummary": "Executive summary",
+      "phaseActivities": "Phase activities",
+      "progressStatus": "Progress status",
+      "milestones": "Milestones",
+      "dependencyLinks": "Dependency links",
+      "aiSummary": "AI summary"
     }
   },
   "acceptInvite": {
@@ -179,7 +218,10 @@
     "confirmPasswordHint": "Same password again",
     "passwordMismatch": "Passwords don't match",
     "invalidLink": "This invite link is invalid or has expired. Ask your admin to resend it.",
-    "createAccount": "Create account"
+    "createAccount": "Create account",
+    "eyebrow": "You've been invited",
+    "successEyebrow": "Account created",
+    "termsNotice": "By creating an account, you agree to your organisation's usage policies."
   },
   "roles": {
     "super_admin": "Super admin",
@@ -486,6 +528,7 @@
     },
     "kpi": {
       "headers": {
+        "objective": "Objective",
         "name": "KPI name",
         "unit": "Unit",
         "baseline": "Baseline",
@@ -494,7 +537,12 @@
       },
       "seriesBaseline": "Baseline",
       "seriesTarget": "Target",
-      "seriesCurrent": "Current"
+      "seriesCurrent": "Current",
+      "notLinked": "— Not linked (not recommended) —",
+      "objectivePlaceholder": "What objective does this support?",
+      "unlinkedWarning_one": "{{count}} KPI not linked to a Strategic Objective. A KPI without an objective doesn't track anything's progress — link it, or note what it supports.",
+      "unlinkedWarning_other": "{{count}} KPIs not linked to a Strategic Objective. A KPI without an objective doesn't track anything's progress — link them, or note what they support.",
+      "noObjectivesWarning": "This plan has no Strategic Objectives yet. KPIs are meant to track an objective's progress — add an objective first, or use the Objective field below as a temporary note."
     },
     "swot": {
       "strengths": "Strengths",
@@ -604,9 +652,20 @@
   "createActivityModal": {
     "title": "Add activity",
     "phase": "Phase",
+    "pillar": "Strategic Pillar",
+    "objective": "Strategic Objective (KPA)",
+    "noPillarsYet": "Add a Strategic Pillar and Objective to this plan before creating activities.",
     "activityType": "Activity type",
     "titleLabel": "Title",
     "titlePlaceholder": "Enter a title for this activity",
+    "kpis": "Key Performance Indicators",
+    "kpiIndicator": "Indicator",
+    "kpiTarget": "Target",
+    "budget": "Budget",
+    "responsibility": "Responsibility",
+    "responsibilityPlaceholder": "e.g. Board / HR Committee",
+    "targetPeriod": "Target Period",
+    "targetPeriodPlaceholder": "e.g. Year 1",
     "dueDate": "Due date",
     "submit": "Create activity",
     "created": "Activity created",
@@ -633,7 +692,8 @@
     "resource_plan": "Resource Plan",
     "action_items": "Action Items & Tasks",
     "implementation_timeline": "Implementation Timeline",
-    "procurement_plan": "Procurement Plan"
+    "procurement_plan": "Procurement Plan",
+    "strategic_action": "Strategic Action"
   },
   "shortcutsModal": {
     "title": "Keyboard shortcuts",
@@ -716,5 +776,39 @@
       "P2": "Define the desired future",
       "P3": "Plan how to get there"
     }
+  },
+  "localPlan": {
+    "pillarAdded": "Pillar added",
+    "pillarAddFailed": "Could not add pillar",
+    "objectiveAdded": "Objective added",
+    "objectiveAddFailed": "Could not add objective",
+    "pillarDeleted": "Pillar deleted",
+    "pillarDeleteFailed": "Could not delete pillar — remove its objectives first",
+    "objectiveDeleted": "Objective deleted",
+    "objectiveDeleteFailed": "Could not delete objective — remove its activities first",
+    "activityDeleteFailed": "Could not delete activity",
+    "emptyTitle": "No Strategic Pillars yet",
+    "emptyDesc": "Start by adding the Strategic Pillars for this plan (e.g. Leadership & Governance, Financial Stability).",
+    "newPillarPlaceholder": "New Strategic Pillar name…",
+    "newObjectivePlaceholder": "New Strategic Objective (KPA)…",
+    "objectiveCount_one": "{{count}} objective",
+    "objectiveCount_other": "{{count}} objectives",
+    "addActivity": "Activity",
+    "noActivities": "No activities yet"
+  },
+  "createPlanModal": {
+    "title": "New plan",
+    "titleLabel": "Plan title",
+    "titlePlaceholder": "e.g. 2026 Organisational Strategy",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Brief description of this plan's purpose",
+    "planType": "Plan type",
+    "typeInternational": "International (P1-P2-P3)",
+    "typeLocal": "Local (Strategic Pillars)",
+    "startDate": "Start date",
+    "endDate": "End date",
+    "submit": "Create plan",
+    "created": "Plan created",
+    "createFailed": "Failed to create plan"
   }
 }

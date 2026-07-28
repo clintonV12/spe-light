@@ -12,7 +12,9 @@
     "sync": "Sincronizar ahora",
     "pending": "{{count}} pendientes",
     "resend": "Reenviar",
-    "none": "Ninguno"
+    "none": "Ninguno",
+    "add": "Añadir",
+    "remove": "Quitar"
   },
   "nav": {
     "dashboard": "Panel",
@@ -41,7 +43,8 @@
       "not_started": "No iniciado",
       "in_progress": "En curso",
       "under_review": "En revisión",
-      "complete": "Completado"
+      "complete": "Completado",
+      "review": "En revisión"
     }
   },
   "ai": {
@@ -117,7 +120,11 @@
       "content": "Contenido",
       "contentPlaceholder": "Introduce el contenido de esta actividad…",
       "notes": "Notas"
-    }
+    },
+    "aiPendingApproval": "Borrador de la IA completado abajo — revísalo o edítalo, luego aprueba para guardar.",
+    "approveDraft": "Aprobar y guardar",
+    "approving": "Guardando…",
+    "discardDraft": "Descartar"
   },
   "progressPage": {
     "title": "Progreso",
@@ -178,7 +185,24 @@
       "activityDetail": {
         "label": "Detalle de actividad",
         "desc": "Cada actividad con su contenido completo"
+      },
+      "custom": {
+        "label": "Personalizado",
+        "desc": "Elige exactamente qué secciones incluir"
       }
+    },
+    "customSections": "Secciones personalizadas",
+    "sectionsCount_one": "{{count}} sección",
+    "sectionsCount_other": "{{count}} secciones",
+    "toastDownloadFailed": "Error al descargar el informe",
+    "toastNoSectionsSelected": "Selecciona al menos una sección",
+    "sections": {
+      "executiveSummary": "Resumen ejecutivo",
+      "phaseActivities": "Actividades por fase",
+      "progressStatus": "Estado del progreso",
+      "milestones": "Hitos",
+      "dependencyLinks": "Enlaces de dependencia",
+      "aiSummary": "Resumen de la IA"
     }
   },
   "acceptInvite": {
@@ -194,7 +218,10 @@
     "confirmPasswordHint": "La misma contraseña otra vez",
     "passwordMismatch": "Las contraseñas no coinciden",
     "invalidLink": "Este enlace de invitación no es válido o ha caducado. Pide a tu administrador que lo reenvíe.",
-    "createAccount": "Crear cuenta"
+    "createAccount": "Crear cuenta",
+    "eyebrow": "Has sido invitado/a",
+    "successEyebrow": "Cuenta creada",
+    "termsNotice": "Al crear una cuenta, aceptas las políticas de uso de tu organización."
   },
   "roles": {
     "super_admin": "Superadministrador",
@@ -505,11 +532,17 @@
         "unit": "Unidad",
         "baseline": "Línea base",
         "target": "Objetivo",
-        "current": "Actual"
+        "current": "Actual",
+        "objective": "Objetivo"
       },
       "seriesBaseline": "Línea base",
       "seriesTarget": "Objetivo",
-      "seriesCurrent": "Actual"
+      "seriesCurrent": "Actual",
+      "notLinked": "— No vinculado (no recomendado) —",
+      "objectivePlaceholder": "¿Qué objetivo respalda esto?",
+      "unlinkedWarning_one": "{{count}} KPI no está vinculado a un Objetivo Estratégico. Un KPI sin objetivo no mide el progreso de nada — vincúlalo, o indica qué respalda.",
+      "unlinkedWarning_other": "{{count}} KPI no están vinculados a un Objetivo Estratégico. Un KPI sin objetivo no mide el progreso de nada — vincúlalos, o indica qué respaldan.",
+      "noObjectivesWarning": "Este plan aún no tiene Objetivos Estratégicos. Los KPI están pensados para medir el progreso de un objetivo — añade uno primero, o usa el campo Objetivo como nota temporal."
     },
     "swot": {
       "strengths": "Fortalezas",
@@ -625,7 +658,18 @@
     "dueDate": "Fecha límite",
     "submit": "Crear actividad",
     "created": "Actividad creada",
-    "createFailed": "No se pudo crear la actividad"
+    "createFailed": "No se pudo crear la actividad",
+    "pillar": "Pilar estratégico",
+    "objective": "Objetivo estratégico (KPA)",
+    "noPillarsYet": "Añade un Pilar Estratégico y un Objetivo a este plan antes de crear actividades.",
+    "kpis": "Indicadores clave de rendimiento",
+    "kpiIndicator": "Indicador",
+    "kpiTarget": "Meta",
+    "budget": "Presupuesto",
+    "responsibility": "Responsabilidad",
+    "responsibilityPlaceholder": "p. ej. Junta directiva / Comité de RR. HH.",
+    "targetPeriod": "Período objetivo",
+    "targetPeriodPlaceholder": "p. ej. Año 1"
   },
   "activityTypes": {
     "swot": "Análisis FODA",
@@ -648,7 +692,8 @@
     "resource_plan": "Plan de recursos",
     "action_items": "Acciones y tareas",
     "implementation_timeline": "Cronograma de implementación",
-    "procurement_plan": "Plan de adquisiciones"
+    "procurement_plan": "Plan de adquisiciones",
+    "strategic_action": "Acción estratégica"
   },
   "shortcutsModal": {
     "title": "Atajos de teclado",
@@ -731,5 +776,39 @@
       "P2": "Definir el futuro deseado",
       "P3": "Planificar cómo llegar allí"
     }
+  },
+  "localPlan": {
+    "pillarAdded": "Pilar añadido",
+    "pillarAddFailed": "No se pudo añadir el pilar",
+    "objectiveAdded": "Objetivo añadido",
+    "objectiveAddFailed": "No se pudo añadir el objetivo",
+    "pillarDeleted": "Pilar eliminado",
+    "pillarDeleteFailed": "No se pudo eliminar el pilar — elimina primero sus objetivos",
+    "objectiveDeleted": "Objetivo eliminado",
+    "objectiveDeleteFailed": "No se pudo eliminar el objetivo — elimina primero sus actividades",
+    "activityDeleteFailed": "No se pudo eliminar la actividad",
+    "emptyTitle": "Aún no hay Pilares Estratégicos",
+    "emptyDesc": "Empieza añadiendo los Pilares Estratégicos de este plan (p. ej. Liderazgo y Gobernanza, Estabilidad Financiera).",
+    "newPillarPlaceholder": "Nombre del nuevo Pilar Estratégico…",
+    "newObjectivePlaceholder": "Nuevo Objetivo Estratégico (KPA)…",
+    "objectiveCount_one": "{{count}} objetivo",
+    "objectiveCount_other": "{{count}} objetivos",
+    "addActivity": "Actividad",
+    "noActivities": "Aún no hay actividades"
+  },
+  "createPlanModal": {
+    "title": "Nuevo plan",
+    "titleLabel": "Título del plan",
+    "titlePlaceholder": "p. ej. Estrategia organizacional 2026",
+    "descriptionLabel": "Descripción",
+    "descriptionPlaceholder": "Breve descripción del propósito de este plan",
+    "planType": "Tipo de plan",
+    "typeInternational": "Internacional (P1-P2-P3)",
+    "typeLocal": "Local (Pilares Estratégicos)",
+    "startDate": "Fecha de inicio",
+    "endDate": "Fecha de fin",
+    "submit": "Crear plan",
+    "created": "Plan creado",
+    "createFailed": "Error al crear el plan"
   }
 }

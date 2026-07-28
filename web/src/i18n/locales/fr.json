@@ -12,7 +12,9 @@
     "sync": "Synchroniser",
     "pending": "{{count}} en attente",
     "resend": "Renvoyer",
-    "none": "Aucun"
+    "none": "Aucun",
+    "add": "Ajouter",
+    "remove": "Retirer"
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -41,7 +43,8 @@
       "not_started": "Non démarré",
       "in_progress": "En cours",
       "under_review": "En révision",
-      "complete": "Terminé"
+      "complete": "Terminé",
+      "review": "En révision"
     }
   },
   "ai": {
@@ -117,7 +120,11 @@
       "content": "Contenu",
       "contentPlaceholder": "Saisissez le contenu de cette activité…",
       "notes": "Notes"
-    }
+    },
+    "aiPendingApproval": "Brouillon IA rempli ci-dessous — vérifiez ou modifiez, puis approuvez pour enregistrer.",
+    "approveDraft": "Approuver et enregistrer",
+    "approving": "Enregistrement…",
+    "discardDraft": "Ignorer"
   },
   "progressPage": {
     "title": "Avancement",
@@ -159,11 +166,43 @@
     "toastGenerateFailed": "Échec du lancement de la génération du rapport.",
     "toastMockDownload": "(Simulation) téléchargement de fichier simulé",
     "types": {
-      "fullPlan": { "label": "Plan complet", "desc": "Toutes les phases, toutes les activités" },
-      "executiveSummary": { "label": "Résumé exécutif", "desc": "Récit de haut niveau pour la direction" },
-      "perPhase": { "label": "Rapport par phase", "desc": "Répartition détaillée par P1/P2/P3" },
-      "progressStatus": { "label": "État d'avancement", "desc": "KPI, % d'achèvement, éléments en retard" },
-      "activityDetail": { "label": "Détail des activités", "desc": "Chaque activité avec son contenu complet" }
+      "fullPlan": {
+        "label": "Plan complet",
+        "desc": "Toutes les phases, toutes les activités"
+      },
+      "executiveSummary": {
+        "label": "Résumé exécutif",
+        "desc": "Récit de haut niveau pour la direction"
+      },
+      "perPhase": {
+        "label": "Rapport par phase",
+        "desc": "Répartition détaillée par P1/P2/P3"
+      },
+      "progressStatus": {
+        "label": "État d'avancement",
+        "desc": "KPI, % d'achèvement, éléments en retard"
+      },
+      "activityDetail": {
+        "label": "Détail des activités",
+        "desc": "Chaque activité avec son contenu complet"
+      },
+      "custom": {
+        "label": "Personnalisé",
+        "desc": "Choisissez exactement les sections à inclure"
+      }
+    },
+    "customSections": "Sections personnalisées",
+    "sectionsCount_one": "{{count}} section",
+    "sectionsCount_other": "{{count}} sections",
+    "toastDownloadFailed": "Échec du téléchargement du rapport",
+    "toastNoSectionsSelected": "Sélectionnez au moins une section",
+    "sections": {
+      "executiveSummary": "Résumé exécutif",
+      "phaseActivities": "Activités par phase",
+      "progressStatus": "État d'avancement",
+      "milestones": "Jalons",
+      "dependencyLinks": "Liens de dépendance",
+      "aiSummary": "Résumé IA"
     }
   },
   "acceptInvite": {
@@ -179,7 +218,10 @@
     "confirmPasswordHint": "Le même mot de passe à nouveau",
     "passwordMismatch": "Les mots de passe ne correspondent pas",
     "invalidLink": "Ce lien d'invitation est invalide ou a expiré. Demandez à votre administrateur de le renvoyer.",
-    "createAccount": "Créer le compte"
+    "createAccount": "Créer le compte",
+    "eyebrow": "Vous avez été invité(e)",
+    "successEyebrow": "Compte créé",
+    "termsNotice": "En créant un compte, vous acceptez les politiques d'utilisation de votre organisation."
   },
   "roles": {
     "super_admin": "Super administrateur",
@@ -490,11 +532,17 @@
         "unit": "Unité",
         "baseline": "Référence",
         "target": "Cible",
-        "current": "Actuel"
+        "current": "Actuel",
+        "objective": "Objectif"
       },
       "seriesBaseline": "Référence",
       "seriesTarget": "Cible",
-      "seriesCurrent": "Actuel"
+      "seriesCurrent": "Actuel",
+      "notLinked": "— Non lié (déconseillé) —",
+      "objectivePlaceholder": "Quel objectif cela soutient-il ?",
+      "unlinkedWarning_one": "{{count}} KPI n'est pas lié à un objectif stratégique. Un KPI sans objectif ne suit la progression de rien — liez-le, ou notez ce qu'il soutient.",
+      "unlinkedWarning_other": "{{count}} KPI ne sont pas liés à un objectif stratégique. Un KPI sans objectif ne suit la progression de rien — liez-les, ou notez ce qu'ils soutiennent.",
+      "noObjectivesWarning": "Ce plan n'a pas encore d'objectifs stratégiques. Les KPI sont censés suivre la progression d'un objectif — ajoutez d'abord un objectif, ou utilisez le champ Objectif ci-dessous comme note temporaire."
     },
     "swot": {
       "strengths": "Forces",
@@ -610,7 +658,18 @@
     "dueDate": "Date d'échéance",
     "submit": "Créer l'activité",
     "created": "Activité créée",
-    "createFailed": "Échec de la création de l'activité"
+    "createFailed": "Échec de la création de l'activité",
+    "pillar": "Pilier stratégique",
+    "objective": "Objectif stratégique (KPA)",
+    "noPillarsYet": "Ajoutez un pilier stratégique et un objectif à ce plan avant de créer des activités.",
+    "kpis": "Indicateurs de performance clés",
+    "kpiIndicator": "Indicateur",
+    "kpiTarget": "Cible",
+    "budget": "Budget",
+    "responsibility": "Responsabilité",
+    "responsibilityPlaceholder": "ex. Conseil d'administration / Comité RH",
+    "targetPeriod": "Période cible",
+    "targetPeriodPlaceholder": "ex. Année 1"
   },
   "activityTypes": {
     "swot": "Analyse SWOT",
@@ -633,7 +692,8 @@
     "resource_plan": "Plan de ressources",
     "action_items": "Actions et tâches",
     "implementation_timeline": "Calendrier de mise en œuvre",
-    "procurement_plan": "Plan d'approvisionnement"
+    "procurement_plan": "Plan d'approvisionnement",
+    "strategic_action": "Action stratégique"
   },
   "shortcutsModal": {
     "title": "Raccourcis clavier",
@@ -716,5 +776,39 @@
       "P2": "Définir l'avenir souhaité",
       "P3": "Planifier comment y parvenir"
     }
+  },
+  "localPlan": {
+    "pillarAdded": "Pilier ajouté",
+    "pillarAddFailed": "Impossible d'ajouter le pilier",
+    "objectiveAdded": "Objectif ajouté",
+    "objectiveAddFailed": "Impossible d'ajouter l'objectif",
+    "pillarDeleted": "Pilier supprimé",
+    "pillarDeleteFailed": "Impossible de supprimer le pilier — supprimez d'abord ses objectifs",
+    "objectiveDeleted": "Objectif supprimé",
+    "objectiveDeleteFailed": "Impossible de supprimer l'objectif — supprimez d'abord ses activités",
+    "activityDeleteFailed": "Impossible de supprimer l'activité",
+    "emptyTitle": "Aucun pilier stratégique pour l'instant",
+    "emptyDesc": "Commencez par ajouter les piliers stratégiques de ce plan (par ex. Leadership et gouvernance, Stabilité financière).",
+    "newPillarPlaceholder": "Nom du nouveau pilier stratégique…",
+    "newObjectivePlaceholder": "Nouvel objectif stratégique (KPA)…",
+    "objectiveCount_one": "{{count}} objectif",
+    "objectiveCount_other": "{{count}} objectifs",
+    "addActivity": "Activité",
+    "noActivities": "Aucune activité pour l'instant"
+  },
+  "createPlanModal": {
+    "title": "Nouveau plan",
+    "titleLabel": "Titre du plan",
+    "titlePlaceholder": "ex. Stratégie organisationnelle 2026",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Brève description de l'objectif de ce plan",
+    "planType": "Type de plan",
+    "typeInternational": "International (P1-P2-P3)",
+    "typeLocal": "Local (piliers stratégiques)",
+    "startDate": "Date de début",
+    "endDate": "Date de fin",
+    "submit": "Créer le plan",
+    "created": "Plan créé",
+    "createFailed": "Échec de la création du plan"
   }
 }

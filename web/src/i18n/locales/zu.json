@@ -12,7 +12,9 @@
     "sync": "Vumelanisa manje",
     "pending": "{{count}} okusalindile",
     "resend": "Thumela futhi",
-    "none": "Lutho"
+    "none": "Lutho",
+    "add": "Engeza",
+    "remove": "Susa"
   },
   "nav": {
     "dashboard": "Ideshibhodi",
@@ -41,7 +43,8 @@
       "not_started": "Akukaqaliswa",
       "in_progress": "Kuyaqhubeka",
       "under_review": "Kubuyekezwa",
-      "complete": "Kuqediwe"
+      "complete": "Kuqediwe",
+      "review": "Kubuyekezwa"
     }
   },
   "ai": {
@@ -117,7 +120,11 @@
       "content": "Okuqukethwe",
       "contentPlaceholder": "Faka okuqukethwe kwalo msebenzi…",
       "notes": "Amanothi"
-    }
+    },
+    "aiPendingApproval": "Uhlaka lwe-AI lugcwalisiwe ngezansi — lubuyekeze noma luhlele, bese uvumela ukuze ulondoloze.",
+    "approveDraft": "Vumela Bese Ulondoloza",
+    "approving": "Iyalondoloza…",
+    "discardDraft": "Lahla"
   },
   "progressPage": {
     "title": "Inqubekelaphambili",
@@ -178,7 +185,24 @@
       "activityDetail": {
         "label": "Imininingwane yomsebenzi",
         "desc": "Umsebenzi ngamunye nokuqukethwe kwawo okuphelele"
+      },
+      "custom": {
+        "label": "Okuzenzelwe",
+        "desc": "Khetha ngokunembile izigaba okufanele zifakwe"
       }
+    },
+    "customSections": "Izigaba Ezizenzelwe",
+    "sectionsCount_one": "isigaba esingu-{{count}}",
+    "sectionsCount_other": "izigaba ezingu-{{count}}",
+    "toastDownloadFailed": "Kwehlulekile ukulanda umbiko",
+    "toastNoSectionsSelected": "Khetha okungenani isigaba esisodwa",
+    "sections": {
+      "executiveSummary": "Isifinyezo Esiphezulu",
+      "phaseActivities": "Imisebenzi Ngezigaba",
+      "progressStatus": "Isimo Senqubekelaphambili",
+      "milestones": "Izinkomba Zomsebenzi",
+      "dependencyLinks": "Izixhumanisi Zokuncika",
+      "aiSummary": "Isifinyezo se-AI"
     }
   },
   "acceptInvite": {
@@ -194,7 +218,10 @@
     "confirmPasswordHint": "Iphasiwedi efanayo futhi",
     "passwordMismatch": "Amaphasiwedi awafani",
     "invalidLink": "Lesi sixhumanisi sesimemo asisebenzi noma sesiphelelwe yisikhathi. Cela umlawuli wakho asithumele futhi.",
-    "createAccount": "Dala i-akhawunti"
+    "createAccount": "Dala i-akhawunti",
+    "eyebrow": "Umenyiwe",
+    "successEyebrow": "I-akhawunti idaliwe",
+    "termsNotice": "Ngokudala i-akhawunti, uyavuma izinqubomgomo zokusetshenziswa zenhlangano yakho."
   },
   "roles": {
     "super_admin": "Umlawuli omkhulu",
@@ -505,11 +532,17 @@
         "unit": "Iyunithi",
         "baseline": "Isisekelo",
         "target": "Umgomo",
-        "current": "Okwamanje"
+        "current": "Okwamanje",
+        "objective": "Inhloso"
       },
       "seriesBaseline": "Isisekelo",
       "seriesTarget": "Umgomo",
-      "seriesCurrent": "Okwamanje"
+      "seriesCurrent": "Okwamanje",
+      "notLinked": "— Akuxhunyiwe (akukhuthazwa) —",
+      "objectivePlaceholder": "Yiyiphi inhloso lokhu okuyisekelayo?",
+      "unlinkedWarning_one": "I-KPI engu-{{count}} ayixhunyiwe Enhlosweni Yamasu. I-KPI engaxhunyiwe enhlosweni ayibonisi nkuqubuka — yixhume, noma ubhale ukuthi isekelani.",
+      "unlinkedWarning_other": "Ama-KPI angu-{{count}} awaxhunyiwe Ezinhlosweni Zamasu. Ama-KPI angaxhunyiwe ezinhlosweni awabonisi nkuqubuka — awaxhume, noma ubhale ukuthi asekelani.",
+      "noObjectivesWarning": "Lolu hlelo alukabi nazo Izinhloso Zamasu. Ama-KPI kufanele alandelele inqubekelaphambili yenhloso — engeza inhloso kuqala, noma usebenzise insimu Yenhloso ngezansi njengencwadi yesikhashana."
     },
     "swot": {
       "strengths": "Amandla",
@@ -625,7 +658,18 @@
     "dueDate": "Usuku lokuphela",
     "submit": "Dala umsebenzi",
     "created": "Umsebenzi udaliwe",
-    "createFailed": "Kwehlulekile ukudala umsebenzi"
+    "createFailed": "Kwehlulekile ukudala umsebenzi",
+    "pillar": "Insika Yamasu",
+    "objective": "Inhloso Yamasu (KPA)",
+    "noPillarsYet": "Engeza i-Insika Yamasu nenhloso kulolu hlelo ngaphambi kokudala imisebenzi.",
+    "kpis": "Iziboniso Zokusebenza Eziyinhloko",
+    "kpiIndicator": "Isibonisi",
+    "kpiTarget": "Umgomo",
+    "budget": "Isabelomali",
+    "responsibility": "Umthwalo Wemfanelo",
+    "responsibilityPlaceholder": "isb. Ibhodi / Ikomiti Lezabasebenzi",
+    "targetPeriod": "Isikhathi Somgomo",
+    "targetPeriodPlaceholder": "isb. Unyaka 1"
   },
   "activityTypes": {
     "swot": "Ukuhlaziya kwe-SWOT",
@@ -648,7 +692,8 @@
     "resource_plan": "Uhlelo Lwezinsiza",
     "action_items": "Izinto Ezizokwenziwa Namatasks",
     "implementation_timeline": "Uchungechunge Lokuqalisa",
-    "procurement_plan": "Uhlelo Lokuthenga"
+    "procurement_plan": "Uhlelo Lokuthenga",
+    "strategic_action": "Isenzo Samasu"
   },
   "shortcutsModal": {
     "title": "Izinqumo zekhibhodi",
@@ -731,5 +776,39 @@
       "P2": "Chaza ikusasa elifisekayo",
       "P3": "Hlela ukuthi ungafika kanjani lapho"
     }
+  },
+  "localPlan": {
+    "pillarAdded": "Insika yengeziwe",
+    "pillarAddFailed": "Ayikwazanga ukwengeza insika",
+    "objectiveAdded": "Inhloso yengeziwe",
+    "objectiveAddFailed": "Ayikwazanga ukwengeza inhloso",
+    "pillarDeleted": "Insika isusiwe",
+    "pillarDeleteFailed": "Ayikwazanga ukususa insika — susa izinhloso zayo kuqala",
+    "objectiveDeleted": "Inhloso isusiwe",
+    "objectiveDeleteFailed": "Ayikwazanga ukususa inhloso — susa imisebenzi yayo kuqala",
+    "activityDeleteFailed": "Ayikwazanga ukususa umsebenzi",
+    "emptyTitle": "Azikho Izinsika Zamasu okwamanje",
+    "emptyDesc": "Qala ngokwengeza Izinsika Zamasu zalolu hlelo (isb. Ubuholi Nokubusa, Ukuzinza Kwezimali).",
+    "newPillarPlaceholder": "Igama le-Insika Yamasu entsha…",
+    "newObjectivePlaceholder": "Inhloso Yamasu entsha (KPA)…",
+    "objectiveCount_one": "{{count}} inhloso",
+    "objectiveCount_other": "{{count}} izinhloso",
+    "addActivity": "Umsebenzi",
+    "noActivities": "Azikho imisebenzi okwamanje"
+  },
+  "createPlanModal": {
+    "title": "Uhlelo olusha",
+    "titleLabel": "Isihloko sohlelo",
+    "titlePlaceholder": "isb. Isu Lenhlangano lika-2026",
+    "descriptionLabel": "Incazelo",
+    "descriptionPlaceholder": "Incazelo emfushane yenjongo yalolu hlelo",
+    "planType": "Uhlobo lohlelo",
+    "typeInternational": "Kwamazwe Ngamazwe (P1-P2-P3)",
+    "typeLocal": "Kwasekhaya (Izinsika Zamasu)",
+    "startDate": "Usuku lokuqala",
+    "endDate": "Usuku lokuphela",
+    "submit": "Dala uhlelo",
+    "created": "Uhlelo ludaliwe",
+    "createFailed": "Kwehlulekile ukudala uhlelo"
   }
 }

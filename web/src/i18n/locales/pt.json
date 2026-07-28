@@ -12,7 +12,9 @@
     "sync": "Sincronizar",
     "pending": "{{count}} pendentes",
     "resend": "Reenviar",
-    "none": "Nenhum"
+    "none": "Nenhum",
+    "add": "Adicionar",
+    "remove": "Remover"
   },
   "nav": {
     "dashboard": "Painel",
@@ -41,7 +43,8 @@
       "not_started": "Não iniciado",
       "in_progress": "Em curso",
       "under_review": "Em revisão",
-      "complete": "Concluído"
+      "complete": "Concluído",
+      "review": "Em revisão"
     }
   },
   "ai": {
@@ -117,7 +120,11 @@
       "content": "Conteúdo",
       "contentPlaceholder": "Introduza o conteúdo desta atividade…",
       "notes": "Notas"
-    }
+    },
+    "aiPendingApproval": "Rascunho da IA preenchido abaixo — reveja ou edite, depois aprove para guardar.",
+    "approveDraft": "Aprovar e Guardar",
+    "approving": "A guardar…",
+    "discardDraft": "Descartar"
   },
   "progressPage": {
     "title": "Progresso",
@@ -159,11 +166,43 @@
     "toastGenerateFailed": "Falha ao iniciar a geração do relatório.",
     "toastMockDownload": "(Simulação) transferência de ficheiro simulada",
     "types": {
-      "fullPlan": { "label": "Plano completo", "desc": "Todas as fases, todas as atividades" },
-      "executiveSummary": { "label": "Resumo executivo", "desc": "Narrativa de alto nível para a liderança" },
-      "perPhase": { "label": "Relatório por fase", "desc": "Detalhe por P1/P2/P3" },
-      "progressStatus": { "label": "Estado de progresso", "desc": "KPIs, % de conclusão, itens atrasados" },
-      "activityDetail": { "label": "Detalhe da atividade", "desc": "Cada atividade com o conteúdo completo" }
+      "fullPlan": {
+        "label": "Plano completo",
+        "desc": "Todas as fases, todas as atividades"
+      },
+      "executiveSummary": {
+        "label": "Resumo executivo",
+        "desc": "Narrativa de alto nível para a liderança"
+      },
+      "perPhase": {
+        "label": "Relatório por fase",
+        "desc": "Detalhe por P1/P2/P3"
+      },
+      "progressStatus": {
+        "label": "Estado de progresso",
+        "desc": "KPIs, % de conclusão, itens atrasados"
+      },
+      "activityDetail": {
+        "label": "Detalhe da atividade",
+        "desc": "Cada atividade com o conteúdo completo"
+      },
+      "custom": {
+        "label": "Personalizado",
+        "desc": "Escolha exatamente que secções incluir"
+      }
+    },
+    "customSections": "Secções personalizadas",
+    "sectionsCount_one": "{{count}} secção",
+    "sectionsCount_other": "{{count}} secções",
+    "toastDownloadFailed": "Falha ao transferir o relatório",
+    "toastNoSectionsSelected": "Selecione pelo menos uma secção",
+    "sections": {
+      "executiveSummary": "Resumo executivo",
+      "phaseActivities": "Atividades por fase",
+      "progressStatus": "Estado do progresso",
+      "milestones": "Marcos",
+      "dependencyLinks": "Ligações de dependência",
+      "aiSummary": "Resumo da IA"
     }
   },
   "acceptInvite": {
@@ -179,7 +218,10 @@
     "confirmPasswordHint": "A mesma palavra-passe novamente",
     "passwordMismatch": "As palavras-passe não coincidem",
     "invalidLink": "Este link de convite é inválido ou expirou. Peça ao seu administrador para o reenviar.",
-    "createAccount": "Criar conta"
+    "createAccount": "Criar conta",
+    "eyebrow": "Foi convidado(a)",
+    "successEyebrow": "Conta criada",
+    "termsNotice": "Ao criar uma conta, aceita as políticas de utilização da sua organização."
   },
   "roles": {
     "super_admin": "Super administrador",
@@ -490,11 +532,17 @@
         "unit": "Unidade",
         "baseline": "Referência",
         "target": "Meta",
-        "current": "Atual"
+        "current": "Atual",
+        "objective": "Objetivo"
       },
       "seriesBaseline": "Referência",
       "seriesTarget": "Meta",
-      "seriesCurrent": "Atual"
+      "seriesCurrent": "Atual",
+      "notLinked": "— Não associado (não recomendado) —",
+      "objectivePlaceholder": "Que objetivo este indicador apoia?",
+      "unlinkedWarning_one": "{{count}} indicador não está associado a um Objetivo Estratégico. Um KPI sem objetivo não mede o progresso de nada — associe-o, ou indique o que apoia.",
+      "unlinkedWarning_other": "{{count}} indicadores não estão associados a um Objetivo Estratégico. Um KPI sem objetivo não mede o progresso de nada — associe-os, ou indique o que apoiam.",
+      "noObjectivesWarning": "Este plano ainda não tem Objetivos Estratégicos. Os KPI destinam-se a medir o progresso de um objetivo — adicione um primeiro, ou use o campo Objetivo como nota temporária."
     },
     "swot": {
       "strengths": "Forças",
@@ -610,7 +658,18 @@
     "dueDate": "Data limite",
     "submit": "Criar atividade",
     "created": "Atividade criada",
-    "createFailed": "Falha ao criar a atividade"
+    "createFailed": "Falha ao criar a atividade",
+    "pillar": "Pilar Estratégico",
+    "objective": "Objetivo Estratégico (KPA)",
+    "noPillarsYet": "Adicione um Pilar Estratégico e um Objetivo a este plano antes de criar atividades.",
+    "kpis": "Indicadores-chave de Desempenho",
+    "kpiIndicator": "Indicador",
+    "kpiTarget": "Meta",
+    "budget": "Orçamento",
+    "responsibility": "Responsabilidade",
+    "responsibilityPlaceholder": "ex. Conselho de Administração / Comité de RH",
+    "targetPeriod": "Período-alvo",
+    "targetPeriodPlaceholder": "ex. Ano 1"
   },
   "activityTypes": {
     "swot": "Análise SWOT",
@@ -633,7 +692,8 @@
     "resource_plan": "Plano de Recursos",
     "action_items": "Ações e Tarefas",
     "implementation_timeline": "Cronograma de Implementação",
-    "procurement_plan": "Plano de Aquisições"
+    "procurement_plan": "Plano de Aquisições",
+    "strategic_action": "Ação Estratégica"
   },
   "shortcutsModal": {
     "title": "Atalhos de teclado",
@@ -716,5 +776,39 @@
       "P2": "Definir o futuro desejado",
       "P3": "Planear como lá chegar"
     }
+  },
+  "localPlan": {
+    "pillarAdded": "Pilar adicionado",
+    "pillarAddFailed": "Não foi possível adicionar o pilar",
+    "objectiveAdded": "Objetivo adicionado",
+    "objectiveAddFailed": "Não foi possível adicionar o objetivo",
+    "pillarDeleted": "Pilar eliminado",
+    "pillarDeleteFailed": "Não foi possível eliminar o pilar — elimine primeiro os seus objetivos",
+    "objectiveDeleted": "Objetivo eliminado",
+    "objectiveDeleteFailed": "Não foi possível eliminar o objetivo — elimine primeiro as suas atividades",
+    "activityDeleteFailed": "Não foi possível eliminar a atividade",
+    "emptyTitle": "Ainda não há Pilares Estratégicos",
+    "emptyDesc": "Comece por adicionar os Pilares Estratégicos deste plano (ex. Liderança e Governação, Estabilidade Financeira).",
+    "newPillarPlaceholder": "Nome do novo Pilar Estratégico…",
+    "newObjectivePlaceholder": "Novo Objetivo Estratégico (KPA)…",
+    "objectiveCount_one": "{{count}} objetivo",
+    "objectiveCount_other": "{{count}} objetivos",
+    "addActivity": "Atividade",
+    "noActivities": "Ainda não há atividades"
+  },
+  "createPlanModal": {
+    "title": "Novo plano",
+    "titleLabel": "Título do plano",
+    "titlePlaceholder": "ex. Estratégia Organizacional 2026",
+    "descriptionLabel": "Descrição",
+    "descriptionPlaceholder": "Breve descrição do propósito deste plano",
+    "planType": "Tipo de plano",
+    "typeInternational": "Internacional (P1-P2-P3)",
+    "typeLocal": "Local (Pilares Estratégicos)",
+    "startDate": "Data de início",
+    "endDate": "Data de fim",
+    "submit": "Criar plano",
+    "created": "Plano criado",
+    "createFailed": "Falha ao criar o plano"
   }
 }
