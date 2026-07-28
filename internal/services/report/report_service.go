@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"spe-light/internal/models"
@@ -386,6 +387,7 @@ func (s *Service) buildMeta(ctx context.Context, plan *models.Plan, orgID, userI
 		ReportTypeLabel: reportTypeLabel(string(reportType)),
 		PlanTitle:       plan.Title,
 		PlanStatus:      string(plan.Status),
+		PlanFramework:   planFrameworkLabel(plan.PlanType),
 		OrgName:         "Your Organisation",
 		GeneratedBy:     "System",
 		GeneratedAt:     time.Now(),
@@ -396,12 +398,82 @@ func (s *Service) buildMeta(ctx context.Context, plan *models.Plan, orgID, userI
 			if org.Industry != nil {
 				meta.OrgIndustry = *org.Industry
 			}
+
+			// Pre-join address/country and email/phone into single display
+			// lines here (rather than in render.go) so the three renderers
+			// don't each have to duplicate "which parts are actually set".
+			var loc []string
+			if org.Address != nil && *org.Address != "" {
+				loc = append(loc, *org.Address)
+			}
+			if org.Country != nil && *org.Country != "" {
+				loc = append(loc, *org.Country)
+			}
+			meta.OrgLocation = strings.Join(loc, ", ")
+
+			var contact []string
+			if org.ContactEmail != nil && *org.ContactEmail != "" {
+				contact = append(contact, *org.ContactEmail)
+			}
+			if org.ContactPhone != nil && *org.ContactPhone != "" {
+				contact = append(contact, *org.ContactPhone)
+			}
+			meta.OrgContact = strings.Join(contact, "  \u00b7  ")
 		}
 		if user, err := s.orgSvc.GetUserByID(ctx, userID); err == nil && user.Name != "" {
 			meta.GeneratedBy = user.Name
 		}
 	}
 	return meta
+}
+
+// planFrameworkLabel gives a human-readable name for the plan's activity
+// hierarchy, shown on the cover page so it's immediately clear which of the
+// two supported plan types (see models.PlanType) a given report is for.
+func planFrameworkLabel(pt models.PlanType) string {
+	if pt == models.PlanTypeLocal {
+		return "Local (Eswatini Standard)"
+	}
+	return "International"
+}
+
+// buildOrgInfoSection renders the organisation's self-service profile
+// (address, contacts, industry, size, structure — see
+// orgsvc.UpdateOrgProfile / PATCH /api/v1/org) as a two-column table, the
+// report's opening section — the same "Organisational Information" role a
+// letterhead page like the cover's label/value block already partially
+// covers, but with room for the fuller detail that wouldn't fit there
+// without crowding it. Returns nil (section omitted entirely) only if the
+// org lookup itself fails; individual missing profile fields are simply
+// left out of the table rather than shown blank.
+func (s *Service) buildOrgInfoSection(ctx context.Context, orgID uuid.UUID) *contentSection {
+	if s.orgSvc == nil {
+		return nil
+	}
+	org, err := s.orgSvc.GetOrgByID(ctx, orgID)
+	if err != nil {
+		return nil
+	}
+
+	t := &contentTable{Headers: []string{"Field", "Detail"}}
+	t.Rows = append(t.Rows, []string{"Organisation", org.Name})
+
+	addIf := func(label string, val *string) {
+		if val != nil && *val != "" {
+			t.Rows = append(t.Rows, []string{label, *val})
+		}
+	}
+	addIf("Industry", org.Industry)
+	if org.TotalMembers != nil {
+		t.Rows = append(t.Rows, []string{"Total Members", fmt.Sprint(*org.TotalMembers)})
+	}
+	addIf("Address", org.Address)
+	addIf("Country", org.Country)
+	addIf("Contact Email", org.ContactEmail)
+	addIf("Contact Phone", org.ContactPhone)
+	addIf("Organisational Structure", org.OrgStructure)
+
+	return &contentSection{Heading: "Organisational Information", Table: t}
 }
 
 // ── Content assembly ──────────────────────────────────────────────────────
@@ -425,6 +497,14 @@ type contentTable struct {
 
 func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uuid.UUID, sec SectionConfig) (*reportContent, error) {
 	rc := &reportContent{}
+
+	// Always leads the report, regardless of which sections were requested —
+	// matches the "Organisational Information" opener conventional in
+	// enterprise strategic-plan documents (name, sector, address, contacts),
+	// now that orgs can fill in that fuller profile via PATCH /api/v1/org.
+	if orgSection := s.buildOrgInfoSection(ctx, orgID); orgSection != nil {
+		rc.Sections = append(rc.Sections, *orgSection)
+	}
 
 	// Progress is cheap and several sections depend on it, so fetch it once
 	// up front regardless of which sections were actually requested.
@@ -451,40 +531,103 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 	}
 
 	if sec.ProgressStatus {
-		t := &contentTable{Headers: []string{"Phase", "Total", "Complete", "In Progress", "Overdue", "% Complete"}}
-		for _, p := range progress.Phases {
+		if plan.PlanType == models.PlanTypeLocal {
+			t := &contentTable{Headers: []string{"Strategic Pillar", "Total", "Complete", "In Progress", "Overdue", "% Complete"}}
+			for _, p := range progress.Pillars {
+				t.Rows = append(t.Rows, []string{
+					p.Title, fmt.Sprint(p.Total), fmt.Sprint(p.Complete),
+					fmt.Sprint(p.InProgress), fmt.Sprint(p.Overdue), fmt.Sprintf("%.0f%%", p.Percent),
+				})
+			}
 			t.Rows = append(t.Rows, []string{
-				string(p.Phase), fmt.Sprint(p.Total), fmt.Sprint(p.Complete),
-				fmt.Sprint(p.InProgress), fmt.Sprint(p.Overdue), fmt.Sprintf("%.0f%%", p.Percent),
+				"Overall", fmt.Sprint(progress.Overall.Total), fmt.Sprint(progress.Overall.Complete),
+				fmt.Sprint(progress.Overall.InProgress), fmt.Sprint(progress.Overall.Overdue),
+				fmt.Sprintf("%.0f%%", progress.Overall.Percent),
 			})
+			rc.Sections = append(rc.Sections, contentSection{Heading: "Progress & Status", Table: t})
+		} else {
+			t := &contentTable{Headers: []string{"Phase", "Total", "Complete", "In Progress", "Overdue", "% Complete"}}
+			for _, p := range progress.Phases {
+				t.Rows = append(t.Rows, []string{
+					string(p.Phase), fmt.Sprint(p.Total), fmt.Sprint(p.Complete),
+					fmt.Sprint(p.InProgress), fmt.Sprint(p.Overdue), fmt.Sprintf("%.0f%%", p.Percent),
+				})
+			}
+			t.Rows = append(t.Rows, []string{
+				"Overall", fmt.Sprint(progress.Overall.Total), fmt.Sprint(progress.Overall.Complete),
+				fmt.Sprint(progress.Overall.InProgress), fmt.Sprint(progress.Overall.Overdue),
+				fmt.Sprintf("%.0f%%", progress.Overall.Percent),
+			})
+			rc.Sections = append(rc.Sections, contentSection{Heading: "Progress & Status", Table: t})
 		}
-		t.Rows = append(t.Rows, []string{
-			"Overall", fmt.Sprint(progress.Overall.Total), fmt.Sprint(progress.Overall.Complete),
-			fmt.Sprint(progress.Overall.InProgress), fmt.Sprint(progress.Overall.Overdue),
-			fmt.Sprintf("%.0f%%", progress.Overall.Percent),
-		})
-		rc.Sections = append(rc.Sections, contentSection{Heading: "Progress & Status", Table: t})
 	}
 
 	if sec.PhaseActivities {
-		for _, phase := range sec.Phases {
-			ph := phase
-			activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, &ph, nil, nil)
+		if plan.PlanType == models.PlanTypeLocal {
+			// sec.Phases doesn't apply here — a local plan's activities
+			// belong to a StrategicObjective (via Activity.ObjectiveID),
+			// not a phase. One table per objective instead, headed by its
+			// pillar so the report structure mirrors the Pillar > Objective
+			// > Activity hierarchy the local-plan UI itself uses.
+			pillars, err := s.planSvc.ListPillars(ctx, plan.ID, orgID)
 			if err != nil {
 				return nil, err
 			}
-			t := &contentTable{Headers: []string{"Title", "Type", "Status", "Due Date"}}
-			for _, a := range activities {
-				due := "—"
-				if a.DueDate != nil {
-					due = a.DueDate.Format("2006-01-02")
-				}
-				t.Rows = append(t.Rows, []string{a.Title, a.Type, string(a.Status), due})
+			pillarTitle := make(map[uuid.UUID]string, len(pillars))
+			for _, p := range pillars {
+				pillarTitle[p.ID] = p.Title
 			}
-			rc.Sections = append(rc.Sections, contentSection{
-				Heading: fmt.Sprintf("Phase %s Activities", phase),
-				Table:   t,
-			})
+
+			objectives, err := s.planSvc.ListObjectives(ctx, plan.ID, orgID)
+			if err != nil {
+				return nil, err
+			}
+			for _, obj := range objectives {
+				objID := obj.ID
+				activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, nil, &objID, nil)
+				if err != nil {
+					return nil, err
+				}
+				t := &contentTable{Headers: []string{"Activity", "Status", "Target Period", "Responsible", "Budget"}}
+				for _, a := range activities {
+					period, responsible, budget := "—", "—", "—"
+					if a.TargetPeriod != nil && *a.TargetPeriod != "" {
+						period = *a.TargetPeriod
+					}
+					if a.Responsibility != nil && *a.Responsibility != "" {
+						responsible = *a.Responsibility
+					}
+					if a.Budget != nil {
+						budget = fmt.Sprintf("%.2f", *a.Budget)
+					}
+					t.Rows = append(t.Rows, []string{a.Title, string(a.Status), period, responsible, budget})
+				}
+				heading := obj.Title
+				if title, ok := pillarTitle[obj.PillarID]; ok {
+					heading = fmt.Sprintf("%s \u2014 %s", title, obj.Title)
+				}
+				rc.Sections = append(rc.Sections, contentSection{Heading: heading, Table: t})
+			}
+		} else {
+			for _, phase := range sec.Phases {
+				ph := phase
+				activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, &ph, nil, nil)
+				if err != nil {
+					return nil, err
+				}
+				t := &contentTable{Headers: []string{"Title", "Type", "Status", "Due Date"}}
+				for _, a := range activities {
+					due := "—"
+					if a.DueDate != nil {
+						due = a.DueDate.Format("2006-01-02")
+					}
+					t.Rows = append(t.Rows, []string{a.Title, a.Type, string(a.Status), due})
+				}
+				rc.Sections = append(rc.Sections, contentSection{
+					Heading: fmt.Sprintf("Phase %s Activities", phase),
+					Table:   t,
+				})
+			}
 		}
 	}
 
@@ -520,13 +663,13 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 	}
 
 	if sec.AISummary {
-		text := "AI summary is unavailable — the AI service could not be reached."
+		text := "A summary is unavailable — the AI service could not be reached."
 		if s.aiSummaryFn != nil {
 			if summary, err := s.aiSummaryFn(ctx, orgID, plan.ID); err == nil && summary != "" {
 				text = summary
 			}
 		}
-		rc.Sections = append(rc.Sections, contentSection{Heading: "AI-Generated Summary", Paragraphs: []string{text}})
+		rc.Sections = append(rc.Sections, contentSection{Heading: "Summary", Paragraphs: []string{text}})
 	}
 
 	return rc, nil
