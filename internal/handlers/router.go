@@ -171,6 +171,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 		// ── Platform admin ─────────────────────────────────────────
 		r.Route("/api/v1/admin", func(r chi.Router) {
 			r.Use(middleware.RequireRole(models.RoleSuperAdmin, models.RolePlatformSupport))
+			r.Get("/stats", adminH.GetStats)
 			r.Get("/orgs", adminH.ListOrgs)
 			r.Get("/audit-log", adminH.ListAuditLog)
 			r.Get("/platform-users", adminH.ListPlatformUsers)

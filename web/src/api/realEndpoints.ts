@@ -32,6 +32,7 @@
  *   DELETE /api/v1/org/sso                      → ssoApi.deleteConfig
  *
  * AUTHENTICATED — Super admin / Platform support
+ *   GET   /api/v1/admin/stats                   → adminApi.getStats
  *   GET   /api/v1/admin/orgs                    → adminApi.listOrgs
  *   POST  /api/v1/admin/orgs                    → adminApi.createOrg
  *   PATCH /api/v1/admin/orgs/{orgID}            → adminApi.updateOrg
@@ -466,7 +467,28 @@ export const ssoApi = {
 
 // ── Super Admin ───────────────────────────────────────────────────────────────
 
+// Cross-organisation snapshot for the platform admin console's overview
+// cards. Kept in sync with adminsvc.PlatformStats (Go) and the identical
+// interface in endpointsImpl.ts.
+export interface PlatformStats {
+  orgs_total: number
+  orgs_active: number
+  orgs_new_last_30_days: number
+  org_users_total: number
+  platform_team_total: number
+  plans_total: number
+  plans_active: number
+  activities_total: number
+  reports_generated_total: number
+  pending_org_invitations: number
+  pending_platform_invitations: number
+}
+
 export const adminApi = {
+  /** GET /api/v1/admin/stats — super_admin or platform_support */
+  getStats: () =>
+    apiClient.get<PlatformStats>('/admin/stats').then((r) => r.data),
+
   /** GET /api/v1/admin/orgs — super_admin or platform_support */
   listOrgs: (params?: { active_only?: boolean; limit?: number; offset?: number }) =>
     apiClient.get<Organisation[]>('/admin/orgs', { params }).then((r) => r.data),
@@ -515,13 +537,7 @@ export const adminApi = {
 // ── Audit log ─────────────────────────────────────────────────────────────────
 
 export const auditApi = {
-  /**
-   * GET /api/v1/org/audit-log — requires org_admin.
-   *
-   * NOTE: this route is NOT in the current router.go. It needs to be added to
-   * the /api/v1/org group in the backend. Until then, calls will return 404.
-   * Tracked as: TODO — add GET /api/v1/org/audit-log to router.go.
-   */
+  /** GET /api/v1/org/audit-log — requires org_admin. */
   list: (params?: {
     user_id?:    string
     action?:     string

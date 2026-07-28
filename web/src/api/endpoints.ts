@@ -21,3 +21,4 @@ export {
   adminApi,
   auditApi,
 } from './endpointsImpl'
+export type { PlatformStats } from './endpointsImpl'

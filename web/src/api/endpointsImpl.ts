@@ -180,7 +180,29 @@ export const ssoApi = {
 
 // ── Super Admin ───────────────────────────────────────────────────────────────
 
+// Cross-organisation snapshot for the platform admin console's overview
+// cards — see adminsvc.PlatformStats (Go) for the source of truth. Defined
+// here (rather than in ../types) since it's only ever consumed by
+// PlatformAdminPage; duplicated in realEndpoints.ts's own request layer for
+// the same reason auditApi/reportsApi's inline shapes are — keep the two in
+// sync if you add a field.
+export interface PlatformStats {
+  orgs_total: number
+  orgs_active: number
+  orgs_new_last_30_days: number
+  org_users_total: number
+  platform_team_total: number
+  plans_total: number
+  plans_active: number
+  activities_total: number
+  reports_generated_total: number
+  pending_org_invitations: number
+  pending_platform_invitations: number
+}
+
 export const adminApi = {
+  /** GET /api/v1/admin/stats — cross-org counts for the overview cards */
+  getStats:          ()                                              => api().then((m) => m.adminApi.getStats())                              as Promise<PlatformStats>,
   listOrgs:          (p?: { active_only?: boolean; limit?: number; offset?: number }) =>
                        api().then((m) => m.adminApi.listOrgs(p))                                 as Promise<Organisation[]>,
   createOrg:         (p: Partial<Organisation> & { admin_email?: string })            =>

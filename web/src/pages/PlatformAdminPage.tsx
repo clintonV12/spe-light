@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { ComponentType } from 'react'
 import {
   Building2, Plus, Mail, ShieldCheck, ShieldOff, CheckCircle2, XCircle,
   RefreshCw, Filter, ArrowDownUp, ChevronLeft, ChevronRight, Activity, X, Lock,
-  Users, Send, Clock3, Trash2, UserCog,
+  Users, Send, Clock3, Trash2, UserCog, FileText, ListChecks, FileOutput, TrendingUp,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { adminApi } from '../api/endpoints'
+import type { PlatformStats } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
 import type { Organisation, AuditLog, AuditAction, User, Invitation, UserRole } from '../types'
 
@@ -56,6 +58,103 @@ function diffLabel(diff: AuditLog['diff'], t: (key: string) => string): string |
     const toStr   = to   === null || to   === undefined ? t('common.none') : String(to)
     return `${k}: ${fromStr} → ${toStr}`
   }).join(' · ')
+}
+
+// ─── Platform overview stats ────────────────────────────────────────────────
+//
+// Cross-organisation counts (GET /api/v1/admin/stats — see adminsvc.GetStats)
+// shown above the tabs regardless of which tab is active, since this is the
+// "how is the platform doing" snapshot a super_admin/platform_support user
+// wants immediately on landing here, not buried behind a click.
+
+function StatCard({ icon: Icon, label, value, sub }: {
+  icon: ComponentType<{ className?: string }>
+  label: string
+  value: number | string
+  sub?: string
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-ink-100 p-4">
+      <div className="flex items-center gap-2 text-ink-400 mb-2">
+        <Icon className="size-4" />
+        <span className="text-xs font-semibold uppercase tracking-wide">{label}</span>
+      </div>
+      <p className="font-display text-2xl font-bold text-ink-900 tabular-nums">{value}</p>
+      {sub && <p className="text-xs text-ink-400 mt-0.5">{sub}</p>}
+    </div>
+  )
+}
+
+function StatsOverview() {
+  const { t } = useTranslation()
+  const [stats, setStats] = useState<PlatformStats | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    adminApi.getStats()
+      .then(setStats)
+      .catch(() => setStats(null))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+          <div key={i} className="h-[86px] bg-white rounded-2xl border border-ink-100 animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+  if (!stats) return null
+
+  const pendingInvitesTotal = stats.pending_org_invitations + stats.pending_platform_invitations
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <StatCard
+        icon={Building2}
+        label={t('platformAdmin.stats.organisations', 'Organisations')}
+        value={stats.orgs_total}
+        sub={t('platformAdmin.stats.organisationsSub', '{{active}} active', { active: stats.orgs_active }) as string}
+      />
+      <StatCard
+        icon={Users}
+        label={t('platformAdmin.stats.users', 'Users')}
+        value={stats.org_users_total + stats.platform_team_total}
+        sub={t('platformAdmin.stats.usersSub', '{{team}} platform team', { team: stats.platform_team_total }) as string}
+      />
+      <StatCard
+        icon={FileText}
+        label={t('platformAdmin.stats.plans', 'Plans')}
+        value={stats.plans_total}
+        sub={t('platformAdmin.stats.plansSub', '{{active}} active', { active: stats.plans_active }) as string}
+      />
+      <StatCard
+        icon={ListChecks}
+        label={t('platformAdmin.stats.activities', 'Activities')}
+        value={stats.activities_total}
+      />
+      <StatCard
+        icon={FileOutput}
+        label={t('platformAdmin.stats.reports', 'Reports Generated')}
+        value={stats.reports_generated_total}
+      />
+      <StatCard
+        icon={TrendingUp}
+        label={t('platformAdmin.stats.newOrgs', 'New Orgs (30d)')}
+        value={stats.orgs_new_last_30_days}
+      />
+      <StatCard
+        icon={Clock3}
+        label={t('platformAdmin.stats.pendingInvites', 'Pending Invites')}
+        value={pendingInvitesTotal}
+        sub={t('platformAdmin.stats.pendingInvitesSub', '{{org}} org · {{platform}} platform', {
+          org: stats.pending_org_invitations, platform: stats.pending_platform_invitations,
+        }) as string}
+      />
+    </div>
+  )
 }
 
 // ─── Create organisation modal ─────────────────────────────────────────────
@@ -756,6 +855,9 @@ export default function PlatformAdminPage() {
           </div>
         )}
       </div>
+
+      {/* Platform overview */}
+      <StatsOverview />
 
       {/* Tabs */}
       <div className="flex gap-1 bg-ink-100 rounded-xl p-1 w-fit">

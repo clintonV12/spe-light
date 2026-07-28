@@ -32,6 +32,19 @@ func NewAdmin(svc *adminsvc.Service) *Admin {
 	return &Admin{svc: svc}
 }
 
+// GET /api/v1/admin/stats — super_admin or platform_support.
+// Cross-organisation counts for the platform admin console's overview
+// cards (organisations, users, plans, activities, reports, pending
+// invitations). See adminsvc.GetStats for the underlying queries.
+func (h *Admin) GetStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.svc.GetStats(r.Context())
+	if err != nil {
+		response.ErrorJSON(w, "failed to load platform stats", http.StatusInternalServerError)
+		return
+	}
+	response.JSON(w, http.StatusOK, stats)
+}
+
 // GET /api/v1/admin/orgs
 // Query params: active_only=true, limit=50, offset=0
 func (h *Admin) ListOrgs(w http.ResponseWriter, r *http.Request) {

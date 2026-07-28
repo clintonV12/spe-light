@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useTranslation } from 'react-i18next'
 import {
@@ -38,6 +38,7 @@ export const AppShell: React.FC = () => {
   const user = useAuthStore((s) => s.user)
   const clearAuth = useAuthStore((s) => s.clearAuth)
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [loggingOut, setLoggingOut] = useState(false)
 
@@ -112,6 +113,20 @@ export const AppShell: React.FC = () => {
   ]
   const navItems = isPlatformTier ? platformNavItems : orgNavItems
 
+  // Deterministic sidebar highlighting, computed directly from the router's
+  // current location instead of leaning on NavLink's built-in isActive.
+  // Bug this fixes: right after login the auth store's `role` can still be
+  // mid-hydration for a tick, so the sidebar briefly renders the *other*
+  // item list (org vs platform) — whichever one doesn't contain the page
+  // you actually landed on. NavLink itself is unaffected by that (its match
+  // is against `to`, not `role`), but a mismatched list means nothing in it
+  // matches the current path, so nothing highlights, and it can stay that
+  // way if that stale render doesn't get invalidated. Since this always
+  // reads location.pathname directly on every render, it can't go stale —
+  // there's no separate cached "active" state to fall out of sync.
+  const isNavItemActive = (to: string) =>
+    location.pathname === to || location.pathname.startsWith(`${to}/`)
+
   return (
     <div className="flex h-screen overflow-hidden bg-ink-50">
 
@@ -141,9 +156,9 @@ export const AppShell: React.FC = () => {
             <NavLink
               key={to}
               to={to}
-              className={({ isActive }) => clsx(
+              className={clsx(
                 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                isActive
+                isNavItemActive(to)
                   ? 'bg-accent text-white'
                   : 'text-ink-300 hover:bg-ink-800 hover:text-white',
               )}
