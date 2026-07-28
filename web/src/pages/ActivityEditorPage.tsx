@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   ArrowLeft, Sparkles, Clock, User, AlertTriangle, ChevronDown, Check, X, Trash2,
 } from 'lucide-react'
-import { activitiesApi } from '../api/endpoints'
+import { activitiesApi, pillarsApi } from '../api/endpoints'
 import { useOfflineStore } from '../store/offline'
 import { usePermission } from '../hooks'
 import { useAutoSave } from '../hooks/useAutoSave'
@@ -13,7 +13,7 @@ import AiDraftPanel from '../components/ai/AiDraftPanel'
 import LinkedActivitiesPanel from '../components/activities/LinkedActivitiesPanel'
 import SwotEditor from '../components/activities/editors/SwotEditor'
 import KpiEditor from '../components/activities/editors/KpiEditor'
-import type { KpiRow } from '../components/activities/editors/KpiEditor'
+import type { KpiRow, ObjectiveOption } from '../components/activities/editors/KpiEditor'
 import RiskRegisterEditor from '../components/activities/editors/RiskRegisterEditor'
 import type { RiskRow } from '../components/activities/editors/RiskRegisterEditor'
 import GenericEditor from '../components/activities/editors/GenericEditor'
@@ -28,7 +28,7 @@ import TheoryOfChangeEditor from '../components/activities/editors/TheoryOfChang
 import RoadmapEditor from '../components/activities/editors/RoadmapEditor'
 import TableEditor from '../components/activities/editors/TableEditor'
 import type { TableColumn, ChartConfig, TableRow } from '../components/activities/editors/TableEditor'
-import type { Activity, ActivityStatus, ActivityType, Phase, ActivityLink } from '../types'
+import type { Activity, ActivityStatus, ActivityType, Phase, ActivityLink, StrategicObjective } from '../types'
 
 const STATUS_COLORS: Record<ActivityStatus, string> = {
   not_started: 'bg-ink-100 text-ink-600',
@@ -150,10 +150,12 @@ const TABLE_CONFIGS: Record<string, { columns: TableColumn[]; chart?: ChartConfi
 
 // ─── Type-routed editor ───────────────────────────────────────────────────────
 
-function ActivityEditor({ activity, onChange, readOnly }: {
+function ActivityEditor({ activity, onChange, readOnly, objectives }: {
   activity: Activity
   onChange: (content: Record<string, unknown>) => void
   readOnly: boolean
+  /** Strategic Objectives this plan's KPIs can link to — see objectiveOptions in the page component. */
+  objectives: ObjectiveOption[]
 }) {
   const { t } = useTranslation()
   const content = activity.content ?? {}
@@ -174,6 +176,7 @@ function ActivityEditor({ activity, onChange, readOnly }: {
         value={(content.rows as KpiRow[]) ?? []}
         onChange={(rows) => onChange({ rows })}
         readOnly={readOnly}
+        objectives={objectives}
       />
     )
   }
@@ -327,6 +330,10 @@ export default function ActivityEditorPage() {
   const [planActivities, setPlanActivities] = useState<Activity[]>([])
   const [planLinks, setPlanLinks] = useState<ActivityLink[]>([])
   const [linksLoading, setLinksLoading] = useState(true)
+  // Formal Strategic Objectives (local plans only — empty for international
+  // plans, since that model doesn't apply there). See objectiveOptions below
+  // for the international fallback derived from sibling activities instead.
+  const [formalObjectives, setFormalObjectives] = useState<StrategicObjective[]>([])
 
   // ── Delete ───────────────────────────────────────────────────────────────
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -379,6 +386,30 @@ export default function ActivityEditorPage() {
   }, [planId])
 
   useEffect(() => { loadLinks() }, [loadLinks])
+
+  // Formal Strategic Objectives for this plan. Harmlessly returns an empty
+  // list for international plans (that model only exists for local plans) —
+  // objectiveOptions below falls back to sibling activities in that case.
+  useEffect(() => {
+    if (!planId) return
+    pillarsApi.listObjectives(planId)
+      .then(setFormalObjectives)
+      .catch(() => setFormalObjectives([]))
+  }, [planId])
+
+  // The list of objectives KPIs on this plan can link to. Prefers the
+  // formal StrategicObjective model (local plans); when that's empty
+  // (international plans, or a local plan with no objectives defined yet),
+  // falls back to sibling activities of type 'strategic_objectives' in the
+  // same plan — each one stands in as a linkable "objective" by its title.
+  const objectiveOptions: ObjectiveOption[] = useMemo(() => {
+    if (formalObjectives.length > 0) {
+      return formalObjectives.map((o) => ({ id: o.id, label: o.title }))
+    }
+    return planActivities
+      .filter((a) => a.type === 'strategic_objectives' && a.id !== activity?.id)
+      .map((a) => ({ id: a.id, label: a.title }))
+  }, [formalObjectives, planActivities, activity?.id])
 
   // ── Auto-save ───────────────────────────────────────────────────────────────
 
@@ -652,6 +683,7 @@ export default function ActivityEditorPage() {
             activity={{ ...activity, content }}
             onChange={handleContentChange}
             readOnly={!canEdit}
+            objectives={objectiveOptions}
           />
         </div>
 

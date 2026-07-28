@@ -73,7 +73,7 @@ export default function LinkedActivitiesPanel({
     return allActivities
       .filter((a) => !linkedIds.has(a.id))
       .filter((a) => !q || a.title.toLowerCase().includes(q) || typeLabel(a.type).toLowerCase().includes(q))
-      .sort((a, b) => a.phase.localeCompare(b.phase) || a.user_order - b.user_order)
+      .sort((a, b) => (a.phase ?? '').localeCompare(b.phase ?? '') || a.user_order - b.user_order)
   }, [allActivities, linkedIds, search])
 
   const handleAddLink = async (otherId: string, direction: 'upstream' | 'downstream') => {
@@ -114,7 +114,7 @@ export default function LinkedActivitiesPanel({
     const meta = LINK_TYPE_META[link.link_type]
     return (
       <div className="group flex items-center gap-2 py-1.5 px-2 -mx-2 rounded-lg hover:bg-ink-50 transition-colors">
-        <span className={`size-1.5 rounded-full shrink-0 ${PHASE_DOT[act.phase]}`} />
+        {act.phase && <span className={`size-1.5 rounded-full shrink-0 ${PHASE_DOT[act.phase]}`} />}
         <button
           onClick={() => navigate(`/plans/${act.plan_id}/activities/${act.id}`)}
           className="flex-1 min-w-0 text-left"
@@ -168,8 +168,8 @@ export default function LinkedActivitiesPanel({
               disabled={pendingId === a.id}
               className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ink-50 transition-colors disabled:opacity-50"
             >
-              <span className={`inline-flex items-center justify-center w-5 h-5 rounded-md text-[9px] font-bold shrink-0 ${PHASE_BADGE[a.phase]}`}>
-                {a.phase}
+              <span className={`inline-flex items-center justify-center w-5 h-5 rounded-md text-[9px] font-bold shrink-0 ${a.phase ? PHASE_BADGE[a.phase] : 'bg-ink-100 text-ink-500'}`}>
+                {a.phase ?? '—'}
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-ink-700 truncate">{a.title}</p>

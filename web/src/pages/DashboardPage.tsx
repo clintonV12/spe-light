@@ -69,6 +69,12 @@ function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
   const overallPct = progress?.overall.percent_complete ?? 0
   const overdue    = progress?.overall.overdue ?? 0
   const pillCls    = STATUS_PILL_CLS[plan.status]
+  // 'international' plans populate progress.phases (fixed P1/P2/P3);
+  // 'local' plans populate progress.pillars instead (user-defined pillars).
+  // Only one of the two is ever present — guard both before mapping.
+  const bars = plan.plan_type === 'local'
+    ? (progress?.pillars ?? []).map((p) => ({ key: p.pillar_id, label: p.title.slice(0, 2).toUpperCase(), pct: p.percent_complete, gradient: 'from-accent-400 to-accent-500' as const }))
+    : (progress?.phases ?? []).map((p) => ({ key: p.phase, label: p.phase, pct: p.percent_complete, gradient: null }))
 
   return (
     <button
@@ -92,28 +98,30 @@ function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
         </span>
       </div>
 
-      {/* Phase bars — each has its own tinted track */}
-      {progress && (
+      {/* Phase/pillar bars — each has its own tinted track */}
+      {progress && bars.length > 0 && (
         <div className="space-y-2.5 mb-5">
-          {progress.phases.map((p) => {
-            const g = PHASE_GRADIENT[p.phase]
+          {bars.map((bar) => {
+            const g = plan.plan_type === 'local' ? null : PHASE_GRADIENT[bar.label]
             return (
-              <div key={p.phase} className="flex items-center gap-3">
-                <span className="text-[10px] font-bold tracking-wider text-ink-400 w-5 shrink-0">
-                  {p.phase}
+              <div key={bar.key} className="flex items-center gap-3">
+                <span className="text-[10px] font-bold tracking-wider text-ink-400 w-5 shrink-0" title={bar.label}>
+                  {bar.label}
                 </span>
-                <div className={`flex-1 h-1.5 rounded-full ${g.track} overflow-hidden`}>
+                <div className={`flex-1 h-1.5 rounded-full ${g ? g.track : 'bg-accent-50'} overflow-hidden`}>
                   <div
                     className={`h-full rounded-full bg-gradient-to-r transition-all duration-700 ease-out ${
-                      g.bar === 'p1' ? 'from-amber-400 to-amber-500'
-                      : g.bar === 'p2' ? 'from-emerald-400 to-emerald-500'
-                      : 'from-violet-400 to-violet-500'
+                      g
+                        ? g.bar === 'p1' ? 'from-amber-400 to-amber-500'
+                          : g.bar === 'p2' ? 'from-emerald-400 to-emerald-500'
+                          : 'from-violet-400 to-violet-500'
+                        : bar.gradient ?? 'from-accent-400 to-accent-500'
                     }`}
-                    style={{ width: `${Math.max(0, Math.min(100, p.percent_complete))}%` }}
+                    style={{ width: `${Math.max(0, Math.min(100, bar.pct))}%` }}
                   />
                 </div>
                 <span className="text-[10px] text-ink-400 tabular-nums w-7 text-right shrink-0">
-                  {Math.round(p.percent_complete)}%
+                  {Math.round(bar.pct)}%
                 </span>
               </div>
             )

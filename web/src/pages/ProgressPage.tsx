@@ -18,6 +18,19 @@ function PlanProgressCard({ plan }: { plan: Plan }) {
     P3: { label: t('plan.phases.P3'), color: 'text-p3-dark', bar: 'p3' },
   }
 
+  // 'international' plans populate progress.phases (fixed P1/P2/P3);
+  // 'local' plans populate progress.pillars instead (user-defined pillars,
+  // no fixed color/label mapping since they're plan-specific text).
+  const isLocal = plan.plan_type === 'local'
+  const phaseRows = progress.phases ?? []
+  const pillarRows = progress.pillars ?? []
+  const totalComplete = isLocal
+    ? pillarRows.reduce((s, p) => s + p.complete, 0)
+    : phaseRows.reduce((s, p) => s + p.complete, 0)
+  const totalInProgress = isLocal
+    ? pillarRows.reduce((s, p) => s + p.in_progress, 0)
+    : phaseRows.reduce((s, p) => s + p.in_progress, 0)
+
   return (
     <div className="bg-white rounded-2xl border border-ink-100 p-5">
       <div className="flex items-start justify-between mb-4">
@@ -41,39 +54,61 @@ function PlanProgressCard({ plan }: { plan: Plan }) {
       <ProgressBar value={progress.overall.percent_complete} className="mb-5" />
 
       <div className="space-y-3">
-        {progress.phases.map((p) => {
-          const meta = PHASE_META[p.phase]
-          return (
-            <div key={p.phase}>
+        {isLocal ? (
+          pillarRows.map((p) => (
+            <div key={p.pillar_id}>
               <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-bold ${meta.color}`}>{p.phase}</span>
-                  <span className="text-xs text-ink-500">{meta.label}</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs font-medium text-ink-700 truncate">{p.title}</span>
                   {p.overdue > 0 && (
-                    <span className="flex items-center gap-0.5 text-xs text-red-500">
+                    <span className="flex items-center gap-0.5 text-xs text-red-500 shrink-0">
                       <AlertTriangle className="size-3" /> {p.overdue}
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-3 text-xs text-ink-400">
+                <div className="flex items-center gap-3 text-xs text-ink-400 shrink-0">
                   <span>{t('progressPage.done', { complete: p.complete, total: p.total })}</span>
-                  <span className={`font-semibold ${meta.color}`}>{Math.round(p.percent_complete)}%</span>
+                  <span className="font-semibold text-accent">{Math.round(p.percent_complete)}%</span>
                 </div>
               </div>
-              <ProgressBar value={p.percent_complete} variant={meta.bar} />
+              <ProgressBar value={p.percent_complete} />
             </div>
-          )
-        })}
+          ))
+        ) : (
+          phaseRows.map((p) => {
+            const meta = PHASE_META[p.phase]
+            return (
+              <div key={p.phase}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-bold ${meta.color}`}>{p.phase}</span>
+                    <span className="text-xs text-ink-500">{meta.label}</span>
+                    {p.overdue > 0 && (
+                      <span className="flex items-center gap-0.5 text-xs text-red-500">
+                        <AlertTriangle className="size-3" /> {p.overdue}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-ink-400">
+                    <span>{t('progressPage.done', { complete: p.complete, total: p.total })}</span>
+                    <span className={`font-semibold ${meta.color}`}>{Math.round(p.percent_complete)}%</span>
+                  </div>
+                </div>
+                <ProgressBar value={p.percent_complete} variant={meta.bar} />
+              </div>
+            )
+          })
+        )}
       </div>
 
       <div className="flex items-center gap-4 mt-4 pt-4 border-t border-ink-50">
         <div className="flex items-center gap-1.5 text-xs text-ink-500">
           <CheckCircle2 className="size-3.5 text-p2-dark" />
-          {progress.phases.reduce((s, p) => s + p.complete, 0)} {t('progressPage.complete')}
+          {totalComplete} {t('progressPage.complete')}
         </div>
         <div className="flex items-center gap-1.5 text-xs text-ink-500">
           <TrendingUp className="size-3.5 text-accent" />
-          {progress.phases.reduce((s, p) => s + p.in_progress, 0)} {t('progressPage.inProgress')}
+          {totalInProgress} {t('progressPage.inProgress')}
         </div>
         {progress.overall.overdue > 0 && (
           <div className="flex items-center gap-1.5 text-xs text-red-500 font-medium ml-auto">
@@ -162,8 +197,11 @@ export default function ProgressPage() {
     fetchNetworkData(networkPlanId)
   }, [networkPlanId, fetchNetworkData])
 
-  const totalActivities = plans.reduce((s, p) => s + (p.progress?.phases.reduce((ps, ph) => ps + ph.total, 0) ?? 0), 0)
-  const totalComplete = plans.reduce((s, p) => s + (p.progress?.phases.reduce((ps, ph) => ps + ph.complete, 0) ?? 0), 0)
+  // Use overall.total/complete rather than summing phases — overall is
+  // populated for every plan regardless of plan_type, while phases is only
+  // populated for 'international' plans (pillars is used for 'local' ones).
+  const totalActivities = plans.reduce((s, p) => s + (p.progress?.overall.total ?? 0), 0)
+  const totalComplete = plans.reduce((s, p) => s + (p.progress?.overall.complete ?? 0), 0)
   const totalOverdue = plans.reduce((s, p) => s + (p.progress?.overall.overdue ?? 0), 0)
   const avgProgress = plans.length
     ? Math.round(plans.reduce((s, p) => s + (p.progress?.overall.percent_complete ?? 0), 0) / plans.length)
@@ -203,7 +241,13 @@ export default function ProgressPage() {
                 P2: { label: t('plan.phases.P2'), color: 'text-p2-dark', bar: 'p2' as const },
                 P3: { label: t('plan.phases.P3'), color: 'text-p3-dark', bar: 'p3' as const },
               }[phase]
-              const all = plans.flatMap((p) => p.progress?.phases.filter((ph) => ph.phase === phase) ?? [])
+              // Local plans have no fixed phases (?.phases is undefined for
+              // them — they use user-defined pillars instead), so they
+              // simply contribute nothing here. Unlike phases, pillars have
+              // no fixed identity across plans (titles are plan-specific),
+              // so there's no equivalent single "pillar breakdown" to show
+              // across every plan the way this P1/P2/P3 rollup does.
+              const all = plans.flatMap((p) => p.progress?.phases?.filter((ph) => ph.phase === phase) ?? [])
               const total = all.reduce((s, p) => s + p.total, 0)
               const complete = all.reduce((s, p) => s + p.complete, 0)
               const pct = total > 0 ? Math.round((complete / total) * 100) : 0

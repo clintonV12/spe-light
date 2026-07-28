@@ -469,7 +469,7 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 	if sec.PhaseActivities {
 		for _, phase := range sec.Phases {
 			ph := phase
-			activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, &ph, nil)
+			activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, &ph, nil, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -535,7 +535,7 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 // activityTitleIndex builds an id -> title lookup for the whole plan, used
 // to make the dependency-links table human-readable.
 func (s *Service) activityTitleIndex(ctx context.Context, planID, orgID uuid.UUID) (map[uuid.UUID]string, error) {
-	activities, err := s.planSvc.ListActivities(ctx, planID, orgID, nil, nil)
+	activities, err := s.planSvc.ListActivities(ctx, planID, orgID, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}

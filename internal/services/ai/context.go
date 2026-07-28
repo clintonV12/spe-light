@@ -175,6 +175,72 @@ func firstNonEmptyStr(vals ...string) string {
 	return ""
 }
 
+// objectiveOption is a Strategic Objective a KPI can be linked to — either a
+// real StrategicObjective row (local plans) or, when a plan has none (every
+// international plan, and any local plan that hasn't defined objectives
+// yet), a sibling 'strategic_objectives'-type activity standing in for one.
+// This exactly mirrors the frontend's own fallback (see ActivityEditorPage's
+// objectiveOptions/KpiEditor.tsx's ObjectiveOption) so the AI never proposes
+// a link the user interface itself wouldn't also recognise.
+type objectiveOption struct {
+	id    uuid.UUID
+	title string
+}
+
+// loadObjectiveOptions returns the objectives a KPI drafted for this plan
+// could genuinely be linked to. Prefers the formal StrategicObjective model;
+// falls back to sibling 'strategic_objectives'-type activities in the same
+// plan when that's empty. Returns (nil, nil) rather than an error when the
+// plan simply has neither — that's a legitimate state (a plan with no
+// objectives defined yet), not a failure.
+func (s *Service) loadObjectiveOptions(ctx context.Context, orgID, planID uuid.UUID) ([]objectiveOption, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT id, title FROM strategic_objectives WHERE plan_id = $1 AND org_id = $2 ORDER BY user_order`,
+		planID, orgID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load strategic objectives: %w", err)
+	}
+	var objectives []objectiveOption
+	for rows.Next() {
+		var o objectiveOption
+		if err := rows.Scan(&o.id, &o.title); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		objectives = append(objectives, o)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(objectives) > 0 {
+		return objectives, nil
+	}
+
+	// Fallback: no formal objectives (international plan, or a local plan
+	// that hasn't defined any yet) — use sibling 'strategic_objectives'-type
+	// activities in the same plan instead, same as the frontend does.
+	fbRows, err := s.db.Query(ctx,
+		`SELECT id, title FROM activities
+		 WHERE plan_id = $1 AND org_id = $2 AND type = 'strategic_objectives' AND deleted_at IS NULL
+		 ORDER BY user_order`,
+		planID, orgID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load fallback objective activities: %w", err)
+	}
+	defer fbRows.Close()
+	for fbRows.Next() {
+		var o objectiveOption
+		if err := fbRows.Scan(&o.id, &o.title); err != nil {
+			return nil, err
+		}
+		objectives = append(objectives, o)
+	}
+	return objectives, fbRows.Err()
+}
+
 // loadPlanContext loads every non-deleted activity in the plan (each
 // reduced to an activitySynopsis) plus the activity_links dependency graph.
 // Returns nil slices (not an error) when the plan simply has no activities
@@ -467,13 +533,18 @@ var headKeys = []string{
 
 // extraKeys are the remaining (non-identifying) columns across those same
 // row shapes, shown as parenthetical detail after the head field —
-// KpiRow's baseline/target/current/unit, RiskRow's likelihood/impact/
-// score/owner/mitigation, and every other TABLE_CONFIGS column
-// (market_size, growth_rate, priority, timeline, revenue, costs, profit,
-// amount, resource type, allocation_pct, status, start/end date, quantity,
-// estimated_cost, vendor).
+// KpiRow's baseline/target/current/unit/objective_label, RiskRow's
+// likelihood/impact/score/owner/mitigation, and every other TABLE_CONFIGS
+// column (market_size, growth_rate, priority, timeline, revenue, costs,
+// profit, amount, resource type, allocation_pct, status, start/end date,
+// quantity, estimated_cost, vendor).
+//
+// objective_label (KpiEditor.tsx) surfaces which Strategic Objective a KPI
+// tracks — including it here means any other activity's draft/summary/
+// link-suggestion prompt that sees this KPI row in context also sees what
+// it's meant to track, not just its raw numbers.
 var extraKeys = []string{
-	"baseline", "target", "current", "unit",
+	"baseline", "target", "current", "unit", "objective_label",
 	"likelihood", "impact", "score", "mitigation", "owner",
 	"priority", "status", "timeline", "type", "allocation_pct",
 	"market_size", "growth_rate", "revenue", "costs", "profit", "amount",

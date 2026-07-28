@@ -56,9 +56,11 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, onClick, c
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant={activity.phase.toLowerCase() as 'p1' | 'p2' | 'p3'}>
-            {activity.phase} · {t(PHASE_LABEL_KEY[activity.phase])}
-          </Badge>
+          {activity.phase && (
+            <Badge variant={activity.phase.toLowerCase() as 'p1' | 'p2' | 'p3'}>
+              {activity.phase} · {t(PHASE_LABEL_KEY[activity.phase])}
+            </Badge>
+          )}
           <Badge variant={statusToVariant[activity.status]}>
             {t(STATUS_LABEL_KEY[activity.status])}
           </Badge>

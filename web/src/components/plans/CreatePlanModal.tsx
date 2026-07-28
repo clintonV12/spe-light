@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import { Button, Input } from '../ui'
 import { plansApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
+import type { PlanType } from '../../types'
 
 interface CreatePlanModalProps {
   onCreated: () => void
@@ -12,6 +13,7 @@ interface CreatePlanModalProps {
 export const CreatePlanModal: React.FC<CreatePlanModalProps> = ({ onCreated, onClose }) => {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [planType, setPlanType] = useState<PlanType>('international')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [loading, setLoading] = useState(false)
@@ -24,6 +26,7 @@ export const CreatePlanModal: React.FC<CreatePlanModalProps> = ({ onCreated, onC
       await plansApi.create({
         title: title.trim(),
         description: description.trim() || undefined,
+        plan_type: planType,
         start_date: startDate || undefined,
         end_date: endDate || undefined,
       })
@@ -63,6 +66,26 @@ export const CreatePlanModal: React.FC<CreatePlanModalProps> = ({ onCreated, onC
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-ink-700 mb-1.5">Plan type</label>
+            <div className="flex gap-2">
+              {(['international', 'local'] as PlanType[]).map((pt) => (
+                <button
+                  key={pt}
+                  onClick={() => setPlanType(pt)}
+                  className={`flex-1 rounded-lg py-2 text-sm font-semibold transition-colors ${
+                    planType === pt
+                      ? 'bg-accent text-white'
+                      : 'bg-ink-50 text-ink-500 hover:bg-ink-100'
+                  }`}
+                >
+                  {pt === 'international' ? 'International (P1-P2-P3)' : 'Local (Strategic Pillars)'}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <Input label="Start date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             <Input label="End date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />

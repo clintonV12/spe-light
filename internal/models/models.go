@@ -49,6 +49,19 @@ const (
 	PlanArchived  PlanStatus = "archived"
 )
 
+// PlanType selects which activity hierarchy a plan uses. International
+// (the default, and the only type that existed before this) uses the fixed
+// P1/P2/P3 phase model below. Local follows the ESWAMCU Strategic Plan
+// standard: user-defined Strategic Pillars, each containing Strategic
+// Objectives (KPAs), each containing activities with a budget,
+// responsibility, target period, and one or more KPIs.
+type PlanType string
+
+const (
+	PlanTypeInternational PlanType = "international"
+	PlanTypeLocal         PlanType = "local"
+)
+
 type Phase string
 
 const (
@@ -250,6 +263,7 @@ type Plan struct {
 	Title       string     `json:"title"                  db:"title"`
 	Description *string    `json:"description,omitempty"  db:"description"`
 	Status      PlanStatus `json:"status"                 db:"status"`
+	PlanType    PlanType   `json:"plan_type"               db:"plan_type"`
 	OwnerID     uuid.UUID  `json:"owner_id"               db:"owner_id"`
 	StartDate   *time.Time `json:"start_date,omitempty"   db:"start_date"`
 	EndDate     *time.Time `json:"end_date,omitempty"     db:"end_date"`
@@ -258,27 +272,83 @@ type Plan struct {
 	DeletedAt   *time.Time `json:"deleted_at,omitempty"   db:"deleted_at"`
 }
 
+// ── Strategic pillars / objectives (local plan_type only) ───────────────
+
+// StrategicPillar is a top-level, user-defined grouping for a "local"
+// (Eswatini-standard) plan — the equivalent of a Phase in an international
+// plan, except pillars are named per-plan by the planner rather than fixed
+// to P1/P2/P3.
+type StrategicPillar struct {
+	ID        uuid.UUID `json:"id"         db:"id"`
+	PlanID    uuid.UUID `json:"plan_id"    db:"plan_id"`
+	OrgID     uuid.UUID `json:"org_id"     db:"org_id"`
+	Title     string    `json:"title"      db:"title"`
+	UserOrder int       `json:"user_order" db:"user_order"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// StrategicObjective is a Strategic Objective / KPA nested under a pillar.
+// Activities in a local plan attach to an objective rather than to a phase.
+type StrategicObjective struct {
+	ID        uuid.UUID `json:"id"         db:"id"`
+	PlanID    uuid.UUID `json:"plan_id"    db:"plan_id"`
+	PillarID  uuid.UUID `json:"pillar_id"  db:"pillar_id"`
+	OrgID     uuid.UUID `json:"org_id"     db:"org_id"`
+	Title     string    `json:"title"      db:"title"`
+	UserOrder int       `json:"user_order" db:"user_order"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// KPI is one Key Performance Indicator (+ its Target) attached to a
+// local-plan activity. Stored as part of Activity.KPIs (JSONB array) since
+// an activity commonly carries more than one KPI.
+type KPI struct {
+	Indicator string `json:"indicator"`
+	Target    string `json:"target"`
+}
+
 // ── Activity ──────────────────────────────────────────────────────────────
 
-// Activity is a discrete unit of work within a plan phase.
+// Activity is a discrete unit of work within a plan. For an international
+// plan it belongs to a fixed Phase (P1/P2/P3). For a local plan it instead
+// belongs to a StrategicObjective (ObjectiveID) and phase is nil — exactly
+// one of Phase / ObjectiveID is ever set, enforced by
+// chk_activities_exactly_one_hierarchy in the DB.
+//
+// Budget, Responsibility, TargetPeriod, and KPIs are only ever populated
+// for local-plan activities (they map directly to the BUDGET,
+// RESPONSIBILITY, TARGET PERIOD, and KEY PERFORMANCE INDICATOR (KPI)
+// columns of the ESWAMCU "Implementation Framework" table); international
+// activities leave them nil/empty.
+//
 // Content is a flexible JSON blob; AIDraft holds the AI-generated version
 // before the user accepts or edits it.
 type Activity struct {
-	ID         uuid.UUID      `json:"id"                    db:"id"`
-	PlanID     uuid.UUID      `json:"plan_id"               db:"plan_id"`
-	OrgID      uuid.UUID      `json:"org_id"                db:"org_id"`
-	Phase      Phase          `json:"phase"                 db:"phase"`
-	Type       string         `json:"type"                  db:"type"`
-	Title      string         `json:"title"                 db:"title"`
-	UserOrder  int            `json:"user_order"            db:"user_order"`
-	Status     ActivityStatus `json:"status"                db:"status"`
-	Content    map[string]any `json:"content"               db:"content"`
-	AIDraft    map[string]any `json:"ai_draft,omitempty"    db:"ai_draft"`
-	AssignedTo []uuid.UUID    `json:"assigned_to,omitempty" db:"assigned_to"`
-	DueDate    *time.Time     `json:"due_date,omitempty"    db:"due_date"`
-	CreatedAt  time.Time      `json:"created_at"            db:"created_at"`
-	UpdatedAt  time.Time      `json:"updated_at"            db:"updated_at"`
-	DeletedAt  *time.Time     `json:"deleted_at,omitempty"  db:"deleted_at"`
+	ID          uuid.UUID      `json:"id"                    db:"id"`
+	PlanID      uuid.UUID      `json:"plan_id"               db:"plan_id"`
+	OrgID       uuid.UUID      `json:"org_id"                db:"org_id"`
+	Phase       *Phase         `json:"phase,omitempty"       db:"phase"`
+	ObjectiveID *uuid.UUID     `json:"objective_id,omitempty" db:"objective_id"`
+	Type        string         `json:"type"                  db:"type"`
+	Title       string         `json:"title"                 db:"title"`
+	UserOrder   int            `json:"user_order"            db:"user_order"`
+	Status      ActivityStatus `json:"status"                db:"status"`
+	Content     map[string]any `json:"content"               db:"content"`
+	AIDraft     map[string]any `json:"ai_draft,omitempty"    db:"ai_draft"`
+	AssignedTo  []uuid.UUID    `json:"assigned_to,omitempty" db:"assigned_to"`
+	DueDate     *time.Time     `json:"due_date,omitempty"    db:"due_date"`
+
+	// ── Local-plan-only fields ──────────────────────────────────────────
+	Budget         *float64 `json:"budget,omitempty"         db:"budget"`
+	Responsibility *string  `json:"responsibility,omitempty" db:"responsibility"`
+	TargetPeriod   *string  `json:"target_period,omitempty"  db:"target_period"`
+	KPIs           []KPI    `json:"kpis,omitempty"           db:"kpis"`
+
+	CreatedAt time.Time  `json:"created_at"            db:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"            db:"updated_at"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty"  db:"deleted_at"`
 }
 
 // ── Activity link ─────────────────────────────────────────────────────────

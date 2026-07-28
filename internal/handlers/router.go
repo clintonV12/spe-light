@@ -214,6 +214,13 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin,
 			)).Delete("/{planID}/viewers/{userID}", planH.RevokePlanViewer)
+			// ── Strategic pillars / objectives (local plans) ────────
+			r.Get("/{planID}/pillars", planH.ListPillars)
+			r.Get("/{planID}/objectives", planH.ListObjectives)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Post("/{planID}/pillars", planH.CreatePillar)
+
 			r.Get("/{planID}/milestones", milestoneH.ListMilestones)
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
@@ -240,6 +247,27 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Delete("/links/{linkID}", planH.DeleteActivityLink)
+		})
+
+		// ── Strategic pillars / objectives (local plans) ────────────
+		r.Route("/api/v1/pillars/{pillarID}", func(r chi.Router) {
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Put("/", planH.UpdatePillar)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Delete("/", planH.DeletePillar)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Post("/objectives", planH.CreateObjective)
+		})
+		r.Route("/api/v1/objectives/{objectiveID}", func(r chi.Router) {
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Put("/", planH.UpdateObjective)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Delete("/", planH.DeleteObjective)
 		})
 
 		// ── Milestones ─────────────────────────────────────────────

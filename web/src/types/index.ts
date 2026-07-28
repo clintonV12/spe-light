@@ -20,6 +20,13 @@ export type UserRole =
 
 export type PlanStatus = 'draft' | 'active' | 'review' | 'completed' | 'archived'
 
+// Selects which activity hierarchy a plan uses. 'international' (the
+// default) is the original fixed P1/P2/P3 phase model. 'local' follows the
+// ESWAMCU Strategic Plan standard: user-defined Strategic Pillars, each
+// containing Strategic Objectives (KPAs), each containing activities with a
+// budget, responsibility, target period, and one or more KPIs.
+export type PlanType = 'international' | 'local'
+
 export type Phase = 'P1' | 'P2' | 'P3'
 
 export type ActivityStatus = 'not_started' | 'in_progress' | 'review' | 'complete'
@@ -199,6 +206,7 @@ export interface Plan {
   title:       string
   description?: string
   status:      PlanStatus
+  plan_type:   PlanType
   owner_id:    string
   start_date?: string
   end_date?:   string
@@ -231,6 +239,13 @@ export interface PhaseProgress extends ProgressStats {
   phase: Phase
 }
 
+// Local-plan equivalent of PhaseProgress — one entry per Strategic Pillar
+// instead of per fixed phase.
+export interface PillarProgress extends ProgressStats {
+  pillar_id: string
+  title:     string
+}
+
 export interface MilestoneStats {
   total:   number
   reached: number
@@ -238,32 +253,84 @@ export interface MilestoneStats {
   pending: number
 }
 
+// Exactly one of phases / pillars is populated, matching plan_type:
+// 'international' plans populate phases, 'local' plans populate pillars.
 export interface PlanProgress {
   plan_id:    string
   status:     PlanStatus
-  phases:     PhaseProgress[]
+  plan_type:  PlanType
+  phases?:    PhaseProgress[]
+  pillars?:   PillarProgress[]
   overall:    ProgressStats
   milestones: MilestoneStats
 }
 
+// ── Strategic pillars / objectives (local plan_type only) ────────────────
+
+// Top-level, user-defined grouping for a 'local' plan — the equivalent of a
+// Phase in an international plan, except pillars are named per-plan by the
+// planner rather than fixed to P1/P2/P3.
+export interface StrategicPillar {
+  id:         string
+  plan_id:    string
+  org_id:     string
+  title:      string
+  user_order: number
+  created_at: string
+  updated_at: string
+}
+
+// A Strategic Objective / KPA nested under a pillar. Local-plan activities
+// attach to an objective (Activity.objective_id) rather than to a phase.
+export interface StrategicObjective {
+  id:         string
+  plan_id:    string
+  pillar_id:  string
+  org_id:     string
+  title:      string
+  user_order: number
+  created_at: string
+  updated_at: string
+}
+
+// One Key Performance Indicator (+ its Target) attached to a local-plan
+// activity. An activity commonly carries more than one, hence Activity.kpis
+// being an array.
+export interface KPI {
+  indicator: string
+  target:    string
+}
+
 // ── Activity ──────────────────────────────────────────────────────────────────
 
+// Exactly one of phase / objective_id is set: phase for an 'international'
+// plan's activities, objective_id for a 'local' plan's. budget/
+// responsibility/target_period/kpis are only ever populated for local-plan
+// activities.
 export interface Activity {
-  id:           string
-  plan_id:      string
-  org_id:       string
-  phase:        Phase
-  type:         string
-  title:        string
-  user_order:   number
-  status:       ActivityStatus
-  content:      Record<string, unknown>
-  ai_draft?:    Record<string, unknown>
-  assigned_to?: string[]
-  due_date?:    string
-  created_at:   string
-  updated_at:   string
-  deleted_at?:  string
+  id:            string
+  plan_id:       string
+  org_id:        string
+  phase?:        Phase
+  objective_id?: string
+  type:          string
+  title:         string
+  user_order:    number
+  status:        ActivityStatus
+  content:       Record<string, unknown>
+  ai_draft?:     Record<string, unknown>
+  assigned_to?:  string[]
+  due_date?:     string
+
+  // ── Local-plan-only fields ────────────────────────────────────────────
+  budget?:         number
+  responsibility?: string
+  target_period?:  string
+  kpis?:           KPI[]
+
+  created_at:    string
+  updated_at:    string
+  deleted_at?:   string
 }
 
 // ── Activity link ─────────────────────────────────────────────────────────────

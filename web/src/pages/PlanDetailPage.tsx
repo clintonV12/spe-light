@@ -10,6 +10,7 @@ import { plansApi, activitiesApi } from '../api/endpoints'
 import { usePermission } from '../hooks'
 import { ProgressBar, EmptyState } from '../components/ui'
 import CreateActivityModal from '../components/activities/CreateActivityModal'
+import LocalPlanBoard from '../components/activities/LocalPlanBoard'
 import { SHORTCUT_CREATE_EVENT } from '../components/layout/AppShell'
 import type { Plan, Activity, Phase, ActivityStatus, PlanStatus } from '../types'
 
@@ -268,7 +269,7 @@ export default function PlanDetailPage() {
     try {
       const [p, acts] = await Promise.all([plansApi.get(planId), activitiesApi.list(planId)])
       setPlan(p)
-      setActivities(acts)
+      setActivities(acts ?? [])
     } catch { } finally { setLoading(false) }
   }
 
@@ -398,116 +399,129 @@ export default function PlanDetailPage() {
         </div>
       </div>
 
-      {/* Phase progress cards / tabs */}
-      <div className="grid grid-cols-3 gap-4">
-        {PHASES.map((phase) => {
-          const phData = plan.progress?.phases.find((p) => p.phase === phase)
-          const meta = PHASE_META[phase]
-          const phaseLabel = t(`plan.phases.${phase}`)
-          const pct = phData?.percent_complete ?? 0
-          return (
-            <button
-              key={phase}
-              onClick={() => setActivePhase(phase)}
-              className={`text-left rounded-2xl border-2 p-4 transition-all ${
-                activePhase === phase ? `${meta.border} ${meta.bg}` : 'border-ink-100 bg-white hover:border-ink-200'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className={`text-xs font-bold uppercase tracking-wide ${activePhase === phase ? meta.color : 'text-ink-400'}`}>
-                  {phase} · {phaseLabel}
-                </span>
-                <span className={`text-sm font-bold ${activePhase === phase ? meta.color : 'text-ink-600'}`}>
-                  {Math.round(pct)}%
-                </span>
-              </div>
-              <ProgressBar value={pct} variant={phase.toLowerCase() as 'p1' | 'p2' | 'p3'} />
-              <div className="flex items-center gap-3 mt-2 text-xs text-ink-400">
-                <span>{phData?.complete ?? 0} {t('planDetail.done')}</span>
-                {phData && phData.overdue > 0 && (
-                  <span className="text-red-500 flex items-center gap-0.5">
-                    <AlertTriangle className="size-3" /> {phData.overdue}
-                  </span>
-                )}
-              </div>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Phase detail panel */}
-      <div className="bg-white rounded-2xl border border-ink-100">
-        {/* Panel header */}
-        <div className={`flex items-center justify-between px-5 py-4 border-b border-opacity-30 ${phaseMeta.bg} rounded-t-2xl ${phaseMeta.border}`}>
-          <div>
-            <p className={`text-sm font-bold ${phaseMeta.color}`}>{activePhase} — {activePhaseLabel}</p>
-            <p className="text-xs text-ink-500">{activePhaseDesc}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {can.editActivity && phaseActivities.length > 0 && (
-              <button
-                onClick={toggleAll}
-                className="flex items-center gap-1.5 text-xs text-ink-400 hover:text-accent transition-colors"
-              >
-                {allPhaseSelected
-                  ? <><CheckSquare className="size-3.5 text-accent" /> {t('planDetail.deselectAll')}</>
-                  : <><Square className="size-3.5" /> {t('planDetail.selectAll')}</>}
-              </button>
-            )}
-            <span className="text-xs text-ink-400">
-              {t('planDetail.activitiesCount', { count: phaseActivities.length })}
-            </span>
-          </div>
-        </div>
-
-        <div className="p-3">
-          {/* Bulk action bar — only shown when activities are selected */}
-          {someSelected && (
-            <ActivityBulkBar
-              count={selected.size}
-              loading={bulkLoading}
-              onStatusChange={handleBulkStatus}
-              onDelete={() => setBulkDeleteConfirm(true)}
-              onClear={() => setSelected(new Set())}
-            />
-          )}
-
-          {phaseActivities.length === 0 ? (
-            <EmptyState
-              icon={<Sparkles className="size-8" />}
-              title={t('planDetail.emptyPhaseTitle', { phase: activePhaseLabel.toLowerCase() })}
-              description={t('planDetail.emptyPhaseDesc', {
-                phase: activePhase,
-                examples: t(`planDetail.phaseExamples${activePhase}`),
-              })}
-              action={can.createPlan ? (
-                <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors">
-                  <Plus className="size-4" /> {t('planDetail.addPhaseActivity', { phase: activePhase })}
+      {plan.plan_type === 'local' ? (
+        <LocalPlanBoard
+          plan={plan}
+          activities={activities}
+          canEdit={can.editActivity}
+          canDelete={can.createPlan}
+          onChanged={load}
+        />
+      ) : (
+        <>
+          {/* Phase progress cards / tabs */}
+          <div className="grid grid-cols-3 gap-4">
+            {PHASES.map((phase) => {
+              const phData = plan.progress?.phases?.find((p) => p.phase === phase)
+              const meta = PHASE_META[phase]
+              const phaseLabel = t(`plan.phases.${phase}`)
+              const pct = phData?.percent_complete ?? 0
+              return (
+                <button
+                  key={phase}
+                  onClick={() => setActivePhase(phase)}
+                  className={`text-left rounded-2xl border-2 p-4 transition-all ${
+                    activePhase === phase ? `${meta.border} ${meta.bg}` : 'border-ink-100 bg-white hover:border-ink-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-xs font-bold uppercase tracking-wide ${activePhase === phase ? meta.color : 'text-ink-400'}`}>
+                      {phase} · {phaseLabel}
+                    </span>
+                    <span className={`text-sm font-bold ${activePhase === phase ? meta.color : 'text-ink-600'}`}>
+                      {Math.round(pct)}%
+                    </span>
+                  </div>
+                  <ProgressBar value={pct} variant={phase.toLowerCase() as 'p1' | 'p2' | 'p3'} />
+                  <div className="flex items-center gap-3 mt-2 text-xs text-ink-400">
+                    <span>{phData?.complete ?? 0} {t('planDetail.done')}</span>
+                    {phData && phData.overdue > 0 && (
+                      <span className="text-red-500 flex items-center gap-0.5">
+                        <AlertTriangle className="size-3" /> {phData.overdue}
+                      </span>
+                    )}
+                  </div>
                 </button>
-              ) : undefined}
-            />
-          ) : (
-            <div className="divide-y divide-ink-50">
-              {phaseActivities.map((activity) => (
-                <ActivityRow
-                  key={activity.id}
-                  activity={activity}
-                  selected={selected.has(activity.id)}
-                  onSelect={() => toggleOne(activity.id)}
-                  onClick={() => navigate(`/plans/${planId}/activities/${activity.id}`)}
-                  onDelete={() => setDeleteTarget(activity)}
-                  canEdit={can.editActivity}
-                  canDelete={can.createPlan}
-                />
-              ))}
+              )
+            })}
+          </div>
+
+          {/* Phase detail panel */}
+          <div className="bg-white rounded-2xl border border-ink-100">
+            {/* Panel header */}
+            <div className={`flex items-center justify-between px-5 py-4 border-b border-opacity-30 ${phaseMeta.bg} rounded-t-2xl ${phaseMeta.border}`}>
+              <div>
+                <p className={`text-sm font-bold ${phaseMeta.color}`}>{activePhase} — {activePhaseLabel}</p>
+                <p className="text-xs text-ink-500">{activePhaseDesc}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {can.editActivity && phaseActivities.length > 0 && (
+                  <button
+                    onClick={toggleAll}
+                    className="flex items-center gap-1.5 text-xs text-ink-400 hover:text-accent transition-colors"
+                  >
+                    {allPhaseSelected
+                      ? <><CheckSquare className="size-3.5 text-accent" /> {t('planDetail.deselectAll')}</>
+                      : <><Square className="size-3.5" /> {t('planDetail.selectAll')}</>}
+                  </button>
+                )}
+                <span className="text-xs text-ink-400">
+                  {t('planDetail.activitiesCount', { count: phaseActivities.length })}
+                </span>
+              </div>
             </div>
-          )}
-        </div>
-      </div>
+
+            <div className="p-3">
+              {/* Bulk action bar — only shown when activities are selected */}
+              {someSelected && (
+                <ActivityBulkBar
+                  count={selected.size}
+                  loading={bulkLoading}
+                  onStatusChange={handleBulkStatus}
+                  onDelete={() => setBulkDeleteConfirm(true)}
+                  onClear={() => setSelected(new Set())}
+                />
+              )}
+
+              {phaseActivities.length === 0 ? (
+                <EmptyState
+                  icon={<Sparkles className="size-8" />}
+                  title={t('planDetail.emptyPhaseTitle', { phase: activePhaseLabel.toLowerCase() })}
+                  description={t('planDetail.emptyPhaseDesc', {
+                    phase: activePhase,
+                    examples: t(`planDetail.phaseExamples${activePhase}`),
+                  })}
+                  action={can.createPlan ? (
+                    <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors">
+                      <Plus className="size-4" /> {t('planDetail.addPhaseActivity', { phase: activePhase })}
+                    </button>
+                  ) : undefined}
+                />
+              ) : (
+                <div className="divide-y divide-ink-50">
+                  {phaseActivities.map((activity) => (
+                    <ActivityRow
+                      key={activity.id}
+                      activity={activity}
+                      selected={selected.has(activity.id)}
+                      onSelect={() => toggleOne(activity.id)}
+                      onClick={() => navigate(`/plans/${planId}/activities/${activity.id}`)}
+                      onDelete={() => setDeleteTarget(activity)}
+                      canEdit={can.editActivity}
+                      canDelete={can.createPlan}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {showCreate && planId && (
         <CreateActivityModal
           planId={planId}
+          plan={plan}
           defaultPhase={activePhase}
           onCreated={load}
           onClose={() => setShowCreate(false)}

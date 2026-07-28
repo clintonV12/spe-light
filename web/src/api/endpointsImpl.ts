@@ -18,6 +18,7 @@ import type {
   AuthTokens, LoginPayload,
   Plan, PlanProgress,
   Activity, ActivityLink,
+  StrategicPillar, StrategicObjective,
   AiDraftRequest, AiSummaryRequest, AiSuggestLinksRequest, AiLinkSuggestion,
   Invitation, Organisation, OrgProfileUpdate,
   Report, ReportType, ReportFormat, ReportJobStatus, ReportSectionConfig,
@@ -81,7 +82,7 @@ export const plansApi = {
 // ── Activities ────────────────────────────────────────────────────────────────
 
 export const activitiesApi = {
-  list:              (planId: string, params?: { phase?: string; status?: string }) =>
+  list:              (planId: string, params?: { phase?: string; objective_id?: string; status?: string }) =>
                        api().then((m) => m.activitiesApi.list(planId, params))                   as Promise<Activity[]>,
   get:               (planId: string, activityId: string) =>
                        api().then((m) => m.activitiesApi.get(planId, activityId))                as Promise<Activity>,
@@ -100,6 +101,19 @@ export const activitiesApi = {
                        api().then((m) => m.activitiesApi.listAutoLinks(planId))                  as Promise<ActivityLink[]>,
   deleteLink:        (actId: string, linkId: string) =>
                        api().then((m) => m.activitiesApi.deleteLink(actId, linkId))              as Promise<void>,
+}
+
+// ── Strategic pillars / objectives (local plans only) ──────────────────────
+
+export const pillarsApi = {
+  list:             (planId: string)                          => api().then((m) => m.pillarsApi.list(planId))                    as Promise<StrategicPillar[]>,
+  create:           (planId: string, p: { title: string })     => api().then((m) => m.pillarsApi.create(planId, p))               as Promise<StrategicPillar>,
+  update:           (id: string, p: Partial<StrategicPillar>)  => api().then((m) => m.pillarsApi.update(id, p))                   as Promise<StrategicPillar>,
+  delete:           (id: string)                               => api().then((m) => m.pillarsApi.delete(id))                     as Promise<void>,
+  listObjectives:   (planId: string)                          => api().then((m) => m.pillarsApi.listObjectives(planId))           as Promise<StrategicObjective[]>,
+  createObjective:  (pillarId: string, p: { title: string })   => api().then((m) => m.pillarsApi.createObjective(pillarId, p))    as Promise<StrategicObjective>,
+  updateObjective:  (id: string, p: Partial<StrategicObjective>) => api().then((m) => m.pillarsApi.updateObjective(id, p))        as Promise<StrategicObjective>,
+  deleteObjective:  (id: string)                               => api().then((m) => m.pillarsApi.deleteObjective(id))            as Promise<void>,
 }
 
 // ── Milestones ────────────────────────────────────────────────────────────────

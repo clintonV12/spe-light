@@ -82,6 +82,14 @@ type DraftRequest struct {
 type DraftResponse struct {
 	Draft map[string]any `json:"draft"`
 	Model string         `json:"model"`
+	// Warning is set when the draft was generated despite a data-quality
+	// concern the model itself can't fix — currently only used for
+	// kpi_framework/okr_balanced_scorecard when the plan has no Strategic
+	// Objectives (formal or fallback) for the drafted KPIs to track. The
+	// draft still comes back usable (never blocked outright — see Draft),
+	// but the frontend should surface this prominently before the user
+	// accepts it, since an unlinked KPI isn't tracking anything's progress.
+	Warning string `json:"warning,omitempty"`
 }
 
 type SummaryRequest struct {
@@ -146,6 +154,52 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 
 	schema, instructions := draftSchemaFor(req.ActivityType)
 
+	// KPIs are only meaningful when they track something real — a KPI with
+	// no Strategic Objective behind it isn't measuring progress toward
+	// anything. For kpi_framework/okr_balanced_scorecard we load the plan's
+	// real objectives (or the fallback stand-ins — see loadObjectiveOptions)
+	// and require the model to tag every row with one, the same way
+	// SuggestLinks (ai_links.go) requires tags instead of raw ids/titles it
+	// could otherwise mangle or hallucinate. If the plan genuinely has no
+	// objectives to link to, drafting still proceeds (blocking outright
+	// would stop the user from ever bootstrapping a plan's first KPIs) but
+	// DraftResponse.Warning is set so the frontend can surface it strongly
+	// before the user accepts.
+	isKPIType := req.ActivityType == "kpi_framework" || req.ActivityType == "okr_balanced_scorecard"
+	var objectiveTagOf map[string]objectiveOption
+	var objectiveSection string
+	var warning string
+	if isKPIType {
+		objectives, objErr := s.loadObjectiveOptions(ctx, orgID, req.PlanID)
+		if objErr != nil {
+			objectives = nil
+		}
+		if len(objectives) == 0 {
+			warning = "This plan has no Strategic Objectives yet, so the drafted KPIs below aren't linked to " +
+				"anything — a KPI is only meaningful as a measure of progress toward a specific objective. " +
+				"Add a Strategic Objective to the plan, then link these KPIs to it (or regenerate once one exists)."
+		} else {
+			objectiveTagOf = make(map[string]objectiveOption, len(objectives))
+			var tb strings.Builder
+			tb.WriteString("\nStrategic Objectives already defined for this plan — every KPI you draft MUST " +
+				"track exactly one of these (reference it by tag, e.g. \"O1\"):\n")
+			for i, o := range objectives {
+				tag := fmt.Sprintf("O%d", i+1)
+				objectiveTagOf[tag] = o
+				fmt.Fprintf(&tb, "- %s: %s\n", tag, o.title)
+			}
+			objectiveSection = tb.String()
+
+			schema = `{"rows": [{"name": "...", "unit": "...", "baseline": "...", "target": "...", ` +
+				`"current": "", "objective": "O1"}]}`
+			instructions += " Every row MUST include \"objective\" set to the tag (e.g. \"O1\") of whichever " +
+				"Strategic Objective listed below it measures progress toward. Only use tags from that list — " +
+				"never invent one. Do not draft a KPI that doesn't genuinely track one of the listed objectives; " +
+				"it's better to return fewer, well-grounded rows than to pad the count with KPIs disconnected " +
+				"from any real objective."
+		}
+	}
+
 	var sb strings.Builder
 	sb.WriteString("You are a strategic planning assistant helping draft content for one section of a company's strategic plan.\n\n")
 	if orgSection := buildOrgContextSection(orgCtx); orgSection != "" {
@@ -166,6 +220,9 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 
 	if section := buildContextSection(activities, links, req.ActivityID, req.Phase); section != "" {
 		sb.WriteString("\n" + section)
+	}
+	if objectiveSection != "" {
+		sb.WriteString(objectiveSection)
 	}
 
 	sb.WriteString("\n" + instructions + "\n\n")
@@ -189,9 +246,31 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 		draft = map[string]any{"content": raw}
 	} else {
 		postProcessDraft(req.ActivityType, draft)
+		if isKPIType && objectiveTagOf != nil {
+			applyObjectiveTags(draft, objectiveTagOf)
+		}
 	}
 
-	return &DraftResponse{Draft: draft, Model: s.model}, nil
+	return &DraftResponse{Draft: draft, Model: s.model, Warning: warning}, nil
+}
+
+// applyObjectiveTags resolves each KPI row's model-supplied "objective" tag
+// (e.g. "O2") back to a real objective, writing the same objective_id/
+// objective_label fields KpiEditor.tsx itself uses — so an accepted draft
+// looks exactly like a row the user linked by hand. The internal "objective"
+// tag field is removed either way so it never leaks into saved content.
+// A tag the model hallucinated or omitted (not in objectiveTagOf) is left
+// unlinked rather than guessed at — KpiEditor's own unlinked-row warning
+// will then catch it, same as if a person had left it blank.
+func applyObjectiveTags(draft map[string]any, objectiveTagOf map[string]objectiveOption) {
+	forEachRow(draft, func(row map[string]any) {
+		tag, _ := row["objective"].(string)
+		delete(row, "objective")
+		if obj, ok := objectiveTagOf[strings.TrimSpace(tag)]; ok {
+			row["objective_id"] = obj.id.String()
+			row["objective_label"] = obj.title
+		}
+	})
 }
 
 // postProcessDraft fixes up fields the model can't be trusted to produce

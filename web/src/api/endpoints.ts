@@ -12,6 +12,7 @@ export {
   invitationsApi,
   plansApi,
   activitiesApi,
+  pillarsApi,
   milestonesApi,
   reportsApi,
   aiApi,

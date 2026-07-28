@@ -83,8 +83,9 @@
 import apiClient from './client'
 import type {
   AuthTokens, LoginPayload,
-  Plan, PlanProgress,
+  Plan, PlanProgress, PlanType,
   Activity, ActivityLink,
+  StrategicPillar, StrategicObjective, KPI,
   AiDraftRequest, AiDraftResponse, AiSummaryRequest, AiSummaryResponse,
   AiSuggestLinksRequest, AiSuggestLinksResponse,
   Invitation, Organisation, OrgProfileUpdate,
@@ -144,10 +145,15 @@ export const plansApi = {
   get: (id: string) =>
     apiClient.get<Plan>(`/plans/${id}`).then((r) => r.data),
 
-  /** POST /api/v1/plans — requires planner or org_admin */
+  /**
+   * POST /api/v1/plans — requires planner or org_admin.
+   * plan_type is optional and defaults server-side to 'international' —
+   * omit it entirely to get the pre-existing (fixed P1/P2/P3) behaviour.
+   */
   create: (payload: {
     title:        string
     description?: string
+    plan_type?:   PlanType
     start_date?:  string
     end_date?:    string
   }) => apiClient.post<Plan>('/plans', payload).then((r) => r.data),
@@ -187,9 +193,10 @@ export const plansApi = {
 export const activitiesApi = {
   /**
    * GET /api/v1/plans/{planID}/activities
-   * Optional filters: phase=P1|P2|P3, status=not_started|in_progress|…
+   * Optional filters: phase=P1|P2|P3 (international plans),
+   * objective_id=<uuid> (local plans), status=not_started|in_progress|…
    */
-  list: (planId: string, params?: { phase?: string; status?: string }) =>
+  list: (planId: string, params?: { phase?: string; objective_id?: string; status?: string }) =>
     apiClient.get<Activity[]>(`/plans/${planId}/activities`, { params }).then((r) => r.data),
 
   /**
@@ -204,15 +211,26 @@ export const activitiesApi = {
       return found
     }),
 
-  /** POST /api/v1/plans/{planID}/activities — requires planner or org_admin */
+  /**
+   * POST /api/v1/plans/{planID}/activities — requires planner or org_admin.
+   * Exactly one of phase / objective_id must be sent, matching the target
+   * plan's plan_type: phase for 'international', objective_id for 'local'.
+   * budget/responsibility/target_period/kpis are only meaningful (and only
+   * accepted by the backend) for local-plan activities.
+   */
   create: (planId: string, payload: {
-    phase:       string
-    type:        string
-    title:       string
-    status?:     string
-    content?:    Record<string, unknown>
-    assigned_to?: string[]
-    due_date?:   string
+    phase?:          string
+    objective_id?:   string
+    type:            string
+    title:           string
+    status?:         string
+    content?:        Record<string, unknown>
+    assigned_to?:    string[]
+    due_date?:       string
+    budget?:         number
+    responsibility?: string
+    target_period?:  string
+    kpis?:           KPI[]
   }) => apiClient.post<Activity>(`/plans/${planId}/activities`, payload).then((r) => r.data),
 
   /**
@@ -221,6 +239,7 @@ export const activitiesApi = {
    */
   update: (activityId: string, payload: Partial<Pick<Activity,
     'title' | 'status' | 'content' | 'assigned_to' | 'due_date' | 'user_order'
+    | 'budget' | 'responsibility' | 'target_period' | 'kpis'
   >>) => apiClient.put<Activity>(`/activities/${activityId}`, payload).then((r) => r.data),
 
   /**
@@ -255,6 +274,42 @@ export const activitiesApi = {
   /** DELETE /api/v1/activities/{activityID}/links/{linkID} — requires planner or org_admin */
   deleteLink: (activityId: string, linkId: string): Promise<void> =>
     apiClient.delete(`/activities/${activityId}/links/${linkId}`).then(() => undefined),
+}
+
+// ── Strategic pillars / objectives (local plans only) ──────────────────────
+
+export const pillarsApi = {
+  /** GET /api/v1/plans/{planID}/pillars */
+  list: (planId: string) =>
+    apiClient.get<StrategicPillar[]>(`/plans/${planId}/pillars`).then((r) => r.data),
+
+  /** POST /api/v1/plans/{planID}/pillars — requires planner or org_admin */
+  create: (planId: string, payload: { title: string }) =>
+    apiClient.post<StrategicPillar>(`/plans/${planId}/pillars`, payload).then((r) => r.data),
+
+  /** PUT /api/v1/pillars/{pillarID} — requires planner or org_admin */
+  update: (pillarId: string, payload: Partial<Pick<StrategicPillar, 'title' | 'user_order'>>) =>
+    apiClient.put<StrategicPillar>(`/pillars/${pillarId}`, payload).then((r) => r.data),
+
+  /** DELETE /api/v1/pillars/{pillarID} — requires planner or org_admin. Fails if it still has objectives. */
+  delete: (pillarId: string) =>
+    apiClient.delete(`/pillars/${pillarId}`).then(() => undefined as void),
+
+  /** GET /api/v1/plans/{planID}/objectives — all objectives across all pillars in the plan */
+  listObjectives: (planId: string) =>
+    apiClient.get<StrategicObjective[]>(`/plans/${planId}/objectives`).then((r) => r.data),
+
+  /** POST /api/v1/pillars/{pillarID}/objectives — requires planner or org_admin */
+  createObjective: (pillarId: string, payload: { title: string }) =>
+    apiClient.post<StrategicObjective>(`/pillars/${pillarId}/objectives`, payload).then((r) => r.data),
+
+  /** PUT /api/v1/objectives/{objectiveID} — requires planner or org_admin */
+  updateObjective: (objectiveId: string, payload: Partial<Pick<StrategicObjective, 'title' | 'user_order'>>) =>
+    apiClient.put<StrategicObjective>(`/objectives/${objectiveId}`, payload).then((r) => r.data),
+
+  /** DELETE /api/v1/objectives/{objectiveID} — requires planner or org_admin. Fails if it still has activities. */
+  deleteObjective: (objectiveId: string) =>
+    apiClient.delete(`/objectives/${objectiveId}`).then(() => undefined as void),
 }
 
 // ── Milestones ────────────────────────────────────────────────────────────────

@@ -168,6 +168,19 @@ func (h *Plan) ListActivities(w http.ResponseWriter, r *http.Request) {
 		phase = &ph
 	}
 
+	// Optional objective filter — for local plans, the equivalent of the
+	// phase filter above (an international activity has a phase; a local
+	// activity has an objective_id instead).
+	var objectiveID *uuid.UUID
+	if o := r.URL.Query().Get("objective_id"); o != "" {
+		id, err := uuid.Parse(o)
+		if err != nil {
+			response.ErrorJSON(w, "invalid objective_id", http.StatusBadRequest)
+			return
+		}
+		objectiveID = &id
+	}
+
 	// Optional status filter — new in this revision, passed through to the service.
 	var status *models.ActivityStatus
 	if s := r.URL.Query().Get("status"); s != "" {
@@ -182,7 +195,7 @@ func (h *Plan) ListActivities(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	activities, err := h.svc.ListActivities(r.Context(), planID, *claims.OrgID, phase, status)
+	activities, err := h.svc.ListActivities(r.Context(), planID, *claims.OrgID, phase, objectiveID, status)
 	if err != nil {
 		response.ErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
