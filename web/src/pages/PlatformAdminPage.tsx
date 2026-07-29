@@ -4,10 +4,11 @@ import {
   Building2, Plus, Mail, ShieldCheck, ShieldOff, CheckCircle2, XCircle,
   RefreshCw, Filter, ArrowDownUp, ChevronLeft, ChevronRight, Activity, X, Lock,
   Users, Send, Clock3, Trash2, UserCog, FileText, ListChecks, FileOutput, TrendingUp,
+  Eye, AlertTriangle,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { adminApi } from '../api/endpoints'
-import type { PlatformStats } from '../api/endpoints'
+import type { PlatformStats, OrgDetail } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
 import type { Organisation, AuditLog, AuditAction, User, Invitation, UserRole } from '../types'
 
@@ -153,6 +154,252 @@ function StatsOverview() {
           org: stats.pending_org_invitations, platform: stats.pending_platform_invitations,
         }) as string}
       />
+    </div>
+  )
+}
+
+// ─── Organisation detail modal ─────────────────────────────────────────────
+//
+// The platform admin's drill-into-one-org view: full profile (including the
+// self-service fields an org_admin fills in via PATCH /api/v1/org — address,
+// contacts, industry, structure, member count) plus summary counts, with
+// activate/deactivate and delete available right from here too.
+
+function OrgDetailField({ label, value }: { label: string; value?: string | number | null }) {
+  if (value === undefined || value === null || value === '') return null
+  return (
+    <div className="flex items-start justify-between gap-4 py-2 border-b border-ink-50 last:border-0">
+      <span className="text-xs font-medium text-ink-400 shrink-0">{label}</span>
+      <span className="text-sm text-ink-800 text-right">{value}</span>
+    </div>
+  )
+}
+
+function OrgDetailModal({ orgId, onClose, onChanged }: {
+  orgId: string
+  onClose: () => void
+  onChanged: () => void
+}) {
+  const { t } = useTranslation()
+  const currentUser = useAuthStore((s) => s.user)
+  const isSuperAdmin = currentUser?.role === 'super_admin'
+
+  const [detail, setDetail] = useState<OrgDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await adminApi.getOrgDetail(orgId)
+      setDetail(data)
+    } catch {
+      setError(t('platformAdmin.detail.loadError'))
+    } finally {
+      setLoading(false)
+    }
+  }, [orgId, t])
+
+  useEffect(() => { load() }, [load])
+
+  const handleToggleActive = async () => {
+    if (!detail) return
+    setActionLoading(true)
+    try {
+      const updated = await adminApi.updateOrg(detail.id, { is_active: !detail.is_active })
+      setDetail({ ...detail, ...updated })
+      onChanged()
+    } catch { } finally { setActionLoading(false) }
+  }
+
+  const handleDelete = async () => {
+    if (!detail) return
+    setActionLoading(true)
+    setError(null)
+    try {
+      await adminApi.deleteOrg(detail.id)
+      onChanged()
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('platformAdmin.detail.deleteError'))
+      setConfirmDelete(false)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md bg-white rounded-2xl border border-ink-100 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 pt-6">
+          <h2 className="font-display text-lg font-bold text-ink-900">{t('platformAdmin.detail.title')}</h2>
+          <button onClick={onClose} className="text-ink-400 hover:text-ink-700">
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <div className="px-6 pb-6">
+          {loading ? (
+            <div className="space-y-2 pt-4">
+              {[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-8 bg-ink-50 rounded-lg animate-pulse" />)}
+            </div>
+          ) : !detail ? (
+            <p className="text-sm text-red-600 pt-4">{error ?? t('platformAdmin.detail.loadError')}</p>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 pt-4 pb-2">
+                <div className="size-10 rounded-lg bg-p3-light flex items-center justify-center shrink-0">
+                  <Building2 className="size-5 text-p3-dark" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-ink-900 truncate">{detail.name}</p>
+                  <p className="text-xs text-ink-400">{detail.slug}</p>
+                </div>
+                <span className={`ml-auto shrink-0 flex items-center gap-1.5 text-xs font-medium ${detail.is_active ? 'text-p2-dark' : 'text-ink-400'}`}>
+                  {detail.is_active ? <CheckCircle2 className="size-3.5" /> : <XCircle className="size-3.5" />}
+                  {detail.is_active ? t('platformAdmin.status.active') : t('platformAdmin.status.deactivated')}
+                </span>
+              </div>
+
+              {/* Summary counts */}
+              <div className="grid grid-cols-3 gap-2 py-3">
+                <div className="rounded-xl bg-ink-50 px-3 py-2 text-center">
+                  <p className="font-display text-lg font-bold text-ink-900 tabular-nums">{detail.user_count}</p>
+                  <p className="text-[11px] text-ink-400">{t('platformAdmin.detail.users')}</p>
+                </div>
+                <div className="rounded-xl bg-ink-50 px-3 py-2 text-center">
+                  <p className="font-display text-lg font-bold text-ink-900 tabular-nums">{detail.plan_count}</p>
+                  <p className="text-[11px] text-ink-400">{t('platformAdmin.detail.plans')}</p>
+                </div>
+                <div className="rounded-xl bg-ink-50 px-3 py-2 text-center">
+                  <p className="font-display text-lg font-bold text-ink-900 tabular-nums">{detail.active_plan_count}</p>
+                  <p className="text-[11px] text-ink-400">{t('platformAdmin.detail.activePlans')}</p>
+                </div>
+              </div>
+
+              {/* Profile fields */}
+              <div className="pt-1">
+                <OrgDetailField label={t('platformAdmin.detail.industry')} value={detail.industry} />
+                <OrgDetailField label={t('platformAdmin.detail.locale')} value={detail.locale?.toUpperCase()} />
+                <OrgDetailField label={t('platformAdmin.detail.totalMembers')} value={detail.total_members} />
+                <OrgDetailField label={t('platformAdmin.detail.address')} value={detail.address} />
+                <OrgDetailField label={t('platformAdmin.detail.country')} value={detail.country} />
+                <OrgDetailField label={t('platformAdmin.detail.contactEmail')} value={detail.contact_email} />
+                <OrgDetailField label={t('platformAdmin.detail.contactPhone')} value={detail.contact_phone} />
+                <OrgDetailField label={t('platformAdmin.detail.orgStructure')} value={detail.org_structure} />
+                <OrgDetailField
+                  label={t('platformAdmin.detail.created')}
+                  value={new Date(detail.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                />
+              </div>
+
+              {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+
+              {isSuperAdmin && (
+                <div className="flex flex-col gap-2 pt-5 mt-2 border-t border-ink-100">
+                  {!confirmDelete ? (
+                    <>
+                      <button
+                        onClick={handleToggleActive}
+                        disabled={actionLoading}
+                        className={`flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                          detail.is_active
+                            ? 'border-red-200 text-red-600 hover:bg-red-50'
+                            : 'border-p2-light text-p2-dark hover:bg-p2-light'
+                        }`}
+                      >
+                        {detail.is_active ? <ShieldOff className="size-4" /> : <ShieldCheck className="size-4" />}
+                        {detail.is_active ? t('platformAdmin.deactivate') : t('platformAdmin.activate')}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete(true)}
+                        disabled={detail.is_active || actionLoading}
+                        className="flex items-center justify-center gap-1.5 rounded-xl border border-ink-200 px-4 py-2.5 text-sm font-semibold text-ink-400 enabled:hover:text-red-600 enabled:hover:border-red-200 enabled:hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Trash2 className="size-4" /> {t('platformAdmin.detail.deleteOrg')}
+                      </button>
+                      {detail.is_active && (
+                        <p className="text-xs text-ink-400 text-center">{t('platformAdmin.detail.deactivateFirst')}</p>
+                      )}
+                    </>
+                  ) : (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-4 space-y-3">
+                      <div className="flex items-start gap-2.5 text-sm text-red-800">
+                        <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+                        <span>{t('platformAdmin.detail.deleteConfirmDesc', { name: detail.name })}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setConfirmDelete(false)}
+                          className="flex-1 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm font-semibold text-ink-700 hover:bg-ink-50"
+                        >
+                          {t('common.cancel')}
+                        </button>
+                        <button
+                          onClick={handleDelete}
+                          disabled={actionLoading}
+                          className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                          {actionLoading ? t('platformAdmin.detail.deleting') : t('platformAdmin.detail.deleteConfirm')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Delete organisation confirm modal (row-level quick action) ───────────
+
+function DeleteOrgConfirmModal({ org, onClose, onDeleted }: {
+  org: Organisation
+  onClose: () => void
+  onDeleted: () => void
+}) {
+  const { t } = useTranslation()
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleDelete = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      await adminApi.deleteOrg(org.id)
+      onDeleted()
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('platformAdmin.detail.deleteError'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-sm bg-white rounded-2xl border border-ink-100 shadow-xl p-6 space-y-4">
+        <div className="size-12 rounded-full bg-red-100 flex items-center justify-center">
+          <Trash2 className="size-5 text-red-600" />
+        </div>
+        <div>
+          <h3 className="font-display font-bold text-ink-900">{t('platformAdmin.detail.deleteConfirmTitle')}</h3>
+          <p className="text-sm text-ink-500 mt-1">{t('platformAdmin.detail.deleteConfirmDesc', { name: org.name })}</p>
+        </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="flex-1 rounded-xl border border-ink-200 px-4 py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50 transition-colors">{t('common.cancel')}</button>
+          <button onClick={handleDelete} disabled={loading} className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition-colors disabled:opacity-50">
+            {loading ? t('platformAdmin.detail.deleting') : t('platformAdmin.detail.deleteConfirm')}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -799,6 +1046,8 @@ export default function PlatformAdminPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [showCreateOrg, setShowCreateOrg] = useState(false)
   const [showInviteOrg, setShowInviteOrg] = useState(false)
+  const [viewOrgId, setViewOrgId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Organisation | null>(null)
 
   const loadOrgs = useCallback(async () => {
     try {
@@ -915,7 +1164,10 @@ export default function PlatformAdminPage() {
                   {orgs.map((org) => (
                     <tr key={org.id} className={!org.is_active ? 'opacity-60' : ''}>
                       <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setViewOrgId(org.id)}
+                          className="flex items-center gap-3 text-left hover:opacity-80 transition-opacity"
+                        >
                           <div className="size-8 rounded-lg bg-p3-light flex items-center justify-center shrink-0">
                             <Building2 className="size-4 text-p3-dark" />
                           </div>
@@ -923,7 +1175,7 @@ export default function PlatformAdminPage() {
                             <p className="text-sm font-medium text-ink-900">{org.name}</p>
                             <p className="text-xs text-ink-400">{org.slug}</p>
                           </div>
-                        </div>
+                        </button>
                       </td>
                       <td className="px-4 py-3.5"><p className="text-sm text-ink-600">{org.industry || '—'}</p></td>
                       <td className="px-4 py-3.5"><p className="text-sm text-ink-600 uppercase">{org.locale}</p></td>
@@ -938,20 +1190,41 @@ export default function PlatformAdminPage() {
                           {new Date(org.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
                         </p>
                       </td>
-                      <td className="px-4 py-3.5 text-right">
-                        {!isSuperAdmin ? null : actionLoading === org.id ? (
-                          <RefreshCw className="size-4 text-ink-300 animate-spin inline-block" />
-                        ) : (
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center justify-end gap-3">
                           <button
-                            onClick={() => handleToggleActive(org)}
-                            className={`flex items-center gap-1.5 text-xs font-semibold ml-auto ${
-                              org.is_active ? 'text-red-500 hover:text-red-700' : 'text-p2-dark hover:text-p2'
-                            }`}
+                            onClick={() => setViewOrgId(org.id)}
+                            title={t('platformAdmin.detail.view')}
+                            className="text-ink-400 hover:text-accent transition-colors"
                           >
-                            {org.is_active ? <ShieldOff className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
-                            {org.is_active ? t('platformAdmin.deactivate') : t('platformAdmin.activate')}
+                            <Eye className="size-4" />
                           </button>
-                        )}
+                          {isSuperAdmin && (
+                            actionLoading === org.id ? (
+                              <RefreshCw className="size-4 text-ink-300 animate-spin" />
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => handleToggleActive(org)}
+                                  className={`flex items-center gap-1.5 text-xs font-semibold ${
+                                    org.is_active ? 'text-red-500 hover:text-red-700' : 'text-p2-dark hover:text-p2'
+                                  }`}
+                                >
+                                  {org.is_active ? <ShieldOff className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
+                                  {org.is_active ? t('platformAdmin.deactivate') : t('platformAdmin.activate')}
+                                </button>
+                                <button
+                                  onClick={() => setDeleteTarget(org)}
+                                  disabled={org.is_active}
+                                  title={org.is_active ? t('platformAdmin.detail.deactivateFirst') : t('platformAdmin.detail.deleteOrg')}
+                                  className="text-ink-300 enabled:hover:text-red-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                >
+                                  <Trash2 className="size-4" />
+                                </button>
+                              </>
+                            )
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -970,6 +1243,16 @@ export default function PlatformAdminPage() {
 
       {showCreateOrg && <CreateOrgModal onCreated={loadOrgs} onClose={() => setShowCreateOrg(false)} />}
       {showInviteOrg && <InviteOrgAdminModal orgs={orgs} onInvited={loadOrgs} onClose={() => setShowInviteOrg(false)} />}
+      {viewOrgId && (
+        <OrgDetailModal orgId={viewOrgId} onClose={() => setViewOrgId(null)} onChanged={loadOrgs} />
+      )}
+      {deleteTarget && (
+        <DeleteOrgConfirmModal
+          org={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={loadOrgs}
+        />
+      )}
     </div>
   )
 }

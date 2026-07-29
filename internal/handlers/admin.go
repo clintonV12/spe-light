@@ -45,6 +45,41 @@ func (h *Admin) GetStats(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, stats)
 }
 
+// GET /api/v1/admin/orgs/{orgID} — super_admin or platform_support.
+// Full organisation profile (including the self-service fields — address,
+// contacts, industry, structure, member count) plus summary counts, for
+// the platform admin console's org detail view. See adminsvc.GetOrgDetail.
+func (h *Admin) GetOrgDetail(w http.ResponseWriter, r *http.Request) {
+	orgID, err := uuid.Parse(chi.URLParam(r, "orgID"))
+	if err != nil {
+		response.ErrorJSON(w, "invalid org id", http.StatusBadRequest)
+		return
+	}
+	detail, err := h.svc.GetOrgDetail(r.Context(), orgID)
+	if err != nil {
+		response.ErrorJSON(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	response.JSON(w, http.StatusOK, detail)
+}
+
+// DELETE /api/v1/admin/orgs/{orgID} — super_admin only.
+// Soft-deletes an organisation. Requires it to already be deactivated —
+// see adminsvc.DeleteOrg for why.
+func (h *Admin) DeleteOrg(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFrom(r.Context())
+	orgID, err := uuid.Parse(chi.URLParam(r, "orgID"))
+	if err != nil {
+		response.ErrorJSON(w, "invalid org id", http.StatusBadRequest)
+		return
+	}
+	if err := h.svc.DeleteOrg(r.Context(), orgID, claims.UserID); err != nil {
+		response.ErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]string{"message": "organisation deleted"})
+}
+
 // GET /api/v1/admin/orgs
 // Query params: active_only=true, limit=50, offset=0
 func (h *Admin) ListOrgs(w http.ResponseWriter, r *http.Request) {

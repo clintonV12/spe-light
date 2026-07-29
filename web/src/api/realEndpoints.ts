@@ -34,6 +34,8 @@
  * AUTHENTICATED — Super admin / Platform support
  *   GET   /api/v1/admin/stats                   → adminApi.getStats
  *   GET   /api/v1/admin/orgs                    → adminApi.listOrgs
+ *   GET   /api/v1/admin/orgs/{orgID}             → adminApi.getOrgDetail
+ *   DELETE /api/v1/admin/orgs/{orgID}            → adminApi.deleteOrg (super_admin)
  *   POST  /api/v1/admin/orgs                    → adminApi.createOrg
  *   PATCH /api/v1/admin/orgs/{orgID}            → adminApi.updateOrg
  *   POST  /api/v1/admin/org-invitations         → adminApi.sendOrgInvitation
@@ -484,6 +486,14 @@ export interface PlatformStats {
   pending_platform_invitations: number
 }
 
+// Platform admin's full view of a single organisation. Kept in sync with
+// adminsvc.OrgDetail (Go) and the identical interface in endpointsImpl.ts.
+export interface OrgDetail extends Organisation {
+  user_count: number
+  plan_count: number
+  active_plan_count: number
+}
+
 export const adminApi = {
   /** GET /api/v1/admin/stats — super_admin or platform_support */
   getStats: () =>
@@ -492,6 +502,10 @@ export const adminApi = {
   /** GET /api/v1/admin/orgs — super_admin or platform_support */
   listOrgs: (params?: { active_only?: boolean; limit?: number; offset?: number }) =>
     apiClient.get<Organisation[]>('/admin/orgs', { params }).then((r) => r.data),
+
+  /** GET /api/v1/admin/orgs/{orgID} — full profile + user/plan counts */
+  getOrgDetail: (orgId: string) =>
+    apiClient.get<OrgDetail>(`/admin/orgs/${orgId}`).then((r) => r.data),
 
   /**
    * POST /api/v1/admin/orgs — super_admin only.
@@ -510,6 +524,14 @@ export const adminApi = {
   /** PATCH /api/v1/admin/orgs/{orgID} — super_admin only */
   updateOrg: (orgId: string, payload: { is_active: boolean }) =>
     apiClient.patch<Organisation>(`/admin/orgs/${orgId}`, payload).then((r) => r.data),
+
+  /**
+   * DELETE /api/v1/admin/orgs/{orgID} — super_admin only. Backend rejects
+   * this with a clear 400 message if the org is still active — deactivate
+   * it first. Let that error surface rather than catching it silently.
+   */
+  deleteOrg: (orgId: string) =>
+    apiClient.delete(`/admin/orgs/${orgId}`).then(() => undefined),
 
   /**
    * POST /api/v1/admin/org-invitations — super_admin only.

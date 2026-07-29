@@ -200,15 +200,35 @@ export interface PlatformStats {
   pending_platform_invitations: number
 }
 
+// Platform admin's full view of a single organisation — the same
+// Organisation shape plus summary counts. See adminsvc.OrgDetail (Go) for
+// the source of truth; duplicated in realEndpoints.ts for the same reason
+// as PlatformStats above.
+export interface OrgDetail extends Organisation {
+  user_count: number
+  plan_count: number
+  active_plan_count: number
+}
+
 export const adminApi = {
   /** GET /api/v1/admin/stats — cross-org counts for the overview cards */
   getStats:          ()                                              => api().then((m) => m.adminApi.getStats())                              as Promise<PlatformStats>,
   listOrgs:          (p?: { active_only?: boolean; limit?: number; offset?: number }) =>
                        api().then((m) => m.adminApi.listOrgs(p))                                 as Promise<Organisation[]>,
+  /** GET /api/v1/admin/orgs/{orgID} — full profile + user/plan counts */
+  getOrgDetail:      (id: string)                                     => api().then((m) => m.adminApi.getOrgDetail(id))                        as Promise<OrgDetail>,
   createOrg:         (p: Partial<Organisation> & { admin_email?: string })            =>
                        api().then((m) => m.adminApi.createOrg(p))                                as Promise<Organisation>,
   updateOrg:         (id: string, p: { is_active: boolean }) =>
                        api().then((m) => m.adminApi.updateOrg(id, p))                            as Promise<Organisation>,
+  /**
+   * DELETE /api/v1/admin/orgs/{orgID} — super_admin only. Backend requires
+   * the org to already be deactivated (is_active: false) first — deleting
+   * a still-active org in one step is rejected with a clear error rather
+   * than silently refused, so surface err.message to the user rather than
+   * swallowing it.
+   */
+  deleteOrg:         (id: string)                                     => api().then((m) => m.adminApi.deleteOrg(id))                            as Promise<void>,
   sendOrgInvitation: (p: { email: string; org_id: string }) =>
                        api().then((m) => m.adminApi.sendOrgInvitation(p))                    as Promise<Invitation>,
   listAuditLog: (p?: { org_id?: string; user_id?: string; action?: string; table_name?: string; from?: string; to?: string; limit?: number; offset?: number }) =>
