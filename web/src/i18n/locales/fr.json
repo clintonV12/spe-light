@@ -14,7 +14,8 @@
     "resend": "Renvoyer",
     "none": "Aucun",
     "add": "Ajouter",
-    "remove": "Retirer"
+    "remove": "Retirer",
+    "view": "Voir"
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -349,7 +350,9 @@
     "tabs": {
       "organisations": "Organisations",
       "team": "Équipe plateforme",
-      "auditLog": "Journal d'audit"
+      "auditLog": "Journal d'audit",
+      "dashboard": "Tableau de bord",
+      "invitations": "Invitations"
     },
     "activeOnly": "Actives uniquement",
     "table": {
@@ -415,6 +418,50 @@
       "pendingHeading": "Invitations en attente",
       "noPending": "Aucune invitation en attente",
       "expires": "expire le {{date}}"
+    },
+    "stats": {
+      "organisations": "Organisations",
+      "organisationsSub": "{{active}} actives",
+      "users": "Utilisateurs",
+      "usersSub": "{{team}} équipe plateforme",
+      "plans": "Plans",
+      "plansSub": "{{active}} actifs",
+      "activities": "Activités",
+      "reports": "Rapports générés",
+      "newOrgs": "Nouvelles organisations (30j)",
+      "pendingInvites": "Invitations en attente",
+      "pendingInvitesSub": "{{org}} organisation · {{platform}} plateforme"
+    },
+    "detail": {
+      "title": "Détails de l'organisation",
+      "view": "Voir les détails",
+      "loadError": "Impossible de charger les détails de l'organisation. Veuillez réessayer.",
+      "deleteError": "Impossible de supprimer cette organisation. Veuillez réessayer.",
+      "users": "Utilisateurs",
+      "plans": "Plans",
+      "activePlans": "Plans actifs",
+      "industry": "Secteur",
+      "locale": "Langue",
+      "totalMembers": "Nombre total de membres",
+      "address": "Adresse",
+      "country": "Pays",
+      "contactEmail": "E-mail de contact",
+      "contactPhone": "Téléphone de contact",
+      "orgStructure": "Structure organisationnelle",
+      "created": "Créée",
+      "deleteOrg": "Supprimer l'organisation",
+      "deactivateFirst": "Désactivez cette organisation avant de pouvoir la supprimer.",
+      "deleteConfirmTitle": "Supprimer l'organisation ?",
+      "deleteConfirmDesc": "« {{name}} » sera définitivement supprimée. Cette action est irréversible.",
+      "deleting": "Suppression…",
+      "deleteConfirm": "Supprimer l'organisation"
+    },
+    "dashboard": {
+      "quickActions": "Actions rapides",
+      "organisationsDesc": "Créer, consulter et gérer les organisations",
+      "teamDesc": "Gérer les rôles et l'accès de l'équipe plateforme",
+      "invitationsDesc": "Envoyer et suivre les invitations d'équipe en attente",
+      "auditDesc": "Consulter l'activité de toutes les organisations"
     }
   },
   "dashboard": {

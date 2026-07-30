@@ -14,7 +14,8 @@
     "resend": "Thumela futhi",
     "none": "Lutho",
     "add": "Engeza",
-    "remove": "Susa"
+    "remove": "Susa",
+    "view": "Buka"
   },
   "nav": {
     "dashboard": "Ideshibhodi",
@@ -349,7 +350,9 @@
     "tabs": {
       "organisations": "Izinhlangano",
       "team": "Iqembu lepulatifomu",
-      "auditLog": "Ilog yokucwaninga"
+      "auditLog": "Ilog yokucwaninga",
+      "dashboard": "Ideshibhodi",
+      "invitations": "Izimemo"
     },
     "activeOnly": "Ezisebenzayo kuphela",
     "table": {
@@ -415,6 +418,50 @@
       "pendingHeading": "Izimemo ezisalindile",
       "noPending": "Azikho izimemo ezisalindile",
       "expires": "iphelelwa {{date}}"
+    },
+    "stats": {
+      "organisations": "Izinhlangano",
+      "organisationsSub": "{{active}} eziyasebenza",
+      "users": "Abasebenzisi",
+      "usersSub": "{{team}} ithimba lepulatifomu",
+      "plans": "Amasu",
+      "plansSub": "{{active}} asebenzayo",
+      "activities": "Imisebenzi",
+      "reports": "Imibiko Ekhiqiziwe",
+      "newOrgs": "Izinhlangano Ezintsha (izinsuku ezingu-30)",
+      "pendingInvites": "Izimemo Ezilindile",
+      "pendingInvitesSub": "{{org}} yenhlangano · {{platform}} yepulatifomu"
+    },
+    "detail": {
+      "title": "Imininingwane yenhlangano",
+      "view": "Buka imininingwane",
+      "loadError": "Ayikwazanga ukulayisha imininingwane yenhlangano. Sicela uzame futhi.",
+      "deleteError": "Ayikwazanga ukususa le nhlangano. Sicela uzame futhi.",
+      "users": "Abasebenzisi",
+      "plans": "Amasu",
+      "activePlans": "Amasu Asebenzayo",
+      "industry": "Imboni",
+      "locale": "Ulimi",
+      "totalMembers": "Inani Lamalungu",
+      "address": "Ikheli",
+      "country": "Izwe",
+      "contactEmail": "I-imeyili Yokuxhumana",
+      "contactPhone": "Inombolo Yocingo Yokuxhumana",
+      "orgStructure": "Isakhiwo Senhlangano",
+      "created": "Yadalwa",
+      "deleteOrg": "Susa inhlangano",
+      "deactivateFirst": "Vala le nhlangano ngaphambi kokuba ikwazi ukususwa.",
+      "deleteConfirmTitle": "Susa inhlangano?",
+      "deleteConfirmDesc": "\"{{name}}\" izosuswa unomphela. Lokhu akunakuguqulwa.",
+      "deleting": "Kuyasuswa…",
+      "deleteConfirm": "Susa inhlangano"
+    },
+    "dashboard": {
+      "quickActions": "Izenzo ezisheshayo",
+      "organisationsDesc": "Dala, buka, futhi ulawule izinhlangano",
+      "teamDesc": "Lawula izindima nokufinyelela kweqembu lepulatifomu",
+      "invitationsDesc": "Thumela futhi ulandelele izimemo zeqembu ezilindile",
+      "auditDesc": "Buyekeza umsebenzi kuzo zonke izinhlangano"
     }
   },
   "dashboard": {

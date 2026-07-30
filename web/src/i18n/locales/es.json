@@ -14,7 +14,8 @@
     "resend": "Reenviar",
     "none": "Ninguno",
     "add": "Añadir",
-    "remove": "Quitar"
+    "remove": "Quitar",
+    "view": "Ver"
   },
   "nav": {
     "dashboard": "Panel",
@@ -349,7 +350,9 @@
     "tabs": {
       "organisations": "Organizaciones",
       "team": "Equipo de la plataforma",
-      "auditLog": "Registro de auditoría"
+      "auditLog": "Registro de auditoría",
+      "dashboard": "Panel",
+      "invitations": "Invitaciones"
     },
     "activeOnly": "Solo activas",
     "table": {
@@ -415,6 +418,50 @@
       "pendingHeading": "Invitaciones pendientes",
       "noPending": "No hay invitaciones pendientes",
       "expires": "caduca {{date}}"
+    },
+    "stats": {
+      "organisations": "Organizaciones",
+      "organisationsSub": "{{active}} activas",
+      "users": "Usuarios",
+      "usersSub": "{{team}} equipo de la plataforma",
+      "plans": "Planes",
+      "plansSub": "{{active}} activos",
+      "activities": "Actividades",
+      "reports": "Informes generados",
+      "newOrgs": "Nuevas organizaciones (30d)",
+      "pendingInvites": "Invitaciones pendientes",
+      "pendingInvitesSub": "{{org}} de organización · {{platform}} de plataforma"
+    },
+    "detail": {
+      "title": "Detalles de la organización",
+      "view": "Ver detalles",
+      "loadError": "No se pudieron cargar los detalles de la organización. Inténtalo de nuevo.",
+      "deleteError": "No se pudo eliminar esta organización. Inténtalo de nuevo.",
+      "users": "Usuarios",
+      "plans": "Planes",
+      "activePlans": "Planes activos",
+      "industry": "Sector",
+      "locale": "Idioma",
+      "totalMembers": "Total de miembros",
+      "address": "Dirección",
+      "country": "País",
+      "contactEmail": "Correo de contacto",
+      "contactPhone": "Teléfono de contacto",
+      "orgStructure": "Estructura organizativa",
+      "created": "Creada",
+      "deleteOrg": "Eliminar organización",
+      "deactivateFirst": "Desactiva esta organización antes de poder eliminarla.",
+      "deleteConfirmTitle": "¿Eliminar organización?",
+      "deleteConfirmDesc": "\"{{name}}\" se eliminará de forma permanente. Esta acción no se puede deshacer.",
+      "deleting": "Eliminando…",
+      "deleteConfirm": "Eliminar organización"
+    },
+    "dashboard": {
+      "quickActions": "Acciones rápidas",
+      "organisationsDesc": "Crea, consulta y gestiona organizaciones",
+      "teamDesc": "Gestiona los roles y el acceso del equipo de la plataforma",
+      "invitationsDesc": "Envía y controla las invitaciones pendientes del equipo",
+      "auditDesc": "Revisa la actividad de todas las organizaciones"
     }
   },
   "dashboard": {

@@ -4,7 +4,7 @@ import {
   Building2, Plus, Mail, ShieldCheck, ShieldOff, CheckCircle2, XCircle,
   RefreshCw, Filter, ArrowDownUp, ChevronLeft, ChevronRight, Activity, X, Lock,
   Users, Send, Clock3, Trash2, UserCog, FileText, ListChecks, FileOutput, TrendingUp,
-  Eye, AlertTriangle,
+  Eye, AlertTriangle, LayoutDashboard,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { adminApi } from '../api/endpoints'
@@ -12,7 +12,7 @@ import type { PlatformStats, OrgDetail } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
 import type { Organisation, AuditLog, AuditAction, User, Invitation, UserRole } from '../types'
 
-type Tab = 'organisations' | 'team' | 'audit'
+type Tab = 'dashboard' | 'organisations' | 'team' | 'invitations' | 'audit'
 
 // ─── Shared display maps ───────────────────────────────────────────────────
 // Action labels come from t(`auditActions.${action}`) — the AuditAction
@@ -68,20 +68,29 @@ function diffLabel(diff: AuditLog['diff'], t: (key: string) => string): string |
 // "how is the platform doing" snapshot a super_admin/platform_support user
 // wants immediately on landing here, not buried behind a click.
 
-function StatCard({ icon: Icon, label, value, sub }: {
+const STAT_ACCENTS = {
+  ink:    'bg-ink-100 text-ink-500',
+  accent: 'bg-accent-50 text-accent-700',
+  p1:     'bg-p1-light text-p1-dark',
+  p2:     'bg-p2-light text-p2-dark',
+  p3:     'bg-p3-light text-p3-dark',
+} as const
+
+function StatCard({ icon: Icon, label, value, sub, accent = 'ink' }: {
   icon: ComponentType<{ className?: string }>
   label: string
   value: number | string
   sub?: string
+  accent?: keyof typeof STAT_ACCENTS
 }) {
   return (
-    <div className="bg-white rounded-2xl border border-ink-100 p-4">
-      <div className="flex items-center gap-2 text-ink-400 mb-2">
+    <div className="bg-white rounded-2xl border border-ink-100 p-4 hover:border-ink-200 transition-colors">
+      <div className={`inline-flex items-center justify-center size-8 rounded-xl mb-3 ${STAT_ACCENTS[accent]}`}>
         <Icon className="size-4" />
-        <span className="text-xs font-semibold uppercase tracking-wide">{label}</span>
       </div>
-      <p className="font-display text-2xl font-bold text-ink-900 tabular-nums">{value}</p>
-      {sub && <p className="text-xs text-ink-400 mt-0.5">{sub}</p>}
+      <p className="font-display text-2xl font-bold text-ink-900 tabular-nums leading-none">{value}</p>
+      <p className="text-xs font-medium text-ink-500 mt-1.5">{label}</p>
+      {sub && <p className="text-[11px] text-ink-400 mt-0.5">{sub}</p>}
     </div>
   )
 }
@@ -115,39 +124,46 @@ function StatsOverview() {
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       <StatCard
         icon={Building2}
+        accent="p3"
         label={t('platformAdmin.stats.organisations', 'Organisations')}
         value={stats.orgs_total}
         sub={t('platformAdmin.stats.organisationsSub', '{{active}} active', { active: stats.orgs_active }) as string}
       />
       <StatCard
         icon={Users}
+        accent="accent"
         label={t('platformAdmin.stats.users', 'Users')}
         value={stats.org_users_total + stats.platform_team_total}
         sub={t('platformAdmin.stats.usersSub', '{{team}} platform team', { team: stats.platform_team_total }) as string}
       />
       <StatCard
         icon={FileText}
+        accent="p2"
         label={t('platformAdmin.stats.plans', 'Plans')}
         value={stats.plans_total}
         sub={t('platformAdmin.stats.plansSub', '{{active}} active', { active: stats.plans_active }) as string}
       />
       <StatCard
         icon={ListChecks}
+        accent="p1"
         label={t('platformAdmin.stats.activities', 'Activities')}
         value={stats.activities_total}
       />
       <StatCard
         icon={FileOutput}
+        accent="ink"
         label={t('platformAdmin.stats.reports', 'Reports Generated')}
         value={stats.reports_generated_total}
       />
       <StatCard
         icon={TrendingUp}
+        accent="p2"
         label={t('platformAdmin.stats.newOrgs', 'New Orgs (30d)')}
         value={stats.orgs_new_last_30_days}
       />
       <StatCard
         icon={Clock3}
+        accent="p1"
         label={t('platformAdmin.stats.pendingInvites', 'Pending Invites')}
         value={pendingInvitesTotal}
         sub={t('platformAdmin.stats.pendingInvitesSub', '{{org}} org · {{platform}} platform', {
@@ -155,6 +171,35 @@ function StatsOverview() {
         }) as string}
       />
     </div>
+  )
+}
+
+// ─── Quick-action shortcut card (Dashboard tab) ────────────────────────────
+
+function ShortcutCard({ icon: Icon, title, description, onClick, accent = 'ink' }: {
+  icon: ComponentType<{ className?: string }>
+  title: string
+  description: string
+  onClick: () => void
+  accent?: keyof typeof STAT_ACCENTS
+}) {
+  const { t } = useTranslation()
+  return (
+    <button
+      onClick={onClick}
+      className="group flex flex-col gap-3 rounded-2xl border border-ink-100 bg-white p-5 text-left hover:border-accent-200 hover:shadow-sm transition-all"
+    >
+      <div className={`inline-flex items-center justify-center size-10 rounded-xl ${STAT_ACCENTS[accent]}`}>
+        <Icon className="size-5" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-ink-900">{title}</p>
+        <p className="text-xs text-ink-400 mt-0.5">{description}</p>
+      </div>
+      <span className="flex items-center gap-1 text-xs font-medium text-accent opacity-0 group-hover:opacity-100 transition-opacity">
+        {t('common.view', 'View')} <ChevronRight className="size-3.5" />
+      </span>
+    </button>
   )
 }
 
@@ -713,16 +758,13 @@ function TeamTab() {
   const isSuperAdmin = currentUser?.role === 'super_admin'
 
   const [users, setUsers] = useState<User[]>([])
-  const [invites, setInvites] = useState<Invitation[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [showInvite, setShowInvite] = useState(false)
 
   const load = useCallback(async () => {
     try {
-      const [u, i] = await Promise.all([adminApi.listPlatformUsers(), adminApi.listPlatformInvitations()])
+      const u = await adminApi.listPlatformUsers()
       setUsers(u)
-      setInvites(i)
     } catch { /* keep prior state */ } finally { setLoading(false) }
   }, [])
 
@@ -740,6 +782,111 @@ function TeamTab() {
     catch { } finally { setActionLoading(null) }
   }
 
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-ink-800 mb-3">{t('platformAdmin.team.membersHeading')}</h3>
+      <div className="bg-white rounded-2xl border border-ink-100 overflow-hidden">
+        {loading ? (
+          <div className="p-6 space-y-3">{[1, 2].map((i) => <div key={i} className="h-12 bg-ink-50 rounded-xl animate-pulse" />)}</div>
+        ) : users.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Users className="size-8 text-ink-200 mb-2" />
+            <p className="text-sm font-semibold text-ink-500">{t('platformAdmin.team.noMembers')}</p>
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead className="border-b border-ink-100 bg-ink-50">
+              <tr>
+                {[t('platformAdmin.table.name'), t('platformAdmin.table.role'), t('platformAdmin.table.status'), t('platformAdmin.table.lastLogin'), ''].map((h, i) => (
+                  <th key={i} className="px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ink-50">
+              {users.map((u) => {
+                const meta = platformRoleMeta[u.role as 'super_admin' | 'platform_support']
+                const isSelf = u.id === currentUser?.id
+                return (
+                  <tr key={u.id} className={!u.is_active ? 'opacity-60' : ''}>
+                    <td className="px-4 py-3.5">
+                      <p className="text-sm font-medium text-ink-900">{u.name} {isSelf && <span className="text-ink-400 font-normal">{t('admin.you')}</span>}</p>
+                      <p className="text-xs text-ink-400">{u.email}</p>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      {isSuperAdmin && !isSelf ? (
+                        <select
+                          value={u.role}
+                          onChange={(e) => handleRoleChange(u, e.target.value as UserRole)}
+                          className={`text-xs font-semibold rounded-lg px-2 py-1 outline-none cursor-pointer ${meta?.className ?? 'bg-ink-100 text-ink-600'}`}
+                        >
+                          <option value="platform_support">{t('roles.platform_support')}</option>
+                          <option value="super_admin">{t('roles.super_admin')}</option>
+                        </select>
+                      ) : (
+                        <span className={`text-xs font-semibold rounded-lg px-2 py-1 ${meta?.className ?? 'bg-ink-100 text-ink-600'}`}>
+                          {meta?.label ?? u.role}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <span className={`flex items-center gap-1.5 text-xs font-medium ${u.is_active ? 'text-p2-dark' : 'text-ink-400'}`}>
+                        {u.is_active ? <CheckCircle2 className="size-3.5" /> : <XCircle className="size-3.5" />}
+                        {u.is_active ? t('platformAdmin.status.active') : t('platformAdmin.status.deactivated')}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5"><p className="text-xs text-ink-400">{u.last_login_at ? relativeTime(u.last_login_at, t) : t('platformAdmin.team.never')}</p></td>
+                    <td className="px-4 py-3.5 text-right">
+                      {!isSuperAdmin || isSelf ? null : actionLoading === u.id ? (
+                        <RefreshCw className="size-4 text-ink-300 animate-spin inline-block" />
+                      ) : (
+                        <button
+                          onClick={() => handleToggleActive(u)}
+                          className={`flex items-center gap-1.5 text-xs font-semibold ml-auto ${
+                            u.is_active ? 'text-red-500 hover:text-red-700' : 'text-p2-dark hover:text-p2'
+                          }`}
+                        >
+                          {u.is_active ? <ShieldOff className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
+                          {u.is_active ? t('platformAdmin.deactivate') : t('platformAdmin.activate')}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Invitations tab ─────────────────────────────────────────────────────────
+//
+// Pending platform-team invitations, split out from TeamTab into its own
+// destination — the roster tab manages people who've already joined, this
+// one is purely about outstanding invites (send/resend/cancel).
+
+function InvitationsTab() {
+  const { t } = useTranslation()
+  const platformRoleMeta = getPlatformRoleMeta(t)
+  const currentUser = useAuthStore((s) => s.user)
+  const isSuperAdmin = currentUser?.role === 'super_admin'
+
+  const [invites, setInvites] = useState<Invitation[]>([])
+  const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [showInvite, setShowInvite] = useState(false)
+
+  const load = useCallback(async () => {
+    try {
+      const i = await adminApi.listPlatformInvitations()
+      setInvites(i)
+    } catch { /* keep prior state */ } finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
   const handleCancelInvite = async (id: string) => {
     setActionLoading(id)
     try { await adminApi.cancelPlatformInvitation(id); await load() }
@@ -754,136 +901,62 @@ function TeamTab() {
 
   const pendingInvites = invites.filter((i) => i.status === 'pending')
 
-  return (
-    <div className="space-y-6">
-      {isSuperAdmin && (
-        <div className="flex justify-end">
-          <button
-            onClick={() => setShowInvite(true)}
-            className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors"
-          >
-            <Send className="size-4" /> {t('platformAdmin.team.inviteTeammate')}
-          </button>
-        </div>
-      )}
+  if (!isSuperAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-2xl border border-ink-100">
+        <Lock className="size-8 text-ink-200 mb-2" />
+        <p className="text-sm text-ink-500">{t('platformAdmin.restricted')}</p>
+      </div>
+    )
+  }
 
-      {/* Members */}
-      <div>
-        <h3 className="text-sm font-semibold text-ink-800 mb-3">{t('platformAdmin.team.membersHeading')}</h3>
-        <div className="bg-white rounded-2xl border border-ink-100 overflow-hidden">
-          {loading ? (
-            <div className="p-6 space-y-3">{[1, 2].map((i) => <div key={i} className="h-12 bg-ink-50 rounded-xl animate-pulse" />)}</div>
-          ) : users.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Users className="size-8 text-ink-200 mb-2" />
-              <p className="text-sm font-semibold text-ink-500">{t('platformAdmin.team.noMembers')}</p>
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead className="border-b border-ink-100 bg-ink-50">
-                <tr>
-                  {[t('platformAdmin.table.name'), t('platformAdmin.table.role'), t('platformAdmin.table.status'), t('platformAdmin.table.lastLogin'), ''].map((h, i) => (
-                    <th key={i} className="px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-ink-50">
-                {users.map((u) => {
-                  const meta = platformRoleMeta[u.role as 'super_admin' | 'platform_support']
-                  const isSelf = u.id === currentUser?.id
-                  return (
-                    <tr key={u.id} className={!u.is_active ? 'opacity-60' : ''}>
-                      <td className="px-4 py-3.5">
-                        <p className="text-sm font-medium text-ink-900">{u.name} {isSelf && <span className="text-ink-400 font-normal">{t('admin.you')}</span>}</p>
-                        <p className="text-xs text-ink-400">{u.email}</p>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        {isSuperAdmin && !isSelf ? (
-                          <select
-                            value={u.role}
-                            onChange={(e) => handleRoleChange(u, e.target.value as UserRole)}
-                            className={`text-xs font-semibold rounded-lg px-2 py-1 outline-none cursor-pointer ${meta?.className ?? 'bg-ink-100 text-ink-600'}`}
-                          >
-                            <option value="platform_support">{t('roles.platform_support')}</option>
-                            <option value="super_admin">{t('roles.super_admin')}</option>
-                          </select>
-                        ) : (
-                          <span className={`text-xs font-semibold rounded-lg px-2 py-1 ${meta?.className ?? 'bg-ink-100 text-ink-600'}`}>
-                            {meta?.label ?? u.role}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span className={`flex items-center gap-1.5 text-xs font-medium ${u.is_active ? 'text-p2-dark' : 'text-ink-400'}`}>
-                          {u.is_active ? <CheckCircle2 className="size-3.5" /> : <XCircle className="size-3.5" />}
-                          {u.is_active ? t('platformAdmin.status.active') : t('platformAdmin.status.deactivated')}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5"><p className="text-xs text-ink-400">{u.last_login_at ? relativeTime(u.last_login_at, t) : t('platformAdmin.team.never')}</p></td>
-                      <td className="px-4 py-3.5 text-right">
-                        {!isSuperAdmin || isSelf ? null : actionLoading === u.id ? (
-                          <RefreshCw className="size-4 text-ink-300 animate-spin inline-block" />
-                        ) : (
-                          <button
-                            onClick={() => handleToggleActive(u)}
-                            className={`flex items-center gap-1.5 text-xs font-semibold ml-auto ${
-                              u.is_active ? 'text-red-500 hover:text-red-700' : 'text-p2-dark hover:text-p2'
-                            }`}
-                          >
-                            {u.is_active ? <ShieldOff className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
-                            {u.is_active ? t('platformAdmin.deactivate') : t('platformAdmin.activate')}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowInvite(true)}
+          className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors"
+        >
+          <Send className="size-4" /> {t('platformAdmin.team.inviteTeammate')}
+        </button>
       </div>
 
-      {/* Pending invitations */}
-      {isSuperAdmin && (
-        <div>
-          <h3 className="text-sm font-semibold text-ink-800 mb-3">{t('platformAdmin.team.pendingHeading')}</h3>
-          <div className="bg-white rounded-2xl border border-ink-100 overflow-hidden">
-            {loading ? null : pendingInvites.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 text-center">
-                <Clock3 className="size-7 text-ink-200 mb-2" />
-                <p className="text-sm text-ink-500">{t('platformAdmin.team.noPending')}</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-ink-50">
-                {pendingInvites.map((inv) => (
-                  <div key={inv.id} className="flex items-center gap-4 px-4 py-3.5">
-                    <UserCog className="size-4 text-ink-300 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-ink-800">{inv.email}</p>
-                      <p className="text-xs text-ink-400">
-                        {platformRoleMeta[inv.role as 'super_admin' | 'platform_support']?.label ?? inv.role} · {t('platformAdmin.team.expires', { date: new Date(inv.expires_at).toLocaleDateString() })}
-                      </p>
-                    </div>
-                    {actionLoading === inv.id ? (
-                      <RefreshCw className="size-4 text-ink-300 animate-spin" />
-                    ) : (
-                      <div className="flex items-center gap-3 shrink-0">
-                        <button onClick={() => handleResendInvite(inv.id)} className="flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-700">
-                          <Send className="size-3.5" /> {t('common.resend')}
-                        </button>
-                        <button onClick={() => handleCancelInvite(inv.id)} className="flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-700">
-                          <Trash2 className="size-3.5" /> {t('common.cancel')}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+      <div className="bg-white rounded-2xl border border-ink-100 overflow-hidden">
+        {loading ? (
+          <div className="p-6 space-y-3">{[1, 2].map((i) => <div key={i} className="h-12 bg-ink-50 rounded-xl animate-pulse" />)}</div>
+        ) : pendingInvites.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-14 text-center">
+            <Clock3 className="size-9 text-ink-200 mb-3" />
+            <p className="text-sm font-semibold text-ink-500">{t('platformAdmin.team.noPending')}</p>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="divide-y divide-ink-50">
+            {pendingInvites.map((inv) => (
+              <div key={inv.id} className="flex items-center gap-4 px-4 py-3.5">
+                <UserCog className="size-4 text-ink-300 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-ink-800">{inv.email}</p>
+                  <p className="text-xs text-ink-400">
+                    {platformRoleMeta[inv.role as 'super_admin' | 'platform_support']?.label ?? inv.role} · {t('platformAdmin.team.expires', { date: new Date(inv.expires_at).toLocaleDateString() })}
+                  </p>
+                </div>
+                {actionLoading === inv.id ? (
+                  <RefreshCw className="size-4 text-ink-300 animate-spin" />
+                ) : (
+                  <div className="flex items-center gap-3 shrink-0">
+                    <button onClick={() => handleResendInvite(inv.id)} className="flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent-700">
+                      <Send className="size-3.5" /> {t('common.resend')}
+                    </button>
+                    <button onClick={() => handleCancelInvite(inv.id)} className="flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-700">
+                      <Trash2 className="size-3.5" /> {t('common.cancel')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {showInvite && <InviteTeamModal onInvited={load} onClose={() => setShowInvite(false)} />}
     </div>
@@ -1039,7 +1112,7 @@ export default function PlatformAdminPage() {
   const isSuperAdmin = currentUser?.role === 'super_admin'
   const isPlatformTier = isSuperAdmin || currentUser?.role === 'platform_support'
 
-  const [tab, setTab] = useState<Tab>('organisations')
+  const [tab, setTab] = useState<Tab>('dashboard')
   const [orgs, setOrgs] = useState<Organisation[]>([])
   const [loading, setLoading] = useState(true)
   const [activeOnly, setActiveOnly] = useState(false)
@@ -1080,12 +1153,17 @@ export default function PlatformAdminPage() {
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-ink-900">{t('platformAdmin.title')}</h1>
-          <p className="text-ink-500 text-sm mt-0.5">
-            {t('platformAdmin.orgsCount', { count: orgs.length })} · {t('platformAdmin.activeCount', { count: activeCount })}
-            {!isSuperAdmin && <span className="text-ink-400"> · {t('platformAdmin.readOnly')}</span>}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center size-11 rounded-2xl bg-ink-900 text-white shrink-0">
+            <ShieldCheck className="size-5" />
+          </div>
+          <div>
+            <h1 className="font-display text-2xl font-bold text-ink-900">{t('platformAdmin.title')}</h1>
+            <p className="text-ink-500 text-sm mt-0.5">
+              {t('platformAdmin.orgsCount', { count: orgs.length })} · {t('platformAdmin.activeCount', { count: activeCount })}
+              {!isSuperAdmin && <span className="text-ink-400"> · {t('platformAdmin.readOnly')}</span>}
+            </p>
+          </div>
         </div>
         {isSuperAdmin && tab === 'organisations' && (
           <div className="flex items-center gap-2">
@@ -1105,27 +1183,67 @@ export default function PlatformAdminPage() {
         )}
       </div>
 
-      {/* Platform overview */}
-      <StatsOverview />
-
       {/* Tabs */}
-      <div className="flex gap-1 bg-ink-100 rounded-xl p-1 w-fit">
+      <div className="flex gap-1 bg-ink-100 rounded-xl p-1 w-fit overflow-x-auto">
         {([
-          { id: 'organisations' as const, label: t('platformAdmin.tabs.organisations') },
-          { id: 'team' as const,          label: t('platformAdmin.tabs.team') },
-          { id: 'audit' as const,         label: t('platformAdmin.tabs.auditLog') },
-        ]).map(({ id, label }) => (
+          { id: 'dashboard' as const,     label: t('platformAdmin.tabs.dashboard', 'Dashboard'),       icon: LayoutDashboard },
+          { id: 'organisations' as const, label: t('platformAdmin.tabs.organisations'),                icon: Building2 },
+          { id: 'team' as const,          label: t('platformAdmin.tabs.team'),                         icon: UserCog },
+          { id: 'invitations' as const,   label: t('platformAdmin.tabs.invitations', 'Invitations'),   icon: Mail },
+          { id: 'audit' as const,         label: t('platformAdmin.tabs.auditLog'),                     icon: Activity },
+        ]).map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               tab === id ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-700'
             }`}
           >
+            <Icon className="size-3.5" />
             {label}
           </button>
         ))}
       </div>
+
+      {/* ── Dashboard tab — stats + shortcuts ── */}
+      {tab === 'dashboard' && (
+        <div className="space-y-8">
+          <StatsOverview />
+          <div>
+            <h2 className="text-sm font-semibold text-ink-800 mb-3">{t('platformAdmin.dashboard.quickActions', 'Quick actions')}</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <ShortcutCard
+                icon={Building2}
+                accent="p3"
+                title={t('platformAdmin.tabs.organisations')}
+                description={t('platformAdmin.dashboard.organisationsDesc', 'Create, view, and manage organisations')}
+                onClick={() => setTab('organisations')}
+              />
+              <ShortcutCard
+                icon={UserCog}
+                accent="accent"
+                title={t('platformAdmin.tabs.team')}
+                description={t('platformAdmin.dashboard.teamDesc', 'Manage platform team roles and access')}
+                onClick={() => setTab('team')}
+              />
+              <ShortcutCard
+                icon={Mail}
+                accent="p1"
+                title={t('platformAdmin.tabs.invitations', 'Invitations')}
+                description={t('platformAdmin.dashboard.invitationsDesc', 'Send and track pending team invites')}
+                onClick={() => setTab('invitations')}
+              />
+              <ShortcutCard
+                icon={Activity}
+                accent="p2"
+                title={t('platformAdmin.tabs.auditLog')}
+                description={t('platformAdmin.dashboard.auditDesc', 'Review activity across every organisation')}
+                onClick={() => setTab('audit')}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Organisations tab ── */}
       {tab === 'organisations' && (
@@ -1237,6 +1355,9 @@ export default function PlatformAdminPage() {
 
       {/* ── Platform team tab ── */}
       {tab === 'team' && <TeamTab />}
+
+      {/* ── Invitations tab ── */}
+      {tab === 'invitations' && <InvitationsTab />}
 
       {/* ── Audit log tab ── */}
       {tab === 'audit' && <AuditLogTab orgs={orgs} />}

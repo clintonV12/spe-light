@@ -14,7 +14,8 @@
     "resend": "Resend",
     "none": "None",
     "add": "Add",
-    "remove": "Remove"
+    "remove": "Remove",
+    "view": "View"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -349,7 +350,9 @@
     "tabs": {
       "organisations": "Organisations",
       "team": "Platform team",
-      "auditLog": "Audit log"
+      "auditLog": "Audit log",
+      "dashboard": "Dashboard",
+      "invitations": "Invitations"
     },
     "activeOnly": "Active only",
     "table": {
@@ -415,6 +418,50 @@
       "pendingHeading": "Pending invitations",
       "noPending": "No pending invitations",
       "expires": "expires {{date}}"
+    },
+    "stats": {
+      "organisations": "Organisations",
+      "organisationsSub": "{{active}} active",
+      "users": "Users",
+      "usersSub": "{{team}} platform team",
+      "plans": "Plans",
+      "plansSub": "{{active}} active",
+      "activities": "Activities",
+      "reports": "Reports Generated",
+      "newOrgs": "New Orgs (30d)",
+      "pendingInvites": "Pending Invites",
+      "pendingInvitesSub": "{{org}} org · {{platform}} platform"
+    },
+    "detail": {
+      "title": "Organisation details",
+      "view": "View details",
+      "loadError": "Couldn't load organisation details. Please try again.",
+      "deleteError": "Couldn't delete this organisation. Please try again.",
+      "users": "Users",
+      "plans": "Plans",
+      "activePlans": "Active Plans",
+      "industry": "Industry",
+      "locale": "Locale",
+      "totalMembers": "Total Members",
+      "address": "Address",
+      "country": "Country",
+      "contactEmail": "Contact Email",
+      "contactPhone": "Contact Phone",
+      "orgStructure": "Organisational Structure",
+      "created": "Created",
+      "deleteOrg": "Delete organisation",
+      "deactivateFirst": "Deactivate this organisation before it can be deleted.",
+      "deleteConfirmTitle": "Delete organisation?",
+      "deleteConfirmDesc": "\"{{name}}\" will be permanently deleted. This can't be undone.",
+      "deleting": "Deleting…",
+      "deleteConfirm": "Delete organisation"
+    },
+    "dashboard": {
+      "quickActions": "Quick actions",
+      "organisationsDesc": "Create, view, and manage organisations",
+      "teamDesc": "Manage platform team roles and access",
+      "invitationsDesc": "Send and track pending team invites",
+      "auditDesc": "Review activity across every organisation"
     }
   },
   "dashboard": {

@@ -14,7 +14,8 @@
     "resend": "Reenviar",
     "none": "Nenhum",
     "add": "Adicionar",
-    "remove": "Remover"
+    "remove": "Remover",
+    "view": "Ver"
   },
   "nav": {
     "dashboard": "Painel",
@@ -349,7 +350,9 @@
     "tabs": {
       "organisations": "Organizações",
       "team": "Equipa da plataforma",
-      "auditLog": "Registo de auditoria"
+      "auditLog": "Registo de auditoria",
+      "dashboard": "Painel",
+      "invitations": "Convites"
     },
     "activeOnly": "Apenas ativas",
     "table": {
@@ -415,6 +418,50 @@
       "pendingHeading": "Convites pendentes",
       "noPending": "Nenhum convite pendente",
       "expires": "expira em {{date}}"
+    },
+    "stats": {
+      "organisations": "Organizações",
+      "organisationsSub": "{{active}} ativas",
+      "users": "Utilizadores",
+      "usersSub": "{{team}} equipa da plataforma",
+      "plans": "Planos",
+      "plansSub": "{{active}} ativos",
+      "activities": "Atividades",
+      "reports": "Relatórios gerados",
+      "newOrgs": "Novas organizações (30d)",
+      "pendingInvites": "Convites pendentes",
+      "pendingInvitesSub": "{{org}} de organização · {{platform}} de plataforma"
+    },
+    "detail": {
+      "title": "Detalhes da organização",
+      "view": "Ver detalhes",
+      "loadError": "Não foi possível carregar os detalhes da organização. Tente novamente.",
+      "deleteError": "Não foi possível eliminar esta organização. Tente novamente.",
+      "users": "Utilizadores",
+      "plans": "Planos",
+      "activePlans": "Planos ativos",
+      "industry": "Setor",
+      "locale": "Idioma",
+      "totalMembers": "Total de membros",
+      "address": "Morada",
+      "country": "País",
+      "contactEmail": "E-mail de contacto",
+      "contactPhone": "Telefone de contacto",
+      "orgStructure": "Estrutura organizacional",
+      "created": "Criada",
+      "deleteOrg": "Eliminar organização",
+      "deactivateFirst": "Desative esta organização antes de a poder eliminar.",
+      "deleteConfirmTitle": "Eliminar organização?",
+      "deleteConfirmDesc": "\"{{name}}\" será eliminada permanentemente. Esta ação não pode ser revertida.",
+      "deleting": "A eliminar…",
+      "deleteConfirm": "Eliminar organização"
+    },
+    "dashboard": {
+      "quickActions": "Ações rápidas",
+      "organisationsDesc": "Crie, veja e faça a gestão de organizações",
+      "teamDesc": "Faça a gestão das funções e do acesso da equipa da plataforma",
+      "invitationsDesc": "Envie e acompanhe convites pendentes da equipa",
+      "auditDesc": "Reveja a atividade em todas as organizações"
     }
   },
   "dashboard": {
