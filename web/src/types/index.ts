@@ -163,7 +163,13 @@ export interface User {
   deleted_at?:    string
   /** Non-backend field: used by mock layer for plan-scoped viewer testing */
   plan_ids?:      string[]
+  phone?:      string
+  avatar_url?: string
 }
+
+export interface ProfileUpdate { name?: string; phone?: string; avatar_url?: string; locale?: string }
+export interface ChangePasswordPayload { current_password: string; new_password: string; confirm_password: string }
+export interface Session { id: string; created_at: string; expires_at: string }
 
 // ── Invitation ────────────────────────────────────────────────────────────────
 
@@ -215,6 +221,9 @@ export interface Plan {
   deleted_at?: string
   /** Injected by the frontend after a /progress call; not a backend field */
   progress?:   PlanProgress
+  /**Optional , used by local plan type*/
+  vision?: string
+  mission?: string
 }
 
 // ── Plan progress ─────────────────────────────────────────────────────────────
@@ -377,9 +386,11 @@ export interface Report {
 
 export interface AiDraftRequest {
   plan_id:       string
-  activity_id:   string
+  /** Omitted for local-plan chapter drafts (2/3/6/7), which have no backing Activity. */
+  activity_id?:  string
   activity_type: string
-  phase:         Phase
+  /** Omitted for local-plan chapter drafts, which have no P1/P2/P3 phase. */
+  phase?:        Phase
   keywords?:     string[]
 }
 
@@ -464,4 +475,86 @@ export interface ReportJobStatus {
   status:   'processing' | 'complete' | 'failed'
   file_url?: string
   report?:  Report
+}
+
+//Local plan types (from types/localPlanSections.ts) — add these to types/index.ts alongside the existing Plan, StrategicPillar, StrategicObjective types. Plan itself gains two optional fields (vision, mission) — add them to the existing Plan interface rather than here:
+export interface CoreValue {
+  id: string
+  plan_id: string
+  org_id: string
+  name: string
+  description?: string
+  user_order: number
+  created_at: string
+  updated_at: string
+}
+
+export type StakeholderLevel = 'high' | 'low'
+
+export interface Stakeholder {
+  id: string
+  plan_id: string
+  org_id: string
+  name: string
+  influence: StakeholderLevel
+  interest: StakeholderLevel
+  notes?: string
+  user_order: number
+  created_at: string
+  updated_at: string
+}
+
+export type SWOTCategory = 'strength' | 'weakness' | 'opportunity' | 'threat'
+
+export interface SWOTItem {
+  id: string
+  plan_id: string
+  org_id: string
+  category: SWOTCategory
+  text: string
+  user_order: number
+  created_at: string
+  updated_at: string
+}
+
+export type PESTELFactor =
+  | 'political' | 'economic' | 'social' | 'technological' | 'environmental' | 'legal'
+
+export interface PESTELItem {
+  id: string
+  plan_id: string
+  org_id: string
+  factor: PESTELFactor
+  implication?: string
+  positive?: string
+  negative?: string
+  user_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface OrgStructureRole {
+  id: string
+  plan_id: string
+  org_id: string
+  title: string
+  description?: string
+  reports_to_id?: string
+  user_order: number
+  created_at: string
+  updated_at: string
+}
+
+export type MECategory =
+  | 'objective' | 'critical_success_factor' | 'review_note' | 'conclusion_measure'
+
+export interface MEItem {
+  id: string
+  plan_id: string
+  org_id: string
+  category: MECategory
+  text: string
+  user_order: number
+  created_at: string
+  updated_at: string
 }

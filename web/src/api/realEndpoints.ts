@@ -96,7 +96,8 @@ import type {
   User, UserRole,
   AuditLog, AuditListResponse,
   Milestone, MilestoneStatus,
-  SSOConfig,
+  SSOConfig, CoreValue, Stakeholder, StakeholderLevel, SWOTItem, SWOTCategory,
+  PESTELItem, PESTELFactor, OrgStructureRole, MEItem, MECategory
 } from '../types'
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -313,6 +314,87 @@ export const pillarsApi = {
   /** DELETE /api/v1/objectives/{objectiveID} — requires planner or org_admin. Fails if it still has activities. */
   deleteObjective: (objectiveId: string) =>
     apiClient.delete(`/objectives/${objectiveId}`).then(() => undefined as void),
+}
+
+// ── Chapter 2: Strategic Focus ──────────────────────────────────────────────
+
+export const strategicFocusApi = {
+  update: (planId: string, payload: { vision?: string; mission?: string }) =>
+    apiClient.put<Plan>(`/plans/${planId}/strategic-focus`, payload).then((r) => r.data),
+}
+
+export const coreValuesApi = {
+  list: (planId: string) =>
+    apiClient.get<CoreValue[]>(`/plans/${planId}/core-values`).then((r) => r.data),
+  create: (planId: string, payload: { name: string; description?: string }) =>
+    apiClient.post<CoreValue>(`/plans/${planId}/core-values`, payload).then((r) => r.data),
+  update: (id: string, payload: Partial<CoreValue>) =>
+    apiClient.put<CoreValue>(`/core-values/${id}`, payload).then((r) => r.data),
+  delete: (id: string) =>
+    apiClient.delete(`/core-values/${id}`).then(() => undefined as void),
+}
+
+// ── Chapter 3: Situational Analysis ─────────────────────────────────────────
+
+export const stakeholdersApi = {
+  list: (planId: string) =>
+    apiClient.get<Stakeholder[]>(`/plans/${planId}/stakeholders`).then((r) => r.data),
+  create: (planId: string, payload: { name: string; influence: StakeholderLevel; interest: StakeholderLevel; notes?: string }) =>
+    apiClient.post<Stakeholder>(`/plans/${planId}/stakeholders`, payload).then((r) => r.data),
+  update: (id: string, payload: Partial<Stakeholder>) =>
+    apiClient.put<Stakeholder>(`/stakeholders/${id}`, payload).then((r) => r.data),
+  delete: (id: string) =>
+    apiClient.delete(`/stakeholders/${id}`).then(() => undefined as void),
+}
+
+export const swotApi = {
+  list: (planId: string) =>
+    apiClient.get<SWOTItem[]>(`/plans/${planId}/swot-items`).then((r) => r.data),
+  create: (planId: string, payload: { category: SWOTCategory; text: string }) =>
+    apiClient.post<SWOTItem>(`/plans/${planId}/swot-items`, payload).then((r) => r.data),
+  update: (id: string, payload: Partial<SWOTItem>) =>
+    apiClient.put<SWOTItem>(`/swot-items/${id}`, payload).then((r) => r.data),
+  delete: (id: string) =>
+    apiClient.delete(`/swot-items/${id}`).then(() => undefined as void),
+}
+
+export const pestelApi = {
+  list: (planId: string) =>
+    apiClient.get<PESTELItem[]>(`/plans/${planId}/pestel-items`).then((r) => r.data),
+  create: (planId: string, payload: { factor: PESTELFactor; implication?: string; positive?: string; negative?: string }) =>
+    apiClient.post<PESTELItem>(`/plans/${planId}/pestel-items`, payload).then((r) => r.data),
+  update: (id: string, payload: Partial<PESTELItem>) =>
+    apiClient.put<PESTELItem>(`/pestel-items/${id}`, payload).then((r) => r.data),
+  delete: (id: string) =>
+    apiClient.delete(`/pestel-items/${id}`).then(() => undefined as void),
+}
+
+// ── Chapter 6: Organisational Structure ─────────────────────────────────────
+
+export const orgStructureApi = {
+  list: (planId: string) =>
+    apiClient.get<OrgStructureRole[]>(`/plans/${planId}/org-structure-roles`).then((r) => r.data),
+  create: (planId: string, payload: { title: string; description?: string; reports_to_id?: string }) =>
+    apiClient.post<OrgStructureRole>(`/plans/${planId}/org-structure-roles`, payload).then((r) => r.data),
+  update: (id: string, payload: Partial<OrgStructureRole>) =>
+    apiClient.put<OrgStructureRole>(`/org-structure-roles/${id}`, payload).then((r) => r.data),
+  delete: (id: string) =>
+    apiClient.delete(`/org-structure-roles/${id}`).then(() => undefined as void),
+}
+
+// ── Chapter 7: Monitoring & Evaluation ──────────────────────────────────────
+
+export const meItemsApi = {
+  list: (planId: string, category?: MECategory) =>
+    apiClient
+      .get<MEItem[]>(`/plans/${planId}/me-items`, { params: category ? { category } : undefined })
+      .then((r) => r.data),
+  create: (planId: string, payload: { category: MECategory; text: string }) =>
+    apiClient.post<MEItem>(`/plans/${planId}/me-items`, payload).then((r) => r.data),
+  update: (id: string, payload: Partial<MEItem>) =>
+    apiClient.put<MEItem>(`/me-items/${id}`, payload).then((r) => r.data),
+  delete: (id: string) =>
+    apiClient.delete(`/me-items/${id}`).then(() => undefined as void),
 }
 
 // ── Milestones ────────────────────────────────────────────────────────────────

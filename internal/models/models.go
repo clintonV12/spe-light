@@ -267,9 +267,18 @@ type Plan struct {
 	OwnerID     uuid.UUID  `json:"owner_id"               db:"owner_id"`
 	StartDate   *time.Time `json:"start_date,omitempty"   db:"start_date"`
 	EndDate     *time.Time `json:"end_date,omitempty"     db:"end_date"`
-	CreatedAt   time.Time  `json:"created_at"             db:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"             db:"updated_at"`
-	DeletedAt   *time.Time `json:"deleted_at,omitempty"   db:"deleted_at"`
+
+	// ── Local-plan chapter 2: Strategic Focus (singleton text) ──────────
+	// Only meaningful for plan_type = 'local'; nil/unused on international
+	// plans. Core Values (chapter 2's third element) is a list, so it's a
+	// separate table (CoreValue in models_local_sections.go) rather than a
+	// column here.
+	Vision  *string `json:"vision,omitempty"  db:"vision"`
+	Mission *string `json:"mission,omitempty" db:"mission"`
+
+	CreatedAt time.Time  `json:"created_at"             db:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"             db:"updated_at"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty"   db:"deleted_at"`
 }
 
 // ── Strategic pillars / objectives (local plan_type only) ───────────────

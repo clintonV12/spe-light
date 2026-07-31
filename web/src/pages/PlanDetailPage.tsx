@@ -10,7 +10,7 @@ import { plansApi, activitiesApi } from '../api/endpoints'
 import { usePermission } from '../hooks'
 import { ProgressBar, EmptyState } from '../components/ui'
 import CreateActivityModal from '../components/activities/CreateActivityModal'
-import LocalPlanBoard from '../components/activities/LocalPlanBoard'
+import LocalPlanChapters from '../components/activities/LocalPlanChapters'
 import { SHORTCUT_CREATE_EVENT } from '../components/layout/AppShell'
 import type { Plan, Activity, Phase, ActivityStatus, PlanStatus } from '../types'
 
@@ -96,10 +96,6 @@ const STATUS_DOT: Record<ActivityStatus, string> = {
   complete:    'bg-green-500',
 }
 
-// activity.status.* translation keys use "under_review" (matching the
-// activityTypes-style naming elsewhere in the locale files) even though the
-// ActivityStatus value itself is 'review' — see the note in
-// ActivityEditorPage.tsx about the backend's models.go enum.
 const STATUS_I18N_KEY: Record<ActivityStatus, string> = {
   not_started: 'not_started',
   in_progress: 'in_progress',
@@ -278,12 +274,15 @@ export default function PlanDetailPage() {
   // Clear selection when phase changes
   useEffect(() => { setSelected(new Set()) }, [activePhase])
 
-  // 'c' keyboard shortcut opens the create activity modal
+  // 'c' keyboard shortcut opens the create activity modal (disabled for local plans)
   useEffect(() => {
-    const handler = () => setShowCreate(true)
+    const handler = () => {
+      if (plan?.plan_type === 'local') return
+      setShowCreate(true)
+    }
     window.addEventListener(SHORTCUT_CREATE_EVENT, handler)
     return () => window.removeEventListener(SHORTCUT_CREATE_EVENT, handler)
-  }, [])
+  }, [plan?.plan_type])
 
 
   const phaseActivities = useMemo(
@@ -387,7 +386,7 @@ export default function PlanDetailPage() {
             >
               <BarChart2 className="size-4" /> {t('planDetail.progress')}
             </button>
-            {can.createPlan && (
+            {can.createPlan && plan.plan_type !== 'local' && (
               <button
                 onClick={() => setShowCreate(true)}
                 className="flex items-center gap-1.5 rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-white hover:bg-accent-600 transition-colors"
@@ -400,12 +399,13 @@ export default function PlanDetailPage() {
       </div>
 
       {plan.plan_type === 'local' ? (
-        <LocalPlanBoard
+        <LocalPlanChapters
           plan={plan}
           activities={activities}
           canEdit={can.editActivity}
           canDelete={can.createPlan}
           onChanged={load}
+         onPlanUpdated={setPlan}
         />
       ) : (
         <>
@@ -518,7 +518,7 @@ export default function PlanDetailPage() {
         </>
       )}
 
-      {showCreate && planId && (
+      {showCreate && planId && plan.plan_type !== 'local' && (
         <CreateActivityModal
           planId={planId}
           plan={plan}

@@ -8,6 +8,7 @@ import { pillarsApi, activitiesApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
 import { EmptyState } from '../ui'
 import CreateActivityModal from './CreateActivityModal'
+import { useAiDraft, AiAssistTrigger, AiAssistPanel } from './AiChapterAssist'
 import type { Plan, Activity, StrategicPillar, StrategicObjective, ActivityStatus } from '../../types'
 
 const STATUS_DOT: Record<ActivityStatus, string> = {
@@ -73,6 +74,7 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
   const [addActivityFor, setAddActivityFor] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Activity | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const ai = useAiDraft(plan.id, 'local_pillars')
 
   const load = () => {
     setLoading(true)
@@ -192,6 +194,35 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
     }
   }
 
+  const handleAiAcceptPillars = async (draft: Record<string, unknown>) => {
+    const list = Array.isArray(draft.pillars) ? draft.pillars as unknown[] : []
+    for (const raw of list) {
+      if (typeof raw !== 'object' || raw === null) continue
+      const row = raw as { title?: unknown; objectives?: unknown }
+      const pillarTitle = typeof row.title === 'string' ? row.title.trim() : ''
+      if (!pillarTitle) continue
+      try {
+        const pillar = await pillarsApi.create(plan.id, { title: pillarTitle })
+        const objectiveTitles = Array.isArray(row.objectives)
+          ? row.objectives.filter((o): o is string => typeof o === 'string')
+          : []
+        for (const objTitle of objectiveTitles) {
+          const trimmed = objTitle.trim()
+          if (!trimmed) continue
+          try {
+            await pillarsApi.createObjective(pillar.id, { title: trimmed })
+          } catch {
+            // best-effort — skip an objective that fails to save rather than aborting the rest
+          }
+        }
+      } catch {
+        // best-effort — skip a pillar that fails to save rather than aborting the rest
+      }
+    }
+    load()
+    onChanged()
+  }
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -202,6 +233,29 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="font-display text-base font-bold text-ink-900">Strategic Pillars</h3>
+          <p className="text-xs text-ink-400">Pillars, their Strategic Objectives (KPAs), and the activities under each.</p>
+        </div>
+        {canEdit && <AiAssistTrigger onClick={ai.start} label="Suggest pillars & objectives" />}
+      </div>
+
+      {ai.open && (
+        <AiAssistPanel
+          keywords={ai.keywords}
+          onKeywordsChange={ai.setKeywords}
+          onGenerate={ai.generate}
+          loading={ai.loading}
+          applying={ai.applying}
+          draft={ai.draft}
+          model={ai.model}
+          onRegenerate={ai.generate}
+          onClose={ai.close}
+          onAccept={() => ai.accept(handleAiAcceptPillars)}
+        />
+      )}
+
       {pillars.length === 0 ? (
         <div className="bg-white rounded-2xl border border-ink-100 p-6">
           <EmptyState

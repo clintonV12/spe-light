@@ -232,6 +232,42 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/{planID}/reports", reportsH.Generate)
 			r.Get("/{planID}/reports", reportsH.History)
+
+			// ── Local-plan chapter 2: Strategic Focus
+			r.Get("/{planID}/core-values", planH.ListCoreValues)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Put("/{planID}/strategic-focus", planH.UpdateStrategicFocus)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Post("/{planID}/core-values", planH.CreateCoreValue)
+
+			// ── Local-plan chapter 3: Situational Analysis ──────────────
+			r.Get("/{planID}/stakeholders", planH.ListStakeholders)
+			r.Get("/{planID}/swot-items", planH.ListSWOTItems)
+			r.Get("/{planID}/pestel-items", planH.ListPESTELItems)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Post("/{planID}/stakeholders", planH.CreateStakeholder)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Post("/{planID}/swot-items", planH.CreateSWOTItem)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Post("/{planID}/pestel-items", planH.CreatePESTELItem)
+
+			// ── Local-plan chapter 6: Organisational Structure ──────────
+			r.Get("/{planID}/org-structure-roles", planH.ListOrgStructureRoles)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Post("/{planID}/org-structure-roles", planH.CreateOrgStructureRole)
+
+			// ── Local-plan chapter 7: Monitoring & Evaluation ───────────
+			r.Get("/{planID}/me-items", planH.ListMEItems)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Post("/{planID}/me-items", planH.CreateMEItem)
+
 		})
 
 		// ── Activities ─────────────────────────────────────────────
@@ -271,6 +307,55 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Delete("/", planH.DeleteObjective)
+		})
+
+		r.Route("/api/v1/core-values/{coreValueID}", func(r chi.Router) {
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Put("/", planH.UpdateCoreValue)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Delete("/", planH.DeleteCoreValue)
+		})
+		r.Route("/api/v1/stakeholders/{stakeholderID}", func(r chi.Router) {
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Put("/", planH.UpdateStakeholder)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Delete("/", planH.DeleteStakeholder)
+		})
+		r.Route("/api/v1/swot-items/{swotItemID}", func(r chi.Router) {
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Put("/", planH.UpdateSWOTItem)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Delete("/", planH.DeleteSWOTItem)
+		})
+		r.Route("/api/v1/pestel-items/{pestelItemID}", func(r chi.Router) {
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Put("/", planH.UpdatePESTELItem)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Delete("/", planH.DeletePESTELItem)
+		})
+		r.Route("/api/v1/org-structure-roles/{roleID}", func(r chi.Router) {
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Put("/", planH.UpdateOrgStructureRole)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Delete("/", planH.DeleteOrgStructureRole)
+		})
+		r.Route("/api/v1/me-items/{meItemID}", func(r chi.Router) {
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Put("/", planH.UpdateMEItem)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Delete("/", planH.DeleteMEItem)
 		})
 
 		// ── Milestones ─────────────────────────────────────────────

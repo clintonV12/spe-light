@@ -209,7 +209,9 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 	if planDesc != nil && *planDesc != "" {
 		fmt.Fprintf(&sb, "Plan description: %s\n", *planDesc)
 	}
-	fmt.Fprintf(&sb, "Phase: %s\n", req.Phase)
+	if req.Phase != "" {
+		fmt.Fprintf(&sb, "Phase: %s\n", req.Phase)
+	}
 	fmt.Fprintf(&sb, "Activity type: %s\n", req.ActivityType)
 	if activityTitle != "" {
 		fmt.Fprintf(&sb, "Activity title: %s\n", activityTitle)
@@ -702,6 +704,61 @@ func draftSchemaFor(activityType string) (schema string, instructions string) {
 			"Draft a procurement plan table. Provide 3-5 rows. \"quantity\" and \"estimated_cost\" are plain " +
 				"numeric strings with no symbol or commas. Leave \"vendor\" as an empty string — it hasn't been " +
 				"selected yet. \"status\" must be exactly \"Pending\" for every new item."
+
+	// ── Local-plan chapter types (2/3/6/7) ─────────────────────────────────
+	//
+	// These back the "Draft with AI" buttons in LocalPlanChapters.tsx.
+	// Unlike the types above, none of these are Activity content — each
+	// local-plan chapter stores its own list of rows (CoreValue,
+	// Stakeholder, PESTELItem, OrgStructureRole, MEItem — see
+	// models_local_sections.go), so the frontend fans the accepted draft
+	// out into individual POST .../create calls per item rather than
+	// writing it into a single activity's `content`. "swot" above is
+	// reused as-is for the local SWOT sub-section since its shape already
+	// matches SwotEditor's four-string content — the frontend splits each
+	// string's "- " bullet lines into individual SWOTItem rows on accept.
+
+	case "local_pillars":
+		return `{"pillars": [{"title": "...", "objectives": ["...", "..."]}]}`,
+			"Draft the Strategic Pillars for this plan (e.g. \"Leadership & Governance\", \"Financial " +
+				"Stability\", \"Member Services\"). Provide 3-5 pillars. Each pillar's \"objectives\" array " +
+				"should list 2-4 Strategic Objectives (KPAs) that are short, specific, and clearly belong " +
+				"under that pillar."
+
+	case "local_core_values":
+		return `{"values": ["...", "..."]}`,
+			"Suggest 3-6 organisational core values appropriate for this plan. Each entry in \"values\" must " +
+				"be a short one-to-three-word name (e.g. \"Integrity\", \"Member-first service\") — not a " +
+				"sentence or a definition."
+
+	case "local_stakeholders":
+		return `{"stakeholders": [{"name": "...", "influence": "high", "interest": "high"}]}`,
+			"Identify 4-8 real stakeholder groups relevant to this organisation (e.g. members, regulators, " +
+				"funders, staff, partner organisations, government bodies). \"influence\" and \"interest\" " +
+				"must each be exactly \"high\" or \"low\" (lowercase, no other values), reflecting where that " +
+				"stakeholder sits on a power/interest grid."
+
+	case "local_pestel":
+		return `{"items": [{"factor": "political", "implication": "...", "positive": "...", "negative": "..."}]}`,
+			"Draft a PESTEL analysis. Return exactly six entries in \"items\", one per factor — " +
+				"\"political\", \"economic\", \"social\", \"technological\", \"environmental\", and \"legal\" " +
+				"(each \"factor\" value must be exactly one of those six, lowercase, one entry per factor, no " +
+				"duplicates). \"implication\" is a short note on what this factor means for the organisation; " +
+				"\"positive\" and \"negative\" are the upside and downside angles it creates."
+
+	case "local_org_structure":
+		return `{"roles": [{"title": "...", "reports_to": ""}]}`,
+			"Draft an organisational structure of 5-8 roles appropriate for this organisation, ordered from " +
+				"the top of the chart down. \"reports_to\" must be an empty string for the single top role " +
+				"(e.g. \"General Membership\" or \"Board\"), and for every other role must exactly match the " +
+				"\"title\" of another role that appears earlier in the list."
+
+	case "local_me":
+		return `{"items": [{"category": "objective", "text": "..."}]}`,
+			"Draft a Monitoring & Evaluation section. Provide 2-4 entries for each of these four categories " +
+				"in \"items\" — \"category\" must be exactly one of \"objective\", " +
+				"\"critical_success_factor\", \"review_note\", or \"conclusion_measure\" (lowercase, exactly " +
+				"as written). \"text\" is a single concise sentence."
 
 	default:
 		sections, ok := genericSectionKeys[activityType]

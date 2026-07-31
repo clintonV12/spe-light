@@ -25,7 +25,8 @@ import type {
   User, UserRole,
   AuditListResponse,
   Milestone, MilestoneStatus,
-  SSOConfig,
+  SSOConfig, CoreValue, Stakeholder, StakeholderLevel, SWOTItem, SWOTCategory,
+  PESTELItem, PESTELFactor, OrgStructureRole, MEItem, MECategory
 } from '../types'
 
 const IS_MOCK = import.meta.env.VITE_MOCK === 'true'
@@ -114,6 +115,67 @@ export const pillarsApi = {
   createObjective:  (pillarId: string, p: { title: string })   => api().then((m) => m.pillarsApi.createObjective(pillarId, p))    as Promise<StrategicObjective>,
   updateObjective:  (id: string, p: Partial<StrategicObjective>) => api().then((m) => m.pillarsApi.updateObjective(id, p))        as Promise<StrategicObjective>,
   deleteObjective:  (id: string)                               => api().then((m) => m.pillarsApi.deleteObjective(id))            as Promise<void>,
+}
+
+// ── Chapter 2: Strategic Focus ──────────────────────────────────────────────
+ 
+export const strategicFocusApi = {
+  update: (planId: string, p: { vision?: string; mission?: string }) =>
+    api().then((m) => m.strategicFocusApi.update(planId, p)) as Promise<Plan>,
+}
+ 
+export const coreValuesApi = {
+  list:   (planId: string)                     => api().then((m) => m.coreValuesApi.list(planId))       as Promise<CoreValue[]>,
+  create: (planId: string, p: { name: string; description?: string }) =>
+    api().then((m) => m.coreValuesApi.create(planId, p)) as Promise<CoreValue>,
+  update: (id: string, p: Partial<CoreValue>)  => api().then((m) => m.coreValuesApi.update(id, p))       as Promise<CoreValue>,
+  delete: (id: string)                         => api().then((m) => m.coreValuesApi.delete(id))          as Promise<void>,
+}
+ 
+// ── Chapter 3: Situational Analysis ─────────────────────────────────────────
+ 
+export const stakeholdersApi = {
+  list:   (planId: string) => api().then((m) => m.stakeholdersApi.list(planId)) as Promise<Stakeholder[]>,
+  create: (planId: string, p: { name: string; influence: StakeholderLevel; interest: StakeholderLevel; notes?: string }) =>
+    api().then((m) => m.stakeholdersApi.create(planId, p)) as Promise<Stakeholder>,
+  update: (id: string, p: Partial<Stakeholder>) => api().then((m) => m.stakeholdersApi.update(id, p))    as Promise<Stakeholder>,
+  delete: (id: string)                          => api().then((m) => m.stakeholdersApi.delete(id))       as Promise<void>,
+}
+ 
+export const swotApi = {
+  list:   (planId: string) => api().then((m) => m.swotApi.list(planId)) as Promise<SWOTItem[]>,
+  create: (planId: string, p: { category: SWOTCategory; text: string }) =>
+    api().then((m) => m.swotApi.create(planId, p)) as Promise<SWOTItem>,
+  update: (id: string, p: Partial<SWOTItem>) => api().then((m) => m.swotApi.update(id, p)) as Promise<SWOTItem>,
+  delete: (id: string)                       => api().then((m) => m.swotApi.delete(id))    as Promise<void>,
+}
+ 
+export const pestelApi = {
+  list:   (planId: string) => api().then((m) => m.pestelApi.list(planId)) as Promise<PESTELItem[]>,
+  create: (planId: string, p: { factor: PESTELFactor; implication?: string; positive?: string; negative?: string }) =>
+    api().then((m) => m.pestelApi.create(planId, p)) as Promise<PESTELItem>,
+  update: (id: string, p: Partial<PESTELItem>) => api().then((m) => m.pestelApi.update(id, p)) as Promise<PESTELItem>,
+  delete: (id: string)                         => api().then((m) => m.pestelApi.delete(id))    as Promise<void>,
+}
+ 
+// ── Chapter 6: Organisational Structure ─────────────────────────────────────
+ 
+export const orgStructureApi = {
+  list:   (planId: string) => api().then((m) => m.orgStructureApi.list(planId)) as Promise<OrgStructureRole[]>,
+  create: (planId: string, p: { title: string; description?: string; reports_to_id?: string }) =>
+    api().then((m) => m.orgStructureApi.create(planId, p)) as Promise<OrgStructureRole>,
+  update: (id: string, p: Partial<OrgStructureRole>) => api().then((m) => m.orgStructureApi.update(id, p)) as Promise<OrgStructureRole>,
+  delete: (id: string)                               => api().then((m) => m.orgStructureApi.delete(id))    as Promise<void>,
+}
+ 
+// ── Chapter 7: Monitoring & Evaluation ──────────────────────────────────────
+ 
+export const meItemsApi = {
+  list:   (planId: string, category?: MECategory) => api().then((m) => m.meItemsApi.list(planId, category)) as Promise<MEItem[]>,
+  create: (planId: string, p: { category: MECategory; text: string }) =>
+    api().then((m) => m.meItemsApi.create(planId, p)) as Promise<MEItem>,
+  update: (id: string, p: Partial<MEItem>) => api().then((m) => m.meItemsApi.update(id, p)) as Promise<MEItem>,
+  delete: (id: string)                     => api().then((m) => m.meItemsApi.delete(id))    as Promise<void>,
 }
 
 // ── Milestones ────────────────────────────────────────────────────────────────
