@@ -26,7 +26,8 @@ import type {
   AuditListResponse,
   Milestone, MilestoneStatus,
   SSOConfig, CoreValue, Stakeholder, StakeholderLevel, SWOTItem, SWOTCategory,
-  PESTELItem, PESTELFactor, OrgStructureRole, MEItem, MECategory
+  PESTELItem, PESTELFactor, OrgStructureRole, MEItem, MECategory,
+  TrackedKPI, KPIWithMeasurements, KPIMeasurement, KPIDirection, KPIPeriod
 } from '../types'
 
 const IS_MOCK = import.meta.env.VITE_MOCK === 'true'
@@ -176,6 +177,19 @@ export const meItemsApi = {
     api().then((m) => m.meItemsApi.create(planId, p)) as Promise<MEItem>,
   update: (id: string, p: Partial<MEItem>) => api().then((m) => m.meItemsApi.update(id, p)) as Promise<MEItem>,
   delete: (id: string)                     => api().then((m) => m.meItemsApi.delete(id))    as Promise<void>,
+}
+
+// ── Tracking Module ──────────────────────────────────────────────────────
+
+export const trackingApi = {
+  list:   (planId: string) => api().then((m) => m.trackingApi.list(planId)) as Promise<KPIWithMeasurements[]>,
+  create: (planId: string, p: { name: string; direction?: KPIDirection }) =>
+    api().then((m) => m.trackingApi.create(planId, p)) as Promise<TrackedKPI>,
+  update: (id: string, p: { name?: string; direction?: KPIDirection }) =>
+    api().then((m) => m.trackingApi.update(id, p)) as Promise<TrackedKPI>,
+  delete: (id: string) => api().then((m) => m.trackingApi.delete(id)) as Promise<void>,
+  upsertMeasurement: (kpiId: string, period: KPIPeriod, p: { target_value?: number | null; actual_value?: number | null }) =>
+    api().then((m) => m.trackingApi.upsertMeasurement(kpiId, period, p)) as Promise<KPIMeasurement>,
 }
 
 // ── Milestones ────────────────────────────────────────────────────────────────

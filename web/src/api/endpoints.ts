@@ -21,6 +21,7 @@ export {
   pestelApi,
   orgStructureApi,
   meItemsApi,
+  trackingApi,
   milestonesApi,
   reportsApi,
   aiApi,

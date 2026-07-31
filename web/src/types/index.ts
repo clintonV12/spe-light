@@ -558,3 +558,46 @@ export interface MEItem {
   created_at: string
   updated_at: string
 }
+
+// ── Tracking Module ──────────────────────────────────────────────────────
+//
+// A TrackedKPI is distinct from the `KPI` interface above (an unstructured
+// {indicator, target} pair embedded in a local-plan Activity, never
+// measured against an actual value). A TrackedKPI is its own addressable
+// row on a Plan — works for both plan types — carrying Target/Actual
+// measurements across the three fixed reporting periods below.
+
+/** "increase": higher actual is better (e.g. revenue). "decrease": lower actual is better (e.g. defect rate). */
+export type KPIDirection = 'increase' | 'decrease'
+
+export type KPIPeriod = 'monthly' | 'quarterly' | 'annual'
+
+export const KPI_PERIODS: KPIPeriod[] = ['monthly', 'quarterly', 'annual']
+
+export interface TrackedKPI {
+  id: string
+  plan_id: string
+  org_id: string
+  name: string
+  direction: KPIDirection
+  user_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface KPIMeasurement {
+  id: string
+  kpi_id: string
+  plan_id: string
+  org_id: string
+  period: KPIPeriod
+  target_value?: number
+  actual_value?: number
+  created_at: string
+  updated_at: string
+}
+
+/** GET /plans/{planID}/kpis — a KPI with whatever measurements exist so far, keyed by period. */
+export interface KPIWithMeasurements extends TrackedKPI {
+  measurements: Partial<Record<KPIPeriod, KPIMeasurement>>
+}

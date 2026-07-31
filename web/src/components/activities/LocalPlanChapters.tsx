@@ -14,6 +14,7 @@ import type {
   PESTELFactor, OrgStructureRole, MEItem, MECategory,
 } from '../../types'
 import LocalPlanBoard from './LocalPlanBoard'
+import TrackingModule from './TrackingModule'
 import { useAiDraft, AiAssistTrigger, AiAssistPanel } from './AiChapterAssist'
 
 interface LocalPlanChaptersProps {
@@ -25,7 +26,7 @@ interface LocalPlanChaptersProps {
   onPlanUpdated: (plan: Plan) => void
 }
 
-type ChapterKey = 'focus' | 'analysis' | 'pillars' | 'org' | 'me'
+type ChapterKey = 'focus' | 'analysis' | 'pillars' | 'org' | 'me' | 'tracking'
 
 const CHAPTERS: { key: ChapterKey; label: string; icon: React.ElementType }[] = [
   { key: 'focus',    label: 'Vision, Mission & Values', icon: Compass },
@@ -33,6 +34,7 @@ const CHAPTERS: { key: ChapterKey; label: string; icon: React.ElementType }[] = 
   { key: 'pillars',  label: 'Strategic Pillars',        icon: Layers  },
   { key: 'org',      label: 'Organisational Structure', icon: Network },
   { key: 'me',       label: 'Monitoring & Evaluation',  icon: Gauge   },
+  { key: 'tracking', label: 'Tracking',                 icon: Target  },
 ]
 
 export const LocalPlanChapters: React.FC<LocalPlanChaptersProps> = ({
@@ -72,6 +74,7 @@ export const LocalPlanChapters: React.FC<LocalPlanChaptersProps> = ({
       )}
       {active === 'org' && <OrgStructureSection plan={plan} canEdit={canEdit} />}
       {active === 'me'  && <MESection plan={plan} canEdit={canEdit} />}
+      {active === 'tracking' && <TrackingModule plan={plan} canEdit={canEdit} />}
     </div>
   )
 }

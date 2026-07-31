@@ -97,7 +97,8 @@ import type {
   AuditLog, AuditListResponse,
   Milestone, MilestoneStatus,
   SSOConfig, CoreValue, Stakeholder, StakeholderLevel, SWOTItem, SWOTCategory,
-  PESTELItem, PESTELFactor, OrgStructureRole, MEItem, MECategory
+  PESTELItem, PESTELFactor, OrgStructureRole, MEItem, MECategory,
+  TrackedKPI, KPIMeasurement, KPIWithMeasurements, KPIDirection, KPIPeriod
 } from '../types'
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -395,6 +396,21 @@ export const meItemsApi = {
     apiClient.put<MEItem>(`/me-items/${id}`, payload).then((r) => r.data),
   delete: (id: string) =>
     apiClient.delete(`/me-items/${id}`).then(() => undefined as void),
+}
+
+// ── Tracking Module ──────────────────────────────────────────────────────
+
+export const trackingApi = {
+  list: (planId: string) =>
+    apiClient.get<KPIWithMeasurements[]>(`/plans/${planId}/kpis`).then((r) => r.data),
+  create: (planId: string, payload: { name: string; direction?: KPIDirection }) =>
+    apiClient.post<TrackedKPI>(`/plans/${planId}/kpis`, payload).then((r) => r.data),
+  update: (id: string, payload: { name?: string; direction?: KPIDirection }) =>
+    apiClient.put<TrackedKPI>(`/kpis/${id}`, payload).then((r) => r.data),
+  delete: (id: string) =>
+    apiClient.delete(`/kpis/${id}`).then(() => undefined as void),
+  upsertMeasurement: (kpiId: string, period: KPIPeriod, payload: { target_value?: number | null; actual_value?: number | null }) =>
+    apiClient.put<KPIMeasurement>(`/kpis/${kpiId}/measurements/${period}`, payload).then((r) => r.data),
 }
 
 // ── Milestones ────────────────────────────────────────────────────────────────

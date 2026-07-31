@@ -718,6 +718,14 @@ func draftSchemaFor(activityType string) (schema string, instructions string) {
 	// matches SwotEditor's four-string content — the frontend splits each
 	// string's "- " bullet lines into individual SWOTItem rows on accept.
 
+	case "local_kpis":
+		return `{"kpis": [{"name": "...", "direction": "increase"}]}`,
+			"Suggest 4-8 Key Performance Indicators appropriate for tracking this plan's progress. " +
+				"\"direction\" must be exactly \"increase\" (a higher actual value is better — e.g. revenue, " +
+				"membership count) or \"decrease\" (a lower actual value is better — e.g. complaint rate, " +
+				"defect rate) — pick whichever correctly describes that KPI, lowercase, no other values. " +
+				"\"name\" should be short and specific, not a full sentence."
+
 	case "local_pillars":
 		return `{"pillars": [{"title": "...", "objectives": ["...", "..."]}]}`,
 			"Draft the Strategic Pillars for this plan (e.g. \"Leadership & Governance\", \"Financial " +

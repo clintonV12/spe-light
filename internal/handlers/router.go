@@ -268,6 +268,13 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/{planID}/me-items", planH.CreateMEItem)
 
+			// ── Tracking Module (KPI target/actual tracking) ────────────
+			// Works for both plan types — see plansvc/tracking.go.
+			r.Get("/{planID}/kpis", planH.ListKPIs)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Post("/{planID}/kpis", planH.CreateKPI)
+
 		})
 
 		// ── Activities ─────────────────────────────────────────────
@@ -356,6 +363,19 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Delete("/", planH.DeleteMEItem)
+		})
+
+		// ── Tracking Module (KPI target/actual tracking) ────────────
+		r.Route("/api/v1/kpis/{kpiID}", func(r chi.Router) {
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Put("/", planH.UpdateKPI)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Delete("/", planH.DeleteKPI)
+			r.With(middleware.RequireRole(
+				models.RoleOrgAdmin, models.RolePlanner,
+			)).Put("/measurements/{period}", planH.UpsertKPIMeasurement)
 		})
 
 		// ── Milestones ─────────────────────────────────────────────

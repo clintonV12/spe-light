@@ -11,6 +11,7 @@ import { usePermission } from '../hooks'
 import { ProgressBar, EmptyState } from '../components/ui'
 import CreateActivityModal from '../components/activities/CreateActivityModal'
 import LocalPlanChapters from '../components/activities/LocalPlanChapters'
+import TrackingModule from '../components/activities/TrackingModule'
 import { SHORTCUT_CREATE_EVENT } from '../components/layout/AppShell'
 import type { Plan, Activity, Phase, ActivityStatus, PlanStatus } from '../types'
 
@@ -246,6 +247,7 @@ export default function PlanDetailPage() {
   const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
   const [activePhase, setActivePhase] = useState<Phase>('P1')
+  const [view, setView] = useState<'activities' | 'tracking'>('activities')
   const [showCreate, setShowCreate] = useState(false)
 
   // ── Bulk selection (per-phase — clears when switching phase) ──────────────
@@ -409,6 +411,30 @@ export default function PlanDetailPage() {
         />
       ) : (
         <>
+          {/* Activities / Tracking toggle */}
+          <div className="flex gap-1 border-b border-ink-200">
+            <button
+              onClick={() => setView('activities')}
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+                view === 'activities' ? 'border-accent text-accent' : 'border-transparent text-ink-500 hover:text-ink-700'
+              }`}
+            >
+              {t('planDetail.activities', { defaultValue: 'Activities' })}
+            </button>
+            <button
+              onClick={() => setView('tracking')}
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+                view === 'tracking' ? 'border-accent text-accent' : 'border-transparent text-ink-500 hover:text-ink-700'
+              }`}
+            >
+              {t('planDetail.tracking', { defaultValue: 'Tracking' })}
+            </button>
+          </div>
+
+          {view === 'tracking' ? (
+            <TrackingModule plan={plan} canEdit={can.editActivity} />
+          ) : (
+          <>
           {/* Phase progress cards / tabs */}
           <div className="grid grid-cols-3 gap-4">
             {PHASES.map((phase) => {
@@ -515,6 +541,8 @@ export default function PlanDetailPage() {
               )}
             </div>
           </div>
+          </>
+          )}
         </>
       )}
 

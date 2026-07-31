@@ -79,7 +79,7 @@ export const AiDraftPanel: React.FC<AiDraftPanelProps> = ({
         onClick={generate}
         className="w-full"
       >
-        {loading ? 'Generating…' : 'Generate ideas'}
+        {loading ? 'Thinking…' : 'Generate ideas'}
       </Button>
 
       {draft && (
