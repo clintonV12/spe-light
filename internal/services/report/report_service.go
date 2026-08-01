@@ -592,7 +592,7 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 				for _, a := range activities {
 					period, responsible, budget := "—", "—", "—"
 					if a.TargetPeriod != nil && *a.TargetPeriod != "" {
-						period = *a.TargetPeriod
+						period = string(*a.TargetPeriod)
 					}
 					if a.Responsibility != nil && *a.Responsibility != "" {
 						responsible = *a.Responsibility

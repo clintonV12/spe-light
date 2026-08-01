@@ -4,7 +4,8 @@ import { Plus, Trash2, X } from 'lucide-react'
 import { Button, Input, Select } from '../ui'
 import { activitiesApi, pillarsApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
-import type { Phase, ActivityType, Plan, StrategicPillar, StrategicObjective, KPI } from '../../types'
+import type { Phase, ActivityType, Plan, StrategicPillar, StrategicObjective, KPI, KPIPeriod } from '../../types'
+import { KPI_PERIODS } from '../../types'
 
 // Labels come from t(`activityTypes.${value}`) — value stays the raw
 // ActivityType id so the API contract and toastError etc are unaffected.
@@ -49,7 +50,7 @@ const PHASE_ACTIVITY_TYPES: Record<Phase, { value: ActivityType }[]> = {
 const LOCAL_ACTIVITY_TYPE = 'strategic_action'
 
 function emptyKPI(): KPI {
-  return { indicator: '', target: '' }
+  return { indicator: '', target: '', target_value: undefined }
 }
 
 interface CreateActivityModalProps {
@@ -91,7 +92,7 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
   const [objectiveId, setObjectiveId] = useState<string>(defaultObjectiveId ?? '')
   const [budget, setBudget] = useState('')
   const [responsibility, setResponsibility] = useState('')
-  const [targetPeriod, setTargetPeriod] = useState('')
+  const [targetPeriod, setTargetPeriod] = useState<KPIPeriod | ''>('')
   const [kpis, setKpis] = useState<KPI[]>([emptyKPI()])
 
   // ── Shared state ─────────────────────────────────────────────────────
@@ -148,6 +149,10 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
   const updateKpi = (index: number, field: keyof KPI, value: string) => {
     setKpis((prev) => prev.map((k, i) => (i === index ? { ...k, [field]: value } : k)))
   }
+  const updateKpiTargetValue = (index: number, value: string) => {
+    const num = value.trim() === '' ? undefined : Number(value)
+    setKpis((prev) => prev.map((k, i) => (i === index ? { ...k, target_value: num } : k)))
+  }
   const addKpi = () => setKpis((prev) => [...prev, emptyKPI()])
   const removeKpi = (index: number) => setKpis((prev) => prev.filter((_, i) => i !== index))
 
@@ -159,17 +164,20 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
     try {
       if (isLocal) {
         const cleanedKpis = kpis
-          .map((k) => ({ indicator: k.indicator.trim(), target: k.target.trim() }))
-          .filter((k) => k.indicator || k.target)
+          .map((k) => ({
+            indicator: k.indicator.trim(),
+            target: k.target.trim(),
+            target_value: k.target_value,
+          }))
+          .filter((k) => k.indicator || k.target || k.target_value !== undefined)
         await activitiesApi.create(planId, {
           objective_id: objectiveId,
           type: LOCAL_ACTIVITY_TYPE,
           title: title.trim(),
-          due_date: dueDate || undefined,
           content: {},
           budget: budget ? Number(budget) : undefined,
           responsibility: responsibility.trim() || undefined,
-          target_period: targetPeriod.trim() || undefined,
+          target_period: targetPeriod || undefined,
           kpis: cleanedKpis,
         })
       } else {
@@ -269,6 +277,13 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
                           placeholder={t('createActivityModal.kpiTarget', { defaultValue: 'Target' })}
                           className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm outline-none focus:border-accent"
                         />
+                        <input
+                          type="number"
+                          value={k.target_value ?? ''}
+                          onChange={(e) => updateKpiTargetValue(i, e.target.value)}
+                          placeholder={t('createActivityModal.kpiTargetValue', { defaultValue: 'Target value (number, for tracking)' })}
+                          className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm outline-none focus:border-accent"
+                        />
                       </div>
                       {kpis.length > 1 && (
                         <button
@@ -299,19 +314,28 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
                 onChange={(e) => setResponsibility(e.target.value)}
               />
 
-              <Input
-                label={t('createActivityModal.targetPeriod', { defaultValue: 'Target Period' })}
-                placeholder={t('createActivityModal.targetPeriodPlaceholder', { defaultValue: 'e.g. Year 1' })}
-                value={targetPeriod}
-                onChange={(e) => setTargetPeriod(e.target.value)}
-              />
-
-              <Input
-                label={t('createActivityModal.dueDate')}
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
+              <div>
+                <label className="block text-sm font-medium text-ink-700 mb-1.5">
+                  {t('createActivityModal.measurementPeriod', { defaultValue: 'Measurement Period' })}
+                </label>
+                <select
+                  value={targetPeriod}
+                  onChange={(e) => setTargetPeriod(e.target.value as KPIPeriod | '')}
+                  className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm text-ink-900 outline-none focus:border-accent"
+                >
+                  <option value="">{t('createActivityModal.periodUnset', { defaultValue: 'No measurement period' })}</option>
+                  {KPI_PERIODS.map((p) => (
+                    <option key={p} value={p}>
+                      {t(`createActivityModal.period.${p}`, { defaultValue: p.charAt(0).toUpperCase() + p.slice(1) })}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-ink-400 mt-1">
+                  {t('createActivityModal.periodHint', {
+                    defaultValue: 'How often this activity is reported on — this is what the Tracking Module groups its KPIs by, and replaces a separate due date for local-plan activities.',
+                  })}
+                </p>
+              </div>
             </>
           ) : (
             <>

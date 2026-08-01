@@ -1,11 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2, TrendingUp, TrendingDown } from 'lucide-react'
-import { Button, Input } from '../ui'
-import { trackingApi } from '../../api/endpoints'
+import { TrendingUp, TrendingDown, AlertTriangle, Lock } from 'lucide-react'
+import { activitiesApi, pillarsApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
-import type { Plan, KPIWithMeasurements, KPIDirection, KPIPeriod, KPIMeasurement } from '../../types'
+import type { Plan, Activity, KPI, KPIDirection, KPIPeriod, StrategicPillar, StrategicObjective } from '../../types'
 import { KPI_PERIODS } from '../../types'
-import { useAiDraft, AiAssistTrigger, AiAssistPanel } from './AiChapterAssist'
 
 interface TrackingModuleProps {
   plan: Plan
@@ -20,9 +18,9 @@ const PERIOD_META: Record<KPIPeriod, { label: string; color: string }> = {
 
 // ── Achievement math ─────────────────────────────────────────────────────
 //
-// Mirrors models.KPIMeasurement.Achievement in the backend exactly (see
-// models_tracking.go) so the number shown here while typing — before the
-// value is even saved — matches what the server will compute once it is.
+// Mirrors models.KPI's doc comment in the backend exactly, so the number
+// shown here while typing — before the value is even saved — matches what
+// the server holds once it is:
 //
 //   increase: pct = actual / target * 100   (higher actual is better)
 //   decrease: pct = target / actual * 100   (lower actual is better)
@@ -30,7 +28,7 @@ const PERIOD_META: Record<KPIPeriod, { label: string; color: string }> = {
 // Not capped at 100 — overachievement is meaningful — but progress bars
 // clamp their *width* at 100% so a 150% KPI doesn't overflow its box.
 
-function computeAchievement(direction: KPIDirection, target?: number, actual?: number): number | null {
+function computeAchievement(direction: KPIDirection | undefined, target?: number, actual?: number): number | null {
   if (target === undefined || target === null || actual === undefined || actual === null) return null
   if (direction === 'decrease') {
     if (actual === 0) return null
@@ -38,14 +36,6 @@ function computeAchievement(direction: KPIDirection, target?: number, actual?: n
   }
   if (target === 0) return null
   return (actual / target) * 100
-}
-
-function periodCompletion(kpis: KPIWithMeasurements[], period: KPIPeriod): number | null {
-  const values = kpis
-    .map((k) => computeAchievement(k.direction, k.measurements[period]?.target_value, k.measurements[period]?.actual_value))
-    .filter((v): v is number => v !== null)
-  if (values.length === 0) return null
-  return values.reduce((a, b) => a + b, 0) / values.length
 }
 
 function achievementColor(pct: number): string {
@@ -60,7 +50,7 @@ function achievementBarColor(pct: number): string {
   return 'bg-red-400'
 }
 
-/** Small horizontal achievement bar + percentage label, used inside each KPI/period cell. */
+/** Small horizontal achievement bar + percentage label. */
 const AchievementBar: React.FC<{ pct: number | null }> = ({ pct }) => {
   if (pct === null) {
     return <p className="text-xs text-ink-300 mt-1.5">Enter target &amp; actual</p>
@@ -77,8 +67,8 @@ const AchievementBar: React.FC<{ pct: number | null }> = ({ pct }) => {
   )
 }
 
-/** Radial gauge for the single headline "Overall Strategic Plan Completion" metric. */
-const RadialGauge: React.FC<{ pct: number | null; label: string }> = ({ pct, label }) => {
+/** Radial gauge for the Monthly/Quarterly/Annual/Overall completion metrics. */
+const RadialGauge: React.FC<{ pct: number | null; label: string; sublabel?: string }> = ({ pct, label, sublabel }) => {
   const r = 52
   const circumference = 2 * Math.PI * r
   const clamped = pct === null ? 0 : Math.min(100, Math.max(0, pct))
@@ -101,86 +91,108 @@ const RadialGauge: React.FC<{ pct: number | null; label: string }> = ({ pct, lab
         </text>
       </svg>
       <p className="text-xs font-bold uppercase tracking-wide text-ink-500 mt-1">{label}</p>
+      {sublabel && <p className="text-[10px] text-ink-400">{sublabel}</p>}
     </div>
   )
 }
 
+// One (activity, kpi-index) pair — the actual unit the Tracking Module edits.
+interface KpiRow {
+  activity: Activity
+  kpiIndex: number
+  kpi: KPI
+}
+
+function achievementForRow(row: KpiRow): number | null {
+  return computeAchievement(row.kpi.direction, row.kpi.target_value, row.kpi.actual_value)
+}
+
+function periodCompletion(rows: KpiRow[], period: KPIPeriod): number | null {
+  const values = rows
+    .filter((r) => r.activity.target_period === period)
+    .map(achievementForRow)
+    .filter((v): v is number => v !== null)
+  if (values.length === 0) return null
+  return values.reduce((a, b) => a + b, 0) / values.length
+}
+
 export const TrackingModule: React.FC<TrackingModuleProps> = ({ plan, canEdit }) => {
-  const [kpis, setKpis] = useState<KPIWithMeasurements[]>([])
+  const [activities, setActivities] = useState<Activity[]>([])
+  const [pillars, setPillars] = useState<StrategicPillar[]>([])
+  const [objectives, setObjectives] = useState<StrategicObjective[]>([])
   const [loading, setLoading] = useState(true)
-  const [name, setName] = useState('')
-  const [direction, setDirection] = useState<KPIDirection>('increase')
-  const [adding, setAdding] = useState(false)
-  const { success, error } = useToast()
-  const ai = useAiDraft(plan.id, 'local_kpis')
+  const { error } = useToast()
 
   useEffect(() => {
-    trackingApi.list(plan.id)
-      .then(setKpis)
+    Promise.all([
+      activitiesApi.list(plan.id),
+      pillarsApi.list(plan.id),
+      pillarsApi.listObjectives(plan.id),
+    ])
+      .then(([acts, p, o]) => {
+        setActivities(acts)
+        setPillars(p)
+        setObjectives(o)
+      })
       .catch(() => error('Failed to load KPIs'))
       .finally(() => setLoading(false))
   }, [plan.id])
 
-  const addKPI = async () => {
-    if (!name.trim()) return
-    setAdding(true)
-    try {
-      const kpi = await trackingApi.create(plan.id, { name: name.trim(), direction })
-      setKpis((prev) => [...prev, { ...kpi, measurements: {} }])
-      setName('')
-      setDirection('increase')
-    } catch {
-      error('Failed to add KPI')
-    } finally {
-      setAdding(false)
-    }
+  const objectiveById = useMemo(() => new Map(objectives.map((o) => [o.id, o])), [objectives])
+  const pillarById = useMemo(() => new Map(pillars.map((p) => [p.id, p])), [pillars])
+
+  const breadcrumbFor = (activity: Activity): string => {
+    const objective = activity.objective_id ? objectiveById.get(activity.objective_id) : undefined
+    const pillar = objective ? pillarById.get(objective.pillar_id) : undefined
+    if (pillar && objective) return `${pillar.title} › ${objective.title}`
+    return objective?.title ?? ''
   }
 
-  const removeKPI = async (id: string) => {
-    try {
-      await trackingApi.delete(id)
-      setKpis((prev) => prev.filter((k) => k.id !== id))
-    } catch {
-      error('Failed to remove KPI')
-    }
-  }
+  // Activities that actually carry trackable KPIs — everything else (an
+  // activity with no kpis entered) has nothing for this screen to show.
+  const trackedActivities = useMemo(
+    () => activities.filter((a) => (a.kpis?.length ?? 0) > 0),
+    [activities],
+  )
 
-  const saveMeasurement = async (kpiId: string, period: KPIPeriod, targetValue: number | null, actualValue: number | null) => {
-    try {
-      const m = await trackingApi.upsertMeasurement(kpiId, period, { target_value: targetValue, actual_value: actualValue })
-      setKpis((prev) => prev.map((k) => (
-        k.id === kpiId ? { ...k, measurements: { ...k.measurements, [period]: m } } : k
-      )))
-    } catch {
-      error('Failed to save measurement')
-    }
-  }
+  const rows: KpiRow[] = useMemo(
+    () => trackedActivities.flatMap((activity) =>
+      (activity.kpis ?? []).map((kpi, kpiIndex) => ({ activity, kpiIndex, kpi })),
+    ),
+    [trackedActivities],
+  )
 
-  const handleAiAcceptKpis = async (draft: Record<string, unknown>) => {
-    const list = Array.isArray(draft.kpis) ? draft.kpis as unknown[] : []
-    for (const raw of list) {
-      if (typeof raw !== 'object' || raw === null) continue
-      const row = raw as { name?: unknown; direction?: unknown }
-      const rowName = typeof row.name === 'string' ? row.name.trim() : ''
-      if (!rowName) continue
-      const rowDirection: KPIDirection = row.direction === 'decrease' ? 'decrease' : 'increase'
-      try {
-        const kpi = await trackingApi.create(plan.id, { name: rowName, direction: rowDirection })
-        setKpis((prev) => [...prev, { ...kpi, measurements: {} }])
-      } catch {
-        // best-effort — skip a KPI that fails to save rather than aborting the rest
-      }
-    }
-  }
+  const unscheduledCount = useMemo(
+    () => trackedActivities.filter((a) => !a.target_period).length,
+    [trackedActivities],
+  )
 
-  const monthly = useMemo(() => periodCompletion(kpis, 'monthly'), [kpis])
-  const quarterly = useMemo(() => periodCompletion(kpis, 'quarterly'), [kpis])
-  const annual = useMemo(() => periodCompletion(kpis, 'annual'), [kpis])
+  const monthly = useMemo(() => periodCompletion(rows, 'monthly'), [rows])
+  const quarterly = useMemo(() => periodCompletion(rows, 'quarterly'), [rows])
+  const annual = useMemo(() => periodCompletion(rows, 'annual'), [rows])
   const overall = useMemo(() => {
     const parts = [monthly, quarterly, annual].filter((v): v is number => v !== null)
     if (parts.length === 0) return null
     return parts.reduce((a, b) => a + b, 0) / parts.length
   }, [monthly, quarterly, annual])
+
+  const saveActivityKpis = async (activityId: string, newKpis: KPI[]) => {
+    try {
+      const updated = await activitiesApi.update(activityId, { kpis: newKpis })
+      setActivities((prev) => prev.map((a) => (a.id === activityId ? updated : a)))
+    } catch {
+      error('Failed to save KPI')
+    }
+  }
+
+  const savePeriod = async (activityId: string, period: KPIPeriod | '') => {
+    try {
+      const updated = await activitiesApi.update(activityId, { target_period: period || undefined })
+      setActivities((prev) => prev.map((a) => (a.id === activityId ? updated : a)))
+    } catch {
+      error('Failed to save reporting period')
+    }
+  }
 
   if (loading) {
     return (
@@ -203,141 +215,171 @@ export const TrackingModule: React.FC<TrackingModuleProps> = ({ plan, canEdit })
             <RadialGauge pct={overall} label="Overall" />
           </div>
         </div>
-        {kpis.length === 0 && (
-          <p className="text-sm text-ink-400 text-center mt-3">Add KPIs below to start tracking progress.</p>
+        {rows.length === 0 && (
+          <p className="text-sm text-ink-400 text-center mt-3">
+            No KPIs yet — add one when creating or editing an activity under Strategic Pillars.
+          </p>
+        )}
+        {rows.length > 0 && unscheduledCount > 0 && (
+          <div className="flex items-center gap-2 justify-center mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <AlertTriangle className="size-3.5 shrink-0" />
+            {unscheduledCount} {unscheduledCount === 1 ? 'activity has' : 'activities have'} KPIs but no reporting
+            period set — set one below so they count toward a gauge above.
+          </div>
         )}
       </div>
 
-      {/* KPI list */}
-      <div className="rounded-2xl border border-ink-100 bg-white p-5">
-        <div className="flex items-center justify-between gap-2 mb-4">
-          <h3 className="font-display text-base font-bold text-ink-900">Key Performance Indicators</h3>
-          {canEdit && <AiAssistTrigger onClick={ai.start} label="Suggest KPIs" />}
-        </div>
-
-        {ai.open && (
-          <AiAssistPanel
-            keywords={ai.keywords}
-            onKeywordsChange={ai.setKeywords}
-            onGenerate={ai.generate}
-            loading={ai.loading}
-            applying={ai.applying}
-            draft={ai.draft}
-            model={ai.model}
-            onRegenerate={ai.generate}
-            onClose={ai.close}
-            onAccept={() => ai.accept(handleAiAcceptKpis)}
-          />
-        )}
-
-        {kpis.length === 0 && (
-          <p className="text-sm text-ink-400 mb-4">No KPIs yet. Add one below, or use "Suggest KPIs" above.</p>
-        )}
-
-        <div className="space-y-4 mb-4">
-          {kpis.map((kpi) => (
-            <KPIRow key={kpi.id} kpi={kpi} canEdit={canEdit} onRemove={() => removeKPI(kpi.id)} onSaveMeasurement={saveMeasurement} />
-          ))}
-        </div>
-
-        {canEdit && (
-          <div className="flex flex-wrap gap-2 items-center pt-3 border-t border-ink-100">
-            <Input placeholder="KPI name, e.g. Membership growth" value={name} onChange={(e) => setName(e.target.value)} />
-            <select
-              className="rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900"
-              value={direction}
-              onChange={(e) => setDirection(e.target.value as KPIDirection)}
-            >
-              <option value="increase">Higher is better</option>
-              <option value="decrease">Lower is better</option>
-            </select>
-            <Button variant="secondary" loading={adding} onClick={addKPI}><Plus className="size-4" /></Button>
+      {/* KPIs, grouped by activity */}
+      <div className="space-y-4">
+        {trackedActivities.length === 0 && (
+          <div className="rounded-2xl border border-ink-100 bg-white p-5 text-center">
+            <p className="text-sm text-ink-400">
+              KPIs are tracked from the activities under Strategic Pillars. Add a KPI (with a target value) when
+              creating or editing an activity, and it'll show up here.
+            </p>
           </div>
         )}
+
+        {trackedActivities.map((activity) => (
+          <ActivityKpiCard
+            key={activity.id}
+            activity={activity}
+            breadcrumb={breadcrumbFor(activity)}
+            canEdit={canEdit}
+            onSaveKpis={(newKpis) => saveActivityKpis(activity.id, newKpis)}
+            onSavePeriod={(period) => savePeriod(activity.id, period)}
+          />
+        ))}
       </div>
     </div>
   )
 }
 
-const KPIRow: React.FC<{
-  kpi: KPIWithMeasurements
+const ActivityKpiCard: React.FC<{
+  activity: Activity
+  breadcrumb: string
   canEdit: boolean
-  onRemove: () => void
-  onSaveMeasurement: (kpiId: string, period: KPIPeriod, targetValue: number | null, actualValue: number | null) => Promise<void>
-}> = ({ kpi, canEdit, onRemove, onSaveMeasurement }) => {
-  // Local, per-cell draft values so typing doesn't fire a save on every
-  // keystroke — persisted onBlur instead. Seeded from whatever's already
-  // saved for this KPI, and reseeded if the parent's data changes under us
-  // (e.g. after an AI-suggested batch add).
-  const [drafts, setDrafts] = useState<Record<KPIPeriod, { target: string; actual: string }>>(() =>
-    Object.fromEntries(KPI_PERIODS.map((p) => [
-      p, { target: kpi.measurements[p]?.target_value?.toString() ?? '', actual: kpi.measurements[p]?.actual_value?.toString() ?? '' },
-    ])) as Record<KPIPeriod, { target: string; actual: string }>,
+  onSaveKpis: (kpis: KPI[]) => Promise<void>
+  onSavePeriod: (period: KPIPeriod | '') => Promise<void>
+}> = ({ activity, breadcrumb, canEdit, onSaveKpis, onSavePeriod }) => {
+  const kpis = activity.kpis ?? []
+
+  // Local per-cell draft values so typing doesn't fire a save on every
+  // keystroke — persisted onBlur instead. Re-seeded whenever the parent
+  // activity object changes identity (i.e. after a successful save).
+  const [drafts, setDrafts] = useState<{ target: string; actual: string }[]>(() =>
+    kpis.map((k) => ({ target: k.target_value?.toString() ?? '', actual: k.actual_value?.toString() ?? '' })),
   )
+  useEffect(() => {
+    setDrafts(kpis.map((k) => ({ target: k.target_value?.toString() ?? '', actual: k.actual_value?.toString() ?? '' })))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activity.id, activity.updated_at])
 
-  const setDraft = (period: KPIPeriod, field: 'target' | 'actual', value: string) => {
-    setDrafts((prev) => ({ ...prev, [period]: { ...prev[period], [field]: value } }))
+  const setDraft = (i: number, field: 'target' | 'actual', value: string) => {
+    setDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, [field]: value } : d)))
   }
 
-  const blur = (period: KPIPeriod) => {
-    const d = drafts[period]
-    const target = d.target.trim() === '' ? null : Number(d.target)
-    const actual = d.actual.trim() === '' ? null : Number(d.actual)
-    if (Number.isNaN(target ?? 0) || Number.isNaN(actual ?? 0)) return
-    const existing: KPIMeasurement | undefined = kpi.measurements[period]
-    if ((existing?.target_value ?? null) === target && (existing?.actual_value ?? null) === actual) return
-    void onSaveMeasurement(kpi.id, period, target, actual)
+  const blur = (i: number) => {
+    const d = drafts[i]
+    const targetValue = d.target.trim() === '' ? undefined : Number(d.target)
+    const actualValue = d.actual.trim() === '' ? undefined : Number(d.actual)
+    if (Number.isNaN(targetValue ?? 0) || Number.isNaN(actualValue ?? 0)) return
+    const current = kpis[i]
+    if ((current.target_value ?? undefined) === targetValue && (current.actual_value ?? undefined) === actualValue) return
+    const newKpis = kpis.map((k, idx) => (idx === i ? { ...k, target_value: targetValue, actual_value: actualValue } : k))
+    void onSaveKpis(newKpis)
   }
 
-  const DirectionIcon = kpi.direction === 'decrease' ? TrendingDown : TrendingUp
+  const periodMeta = activity.target_period ? PERIOD_META[activity.target_period] : null
 
   return (
-    <div className="rounded-2xl border border-ink-100 bg-ink-50/40 p-4">
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2">
-          <DirectionIcon className="size-4 text-ink-400 shrink-0" />
-          <p className="text-sm font-semibold text-ink-900">{kpi.name}</p>
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-400 bg-white border border-ink-200 rounded-full px-2 py-0.5">
-            {kpi.direction === 'decrease' ? 'Lower is better' : 'Higher is better'}
-          </span>
+    <div className="rounded-2xl border border-ink-100 bg-white p-4">
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <div>
+          {breadcrumb && <p className="text-[11px] text-ink-400 mb-0.5">{breadcrumb}</p>}
+          <p className="text-sm font-semibold text-ink-900">{activity.title}</p>
         </div>
-        {canEdit && (
-          <button onClick={onRemove} className="text-ink-400 hover:text-red-600 transition-colors">
-            <Trash2 className="size-4" />
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {periodMeta ? (
+            <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-1 border-2 ${periodMeta.color}`}>
+              {periodMeta.label}
+            </span>
+          ) : (
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-1">
+              No period
+            </span>
+          )}
+          {canEdit && (
+            <select
+              value={activity.target_period ?? ''}
+              onChange={(e) => void onSavePeriod(e.target.value as KPIPeriod | '')}
+              className="text-xs rounded-lg border border-ink-200 bg-white px-2 py-1 text-ink-700"
+              title="Reporting period"
+            >
+              <option value="">Set period…</option>
+              {KPI_PERIODS.map((p) => (
+                <option key={p} value={p}>{PERIOD_META[p].label}</option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {KPI_PERIODS.map((period) => {
+      <div className="space-y-3 mt-3">
+        {kpis.map((kpi, i) => {
           const pct = computeAchievement(
             kpi.direction,
-            drafts[period].target.trim() === '' ? undefined : Number(drafts[period].target),
-            drafts[period].actual.trim() === '' ? undefined : Number(drafts[period].actual),
+            drafts[i]?.target.trim() === '' ? undefined : Number(drafts[i]?.target),
+            drafts[i]?.actual.trim() === '' ? undefined : Number(drafts[i]?.actual),
           )
-          const { label, color } = PERIOD_META[period]
+          const DirectionIcon = kpi.direction === 'decrease' ? TrendingDown : TrendingUp
+          // Locked once a target_value already exists on the activity's KPI
+          // (set in Strategic Pillars, at creation) — Tracking Module is then
+          // only for filling in Actual as progress comes in. If no target
+          // was set there, it stays editable here as a fallback.
+          const targetLocked = kpi.target_value !== undefined && kpi.target_value !== null
           return (
-            <div key={period} className={`rounded-xl border-2 p-3 ${color}`}>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-ink-600 mb-1.5">{label}</p>
-              <div className="grid grid-cols-2 gap-1.5">
-                <input
-                  type="number"
-                  disabled={!canEdit}
-                  placeholder="Target"
-                  value={drafts[period].target}
-                  onChange={(e) => setDraft(period, 'target', e.target.value)}
-                  onBlur={() => blur(period)}
-                  className="w-full rounded-md border border-ink-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-accent disabled:bg-ink-50"
-                />
-                <input
-                  type="number"
-                  disabled={!canEdit}
-                  placeholder="Actual"
-                  value={drafts[period].actual}
-                  onChange={(e) => setDraft(period, 'actual', e.target.value)}
-                  onBlur={() => blur(period)}
-                  className="w-full rounded-md border border-ink-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-accent disabled:bg-ink-50"
-                />
+            <div key={i} className="rounded-xl border border-ink-100 bg-ink-50/40 p-3">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <DirectionIcon className="size-3.5 text-ink-400 shrink-0" />
+                <p className="text-sm text-ink-800 font-medium">{kpi.indicator || 'Untitled KPI'}</p>
+              </div>
+              {kpi.target && <p className="text-xs text-ink-400 mb-2">Target: {kpi.target}</p>}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] uppercase tracking-wide text-ink-400 flex items-center gap-1">
+                    Target value
+                    {targetLocked && <Lock className="size-2.5 text-ink-300" />}
+                  </label>
+                  {targetLocked ? (
+                    <p
+                      className="w-full rounded-md border border-ink-100 bg-ink-100 px-2 py-1.5 text-sm text-ink-600"
+                      title="Set on the activity in Strategic Pillars — edit it there to change."
+                    >
+                      {drafts[i]?.target}
+                    </p>
+                  ) : (
+                    <input
+                      type="number"
+                      disabled={!canEdit}
+                      value={drafts[i]?.target ?? ''}
+                      onChange={(e) => setDraft(i, 'target', e.target.value)}
+                      onBlur={() => blur(i)}
+                      className="w-full rounded-md border border-ink-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-accent disabled:bg-ink-50"
+                    />
+                  )}
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wide text-ink-400">Actual value</label>
+                  <input
+                    type="number"
+                    disabled={!canEdit}
+                    value={drafts[i]?.actual ?? ''}
+                    onChange={(e) => setDraft(i, 'actual', e.target.value)}
+                    onBlur={() => blur(i)}
+                    className="w-full rounded-md border border-ink-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-accent disabled:bg-ink-50"
+                  />
+                </div>
               </div>
               <AchievementBar pct={pct} />
             </div>

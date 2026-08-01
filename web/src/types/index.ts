@@ -302,12 +302,30 @@ export interface StrategicObjective {
   updated_at: string
 }
 
-// One Key Performance Indicator (+ its Target) attached to a local-plan
-// activity. An activity commonly carries more than one, hence Activity.kpis
-// being an array.
+// "increase": higher actual is better (e.g. revenue). "decrease": lower actual is better (e.g. defect rate).
+export type KPIDirection = 'increase' | 'decrease'
+
+// The reporting cadence an activity (and therefore all of its KPIs) is
+// tracked against — see Activity.target_period below.
+export type KPIPeriod = 'monthly' | 'quarterly' | 'annual'
+
+export const KPI_PERIODS: KPIPeriod[] = ['monthly', 'quarterly', 'annual']
+
+// One Key Performance Indicator attached to a local-plan activity. An
+// activity commonly carries more than one, hence Activity.kpis being an
+// array. This is also the Tracking Module's source of truth: indicator/
+// target stay the free-text description entered when the activity was
+// created (e.g. "Reduce dropout rate", "20% by Year 1"), while
+// target_value/actual_value are the numbers actually used to compute an
+// achievement percentage. target_value can be set at creation;
+// actual_value is normally filled in later, over time, from the Tracking
+// Module as progress comes in.
 export interface KPI {
-  indicator: string
-  target:    string
+  indicator:     string
+  target:        string
+  target_value?: number
+  actual_value?: number
+  direction?:    KPIDirection
 }
 
 // ── Activity ──────────────────────────────────────────────────────────────────
@@ -332,9 +350,13 @@ export interface Activity {
   due_date?:     string
 
   // ── Local-plan-only fields ────────────────────────────────────────────
+  // target_period doubles as the Tracking Module's reporting-period bucket
+  // for this activity's KPIs — it's collected in the UI right alongside
+  // due_date (see CreateActivityModal) rather than as free text, so a
+  // gauge can actually be computed from it.
   budget?:         number
   responsibility?: string
-  target_period?:  string
+  target_period?:  KPIPeriod
   kpis?:           KPI[]
 
   created_at:    string
@@ -557,47 +579,4 @@ export interface MEItem {
   user_order: number
   created_at: string
   updated_at: string
-}
-
-// ── Tracking Module ──────────────────────────────────────────────────────
-//
-// A TrackedKPI is distinct from the `KPI` interface above (an unstructured
-// {indicator, target} pair embedded in a local-plan Activity, never
-// measured against an actual value). A TrackedKPI is its own addressable
-// row on a Plan — works for both plan types — carrying Target/Actual
-// measurements across the three fixed reporting periods below.
-
-/** "increase": higher actual is better (e.g. revenue). "decrease": lower actual is better (e.g. defect rate). */
-export type KPIDirection = 'increase' | 'decrease'
-
-export type KPIPeriod = 'monthly' | 'quarterly' | 'annual'
-
-export const KPI_PERIODS: KPIPeriod[] = ['monthly', 'quarterly', 'annual']
-
-export interface TrackedKPI {
-  id: string
-  plan_id: string
-  org_id: string
-  name: string
-  direction: KPIDirection
-  user_order: number
-  created_at: string
-  updated_at: string
-}
-
-export interface KPIMeasurement {
-  id: string
-  kpi_id: string
-  plan_id: string
-  org_id: string
-  period: KPIPeriod
-  target_value?: number
-  actual_value?: number
-  created_at: string
-  updated_at: string
-}
-
-/** GET /plans/{planID}/kpis — a KPI with whatever measurements exist so far, keyed by period. */
-export interface KPIWithMeasurements extends TrackedKPI {
-  measurements: Partial<Record<KPIPeriod, KPIMeasurement>>
 }

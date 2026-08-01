@@ -310,12 +310,27 @@ type StrategicObjective struct {
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
-// KPI is one Key Performance Indicator (+ its Target) attached to a
-// local-plan activity. Stored as part of Activity.KPIs (JSONB array) since
-// an activity commonly carries more than one KPI.
+// KPI is one Key Performance Indicator attached to a local-plan activity.
+// Stored as part of Activity.KPIs (JSONB array) since an activity commonly
+// carries more than one KPI. This is also the Tracking Module's source of
+// truth (see tracking.go's package comment) — Indicator/Target stay the
+// free-text description a planner writes when creating the activity (e.g.
+// "Reduce dropout rate", "20% by Year 1"), while TargetValue/ActualValue
+// are the numbers actually plotted against each other to compute an
+// achievement percentage. TargetValue can be set at creation; ActualValue
+// is normally filled in later, over time, from the Tracking Module as
+// progress comes in — that's the whole point of tracking.
+//
+// No id/period field here: an activity's KPIs all share that activity's
+// single TargetPeriod (see Activity.TargetPeriod below) rather than each
+// KPI carrying its own — a KPI is only ever reported against the cadence
+// its parent activity is due on.
 type KPI struct {
-	Indicator string `json:"indicator"`
-	Target    string `json:"target"`
+	Indicator   string       `json:"indicator"`
+	Target      string       `json:"target"`
+	TargetValue *float64     `json:"target_value,omitempty"`
+	ActualValue *float64     `json:"actual_value,omitempty"`
+	Direction   KPIDirection `json:"direction,omitempty"`
 }
 
 // ── Activity ──────────────────────────────────────────────────────────────
@@ -331,6 +346,14 @@ type KPI struct {
 // RESPONSIBILITY, TARGET PERIOD, and KEY PERFORMANCE INDICATOR (KPI)
 // columns of the ESWAMCU "Implementation Framework" table); international
 // activities leave them nil/empty.
+//
+// TargetPeriod doubles as the Tracking Module's reporting-period bucket
+// for this activity's KPIs (see the KPI doc comment above) — it's
+// deliberately the same field the "Target Period" column already occupied
+// rather than a new one, just narrowed from free text to the fixed
+// monthly/quarterly/annual enum (enforced in plan_service.go and by
+// chk_activities_target_period in migration 012) so it means something a
+// gauge can be computed from.
 //
 // Content is a flexible JSON blob; AIDraft holds the AI-generated version
 // before the user accepts or edits it.
@@ -350,10 +373,10 @@ type Activity struct {
 	DueDate     *time.Time     `json:"due_date,omitempty"    db:"due_date"`
 
 	// ── Local-plan-only fields ──────────────────────────────────────────
-	Budget         *float64 `json:"budget,omitempty"         db:"budget"`
-	Responsibility *string  `json:"responsibility,omitempty" db:"responsibility"`
-	TargetPeriod   *string  `json:"target_period,omitempty"  db:"target_period"`
-	KPIs           []KPI    `json:"kpis,omitempty"           db:"kpis"`
+	Budget         *float64   `json:"budget,omitempty"         db:"budget"`
+	Responsibility *string    `json:"responsibility,omitempty" db:"responsibility"`
+	TargetPeriod   *KPIPeriod `json:"target_period,omitempty"  db:"target_period"`
+	KPIs           []KPI      `json:"kpis,omitempty"           db:"kpis"`
 
 	CreatedAt time.Time  `json:"created_at"            db:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"            db:"updated_at"`

@@ -2,7 +2,7 @@
  * vite.config.ts
  *
  * VITE_MOCK=true   → all API calls go to the in-memory mock layer (no proxy needed)
- * VITE_MOCK unset  → calls are proxied to VITE_API_URL (default: http://localhost:8080)
+ * VITE_MOCK unset  → calls are proxied to VITE_API_URL (default: http://localhost:8082)
  *
  * Deliberately NOT proxied: /invitations. That path is the SPA's own page
  * route (AcceptInvitePage). The corresponding API call now lives under
@@ -11,7 +11,7 @@
  *
  * .env.local (git-ignored) for live backend development:
  *   VITE_MOCK=
- *   VITE_API_URL=http://localhost:8080
+ *   VITE_API_URL=http://localhost:8082
  *
  * .env.development (committed) for mock-only development:
  *   VITE_MOCK=true

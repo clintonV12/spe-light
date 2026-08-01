@@ -506,10 +506,10 @@ type CreateActivityRequest struct {
 	AssignedTo  []uuid.UUID    `json:"assigned_to,omitempty"`
 	DueDate     *FlexDate      `json:"due_date,omitempty"`
 
-	Budget         *float64     `json:"budget,omitempty"`
-	Responsibility *string      `json:"responsibility,omitempty"`
-	TargetPeriod   *string      `json:"target_period,omitempty"`
-	KPIs           []models.KPI `json:"kpis,omitempty"`
+	Budget         *float64          `json:"budget,omitempty"`
+	Responsibility *string           `json:"responsibility,omitempty"`
+	TargetPeriod   *models.KPIPeriod `json:"target_period,omitempty"`
+	KPIs           []models.KPI      `json:"kpis,omitempty"`
 }
 
 // CreateActivity adds a new activity to a plan. The user_order is set to
@@ -549,6 +549,13 @@ func (s *Service) CreateActivity(ctx context.Context, planID, orgID, creatorID u
 		}
 		if !objectiveExists {
 			return nil, fmt.Errorf("strategic objective not found")
+		}
+		// TargetPeriod is what the Tracking Module buckets this activity's
+		// KPIs by (see models.KPI's doc comment) — enforced here, alongside
+		// the due date it's entered next to in the UI, rather than left as
+		// free text a gauge can't be computed from.
+		if req.TargetPeriod != nil && !req.TargetPeriod.Valid() {
+			return nil, fmt.Errorf("target_period must be one of: monthly, quarterly, annual")
 		}
 	default: // international
 		if req.Phase == nil {
@@ -690,10 +697,10 @@ type UpdateActivityRequest struct {
 	// Local-plan-only fields — harmless no-ops if sent for an
 	// international-plan activity, but the frontend should only ever send
 	// these for local plans.
-	Budget         *float64     `json:"budget,omitempty"`
-	Responsibility *string      `json:"responsibility,omitempty"`
-	TargetPeriod   *string      `json:"target_period,omitempty"`
-	KPIs           []models.KPI `json:"kpis,omitempty"`
+	Budget         *float64          `json:"budget,omitempty"`
+	Responsibility *string           `json:"responsibility,omitempty"`
+	TargetPeriod   *models.KPIPeriod `json:"target_period,omitempty"`
+	KPIs           []models.KPI      `json:"kpis,omitempty"`
 }
 
 // UpdateActivity applies a partial update to an activity.
@@ -704,6 +711,9 @@ func (s *Service) UpdateActivity(ctx context.Context, activityID, orgID uuid.UUI
 	if req.Title == nil && req.Status == nil && req.Content == nil && req.AssignedTo == nil && req.DueDate == nil &&
 		req.Budget == nil && req.Responsibility == nil && req.TargetPeriod == nil && req.KPIs == nil {
 		return nil, fmt.Errorf("nothing to update")
+	}
+	if req.TargetPeriod != nil && !req.TargetPeriod.Valid() {
+		return nil, fmt.Errorf("target_period must be one of: monthly, quarterly, annual")
 	}
 
 	// Verify the activity belongs to this org.

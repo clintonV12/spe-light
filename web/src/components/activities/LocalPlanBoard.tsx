@@ -349,7 +349,7 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
                                     <span className="flex-1 min-w-0 text-sm text-ink-700 truncate">{a.title}</span>
                                     {a.target_period && (
                                       <span className="flex items-center gap-1 text-[11px] text-ink-400 shrink-0">
-                                        <Clock className="size-3" /> {a.target_period}
+                                        <Clock className="size-3" /> {a.target_period.charAt(0).toUpperCase() + a.target_period.slice(1)}
                                       </span>
                                     )}
                                     {typeof a.budget === 'number' && (
