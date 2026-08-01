@@ -39,15 +39,15 @@ function computeAchievement(direction: KPIDirection | undefined, target?: number
 }
 
 function achievementColor(pct: number): string {
-  if (pct >= 100) return 'text-green-600'
-  if (pct >= 70) return 'text-p1-dark'
-  return 'text-red-600'
+  if (pct >= 75) return 'text-green-600'
+  if (pct <= 50) return 'text-red-600'
+  return 'text-yellow-600'
 }
 
 function achievementBarColor(pct: number): string {
-  if (pct >= 100) return 'bg-green-500'
-  if (pct >= 70) return 'bg-p1'
-  return 'bg-red-400'
+  if (pct >= 75) return 'bg-green-500'
+  if (pct <= 50) return 'bg-red-400'
+  return 'bg-yellow-400'
 }
 
 /** Small horizontal achievement bar + percentage label. */
@@ -80,7 +80,7 @@ const RadialGauge: React.FC<{ pct: number | null; label: string; sublabel?: stri
         {pct !== null && (
           <circle
             cx="60" cy="60" r={r} fill="none"
-            stroke={pct >= 100 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444'}
+            stroke={pct >= 75 ? '#22c55e' : pct <= 50 ? '#ef4444' : '#eab308'}
             strokeWidth="12" strokeLinecap="round"
             strokeDasharray={circumference} strokeDashoffset={offset}
             transform="rotate(-90 60 60)"
@@ -112,6 +112,11 @@ function periodCompletion(rows: KpiRow[], period: KPIPeriod): number | null {
     .filter((r) => r.activity.target_period === period)
     .map(achievementForRow)
     .filter((v): v is number => v !== null)
+    // Capped here, not at the source — an individual KPI's own display
+    // still shows genuine overachievement (e.g. 150%), but one KPI running
+    // hot shouldn't be able to drag a whole period's average above 100%
+    // and mask other KPIs that are behind.
+    .map((v) => Math.min(100, v))
   if (values.length === 0) return null
   return values.reduce((a, b) => a + b, 0) / values.length
 }
@@ -347,9 +352,9 @@ const ActivityKpiCard: React.FC<{
               {kpi.target && <p className="text-xs text-ink-400 mb-2">Target: {kpi.target}</p>}
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] uppercase tracking-wide text-ink-400 flex items-center gap-1">
+                  <label className="h-3.5 flex items-center gap-1 whitespace-nowrap text-[10px] uppercase tracking-wide text-ink-400">
                     Target value
-                    {targetLocked && <Lock className="size-2.5 text-ink-300" />}
+                    {targetLocked && <Lock className="size-2.5 shrink-0" />}
                   </label>
                   {targetLocked ? (
                     <p
@@ -370,7 +375,9 @@ const ActivityKpiCard: React.FC<{
                   )}
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase tracking-wide text-ink-400">Actual value</label>
+                  <label className="h-3.5 flex items-center gap-1 whitespace-nowrap text-[10px] uppercase tracking-wide text-ink-400">
+                    Actual value
+                  </label>
                   <input
                     type="number"
                     disabled={!canEdit}

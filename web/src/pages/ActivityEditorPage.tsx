@@ -11,6 +11,7 @@ import { useAutoSave } from '../hooks/useAutoSave'
 import SaveIndicator from '../components/ui/SaveIndicator'
 import AiDraftPanel from '../components/ai/AiDraftPanel'
 import LinkedActivitiesPanel from '../components/activities/LinkedActivitiesPanel'
+import LocalActivityEditor from '../components/activities/LocalActivityEditor'
 import SwotEditor from '../components/activities/editors/SwotEditor'
 import KpiEditor from '../components/activities/editors/KpiEditor'
 import type { KpiRow, ObjectiveOption } from '../components/activities/editors/KpiEditor'
@@ -521,6 +522,11 @@ export default function ActivityEditorPage() {
 
   if (!activity) return null
 
+  // Mirrors the backend's "exactly one of phase / objective_id" invariant
+  // (chk_activities_exactly_one_hierarchy) — a local-plan activity always
+  // has objective_id set and phase null, never the other way round.
+  const isLocal = !!activity.objective_id
+
   const overdue = activity.due_date && status !== 'complete'
     && new Date(activity.due_date) < new Date()
 
@@ -538,12 +544,16 @@ export default function ActivityEditorPage() {
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-bold ${PHASE_COLOR[activity.phase]}`}>
-              {activity.phase}
-            </span>
-            <span className="text-xs text-ink-400 capitalize">
-              {activity.type.replace(/_/g, ' ')}
-            </span>
+            {activity.phase && (
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-bold ${PHASE_COLOR[activity.phase]}`}>
+                {activity.phase}
+              </span>
+            )}
+            {!isLocal && (
+              <span className="text-xs text-ink-400 capitalize">
+                {activity.type.replace(/_/g, ' ')}
+              </span>
+            )}
             {overdue && (
               <span className="flex items-center gap-1 text-xs text-red-500 font-medium">
                 <AlertTriangle className="size-3" /> {t('activityEditor.overdue')}
@@ -593,7 +603,7 @@ export default function ActivityEditorPage() {
           )}
 
           {/* AI toggle */}
-          {can.runAI && (
+          {can.runAI && !isLocal && (
             <button
               onClick={() => setShowAi((v) => !v)}
               className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
@@ -626,7 +636,7 @@ export default function ActivityEditorPage() {
       )}
 
       {/* AI panel */}
-      {showAi && planId && (
+      {showAi && planId && !isLocal && (
         <AiDraftPanel
           planId={planId}
           phase={activity.phase}
@@ -642,7 +652,7 @@ export default function ActivityEditorPage() {
 
       {/* AI draft pending approval — fields below are filled in and editable,
           but nothing is saved until Approve is clicked (or Discard reverts). */}
-      {pendingApproval && (
+      {pendingApproval && !isLocal && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-accent/10 border border-accent/30 px-4 py-3">
           <div className="flex items-center gap-2 text-sm text-ink-700">
             <Sparkles className="size-4 text-accent shrink-0" />
@@ -671,20 +681,28 @@ export default function ActivityEditorPage() {
       {/* Two-column: editor + linked activities */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6 items-start">
         <div className="bg-white rounded-2xl border border-ink-100 p-6">
-          <ActivityEditor
-            // Forces SwotEditor/KpiEditor/RiskRegisterEditor/GenericEditor to
-            // remount and re-read `content` as fresh initial state whenever
-            // an AI draft is accepted or discarded — those components own
-            // their field state internally and only read `value` on mount,
-            // so without this key a programmatic content swap wouldn't show
-            // up in the fields even though `content` (and the eventual save)
-            // is genuinely updated.
-            key={contentVersion}
-            activity={{ ...activity, content }}
-            onChange={handleContentChange}
-            readOnly={!canEdit}
-            objectives={objectiveOptions}
-          />
+          {isLocal ? (
+            <LocalActivityEditor
+              activity={activity}
+              canEdit={canEdit}
+              onUpdated={(a) => { setActivity(a); setStatus(a.status) }}
+            />
+          ) : (
+            <ActivityEditor
+              // Forces SwotEditor/KpiEditor/RiskRegisterEditor/GenericEditor to
+              // remount and re-read `content` as fresh initial state whenever
+              // an AI draft is accepted or discarded — those components own
+              // their field state internally and only read `value` on mount,
+              // so without this key a programmatic content swap wouldn't show
+              // up in the fields even though `content` (and the eventual save)
+              // is genuinely updated.
+              key={contentVersion}
+              activity={{ ...activity, content }}
+              onChange={handleContentChange}
+              readOnly={!canEdit}
+              objectives={objectiveOptions}
+            />
+          )}
         </div>
 
         {linksLoading ? (
