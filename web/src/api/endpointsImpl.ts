@@ -23,6 +23,7 @@ import type {
   Invitation, Organisation, OrgProfileUpdate,
   Report, ReportType, ReportFormat, ReportJobStatus, ReportSectionConfig,
   User, UserRole,
+  ProfileUpdate, ChangePasswordPayload, Session,
   AuditListResponse,
   Milestone, MilestoneStatus,
   SSOConfig, CoreValue, Stakeholder, StakeholderLevel, SWOTItem, SWOTCategory,
@@ -64,6 +65,16 @@ export const authApi = {
 export const invitationsApi = {
   accept: (p: { token: string; name: string; password: string }) =>
     api().then((m) => m.invitationsApi.accept(p)) as Promise<AuthTokens>,
+}
+
+// ── Self-service account (Me) ───────────────────────────────────────────────
+
+export const meApi = {
+  getProfile:        ()                             => api().then((m) => m.meApi.getProfile())        as Promise<User>,
+  updateProfile:     (p: ProfileUpdate)              => api().then((m) => m.meApi.updateProfile(p))    as Promise<User>,
+  changePassword:    (p: ChangePasswordPayload)      => api().then((m) => m.meApi.changePassword(p))   as Promise<{ message: string }>,
+  listSessions:      ()                              => api().then((m) => m.meApi.listSessions())      as Promise<Session[]>,
+  revokeAllSessions: ()                              => api().then((m) => m.meApi.revokeAllSessions()) as Promise<{ message: string }>,
 }
 
 // ── Plans ─────────────────────────────────────────────────────────────────────

@@ -187,14 +187,19 @@ type User struct {
 	Email        string     `json:"email"                    db:"email"`
 	PasswordHash *string    `json:"-"                        db:"password_hash"`
 	Name         string     `json:"name"                     db:"name"`
-	Role         Role       `json:"role"                     db:"role"`
-	Locale       string     `json:"locale"                   db:"locale"`
-	IsActive     bool       `json:"is_active"                db:"is_active"`
-	SSOSubject   *string    `json:"-"                        db:"sso_subject"`
-	LastLoginAt  *time.Time `json:"last_login_at,omitempty"  db:"last_login_at"`
-	CreatedAt    time.Time  `json:"created_at"               db:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"               db:"updated_at"`
-	DeletedAt    *time.Time `json:"deleted_at,omitempty"     db:"deleted_at"`
+	// Phone and AvatarURL are self-service profile fields edited via
+	// PATCH /api/v1/me (see orgsvc.UpdateProfile) — both nullable, both
+	// optional, never collected at invite/signup time.
+	Phone       *string    `json:"phone,omitempty"          db:"phone"`
+	AvatarURL   *string    `json:"avatar_url,omitempty"     db:"avatar_url"`
+	Role        Role       `json:"role"                     db:"role"`
+	Locale      string     `json:"locale"                   db:"locale"`
+	IsActive    bool       `json:"is_active"                db:"is_active"`
+	SSOSubject  *string    `json:"-"                        db:"sso_subject"`
+	LastLoginAt *time.Time `json:"last_login_at,omitempty"  db:"last_login_at"`
+	CreatedAt   time.Time  `json:"created_at"               db:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"               db:"updated_at"`
+	DeletedAt   *time.Time `json:"deleted_at,omitempty"     db:"deleted_at"`
 }
 
 // ── TokenClaims ───────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@
 export {
   authApi,
   invitationsApi,
+  meApi,
   plansApi,
   activitiesApi,
   pillarsApi,

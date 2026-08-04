@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react'
 import { authApi } from '../api/endpoints'
@@ -102,9 +102,14 @@ export default function LoginPage() {
 
             {/* Password */}
             <div className="space-y-1.5">
-              <label htmlFor="password" className="block text-sm font-medium text-ink-700">
-                {t('auth.password')}
-              </label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="block text-sm font-medium text-ink-700">
+                  {t('auth.password')}
+                </label>
+                <Link to="/forgot-password" className="text-xs font-medium text-accent hover:text-accent-700 transition-colors">
+                  {t('auth.forgotPassword', 'Forgot password?')}
+                </Link>
+              </div>
               <div className="relative">
                 <input
                   id="password"

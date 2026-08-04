@@ -350,10 +350,10 @@ func (s *Service) ListUsers(ctx context.Context, orgID uuid.UUID) ([]models.User
 func (s *Service) GetUserByID(ctx context.Context, userID uuid.UUID) (*models.User, error) {
 	var u models.User
 	err := s.db.QueryRow(ctx,
-		`SELECT id, org_id, email, name, role, locale, is_active, last_login_at, created_at, updated_at
+		`SELECT id, org_id, email, name, phone, avatar_url, role, locale, is_active, last_login_at, created_at, updated_at
 		 FROM users WHERE id = $1 AND deleted_at IS NULL`,
 		userID,
-	).Scan(&u.ID, &u.OrgID, &u.Email, &u.Name, &u.Role, &u.Locale, &u.IsActive, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt)
+	).Scan(&u.ID, &u.OrgID, &u.Email, &u.Name, &u.Phone, &u.AvatarURL, &u.Role, &u.Locale, &u.IsActive, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("user not found")
 	}

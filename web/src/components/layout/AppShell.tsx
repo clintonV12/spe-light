@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import {
   LayoutDashboard, FileText, BarChart2, FileOutput,
   Settings, ChevronLeft, ChevronRight, WifiOff, RefreshCw,
-  Menu, Search, Keyboard, ShieldCheck, LogOut,
+  Menu, Search, Keyboard, ShieldCheck, LogOut, UserCircle,
 } from 'lucide-react'
 import { useUIStore } from '../../store/ui'
 import { useOfflineStore } from '../../store/offline'
@@ -183,17 +183,26 @@ export const AppShell: React.FC = () => {
           </div>
         )}
 
-        {/* Current user + logout */}
+        {/* Current user (→ account page) + logout */}
         <div className="px-2 pb-2 border-t border-ink-700 pt-2">
           {!collapsed ? (
-            <div className="flex items-center gap-2 px-1">
-              <div className="size-8 rounded-full bg-ink-700 flex items-center justify-center shrink-0 text-xs font-semibold text-white uppercase">
-                {(user?.name || user?.email || '?').charAt(0)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-white truncate">{user?.name || user?.email}</p>
-                <p className="text-[10px] text-ink-400 truncate capitalize">{role?.replace('_', ' ')}</p>
-              </div>
+            <div className="flex items-center gap-1 px-1">
+              <NavLink
+                to="/profile"
+                title={t('nav.account', 'Account settings')}
+                className={({ isActive }) => clsx(
+                  'flex items-center gap-2 flex-1 min-w-0 rounded-lg py-1 pl-1 pr-2 -ml-1 transition-colors',
+                  isActive ? 'bg-ink-800' : 'hover:bg-ink-800',
+                )}
+              >
+                <div className="size-8 rounded-full bg-ink-700 flex items-center justify-center shrink-0 text-xs font-semibold text-white uppercase">
+                  {(user?.name || user?.email || '?').charAt(0)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-white truncate">{user?.name || user?.email}</p>
+                  <p className="text-[10px] text-ink-400 truncate capitalize">{role?.replace('_', ' ')}</p>
+                </div>
+              </NavLink>
               <button
                 onClick={handleLogout}
                 disabled={loggingOut}
@@ -205,15 +214,27 @@ export const AppShell: React.FC = () => {
               </button>
             </div>
           ) : (
-            <button
-              onClick={handleLogout}
-              disabled={loggingOut}
-              title={t('nav.logout', 'Log out')}
-              aria-label={t('nav.logout', 'Log out')}
-              className="w-full flex items-center justify-center p-2 rounded-lg text-ink-400 hover:text-white hover:bg-ink-800 transition-colors disabled:opacity-50"
-            >
-              <LogOut className="size-4" />
-            </button>
+            <div className="flex flex-col gap-1">
+              <NavLink
+                to="/profile"
+                title={t('nav.account', 'Account settings')}
+                className={({ isActive }) => clsx(
+                  'w-full flex items-center justify-center p-2 rounded-lg transition-colors',
+                  isActive ? 'bg-ink-800 text-white' : 'text-ink-400 hover:text-white hover:bg-ink-800',
+                )}
+              >
+                <UserCircle className="size-4" />
+              </NavLink>
+              <button
+                onClick={handleLogout}
+                disabled={loggingOut}
+                title={t('nav.logout', 'Log out')}
+                aria-label={t('nav.logout', 'Log out')}
+                className="w-full flex items-center justify-center p-2 rounded-lg text-ink-400 hover:text-white hover:bg-ink-800 transition-colors disabled:opacity-50"
+              >
+                <LogOut className="size-4" />
+              </button>
+            </div>
           )}
         </div>
 

@@ -18,6 +18,14 @@
  * colliding with the SPA's own page routes — see /invitations/accept below)
  *   POST  /api/v1/invitations/accept            → invitationsApi.accept
  *
+ * AUTHENTICATED — Self-service account (no role gate — any authenticated
+ * user, org-tier or platform-tier, manages their own account)
+ *   GET   /api/v1/me                             → meApi.getProfile
+ *   PATCH /api/v1/me                             → meApi.updateProfile
+ *   POST  /api/v1/me/change-password             → meApi.changePassword
+ *   GET   /api/v1/me/sessions                    → meApi.listSessions
+ *   POST  /api/v1/me/sessions/revoke-all         → meApi.revokeAllSessions
+ *
  * AUTHENTICATED — Org admin
  *   GET   /api/v1/org                            → orgApi.getOrg
  *   PATCH /api/v1/org                            → orgApi.updateOrg
@@ -94,6 +102,7 @@ import type {
   Invitation, Organisation, OrgProfileUpdate,
   Report, ReportType, ReportFormat, ReportJobStatus, ReportSectionConfig,
   User, UserRole,
+  ProfileUpdate, ChangePasswordPayload, Session,
   AuditLog, AuditListResponse,
   Milestone, MilestoneStatus,
   SSOConfig, CoreValue, Stakeholder, StakeholderLevel, SWOTItem, SWOTCategory,
@@ -136,6 +145,42 @@ export const invitationsApi = {
    */
   accept: (payload: { token: string; name: string; password: string }) =>
     apiClient.post<AuthTokens>('/invitations/accept', payload).then((r) => r.data),
+}
+
+// ── Self-service account (Me) ───────────────────────────────────────────────
+//
+// No role gate on any of these — every authenticated user (org-tier or
+// platform-tier, any role) reads/edits only their own account. Distinct
+// from orgApi.updateUser (role / is_active — org_admin only, someone else's
+// account): nothing here can touch role, org, or active status.
+
+export const meApi = {
+  /** GET /api/v1/me — the caller's own profile */
+  getProfile: () =>
+    apiClient.get<User>('/me').then((r) => r.data),
+
+  /** PATCH /api/v1/me — partial self-service edit (name/phone/avatar/locale) */
+  updateProfile: (payload: ProfileUpdate) =>
+    apiClient.patch<User>('/me', payload).then((r) => r.data),
+
+  /**
+   * POST /api/v1/me/change-password
+   * On success every session (including this one) is revoked server-side —
+   * the caller is expected to clear local tokens and redirect to /login.
+   */
+  changePassword: (payload: ChangePasswordPayload) =>
+    apiClient.post<{ message: string }>('/me/change-password', payload).then((r) => r.data),
+
+  /** GET /api/v1/me/sessions — the caller's currently active sessions */
+  listSessions: () =>
+    apiClient.get<Session[]>('/me/sessions').then((r) => r.data),
+
+  /**
+   * POST /api/v1/me/sessions/revoke-all — signs the caller out everywhere,
+   * including this session. Same forced-logout contract as changePassword.
+   */
+  revokeAllSessions: () =>
+    apiClient.post<{ message: string }>('/me/sessions/revoke-all').then((r) => r.data),
 }
 
 // ── Plans ─────────────────────────────────────────────────────────────────────

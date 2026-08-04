@@ -143,6 +143,20 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 		r.Use(middleware.Authenticate(cfg.JWTSecret))
 		r.Use(middleware.WithRLS(db))
 
+		// ── Self-service account management ─────────────────────────
+		// No role gate — every authenticated user, org-tier or
+		// platform-tier, manages their own account through these routes.
+		// The handlers derive the target user strictly from JWT claims
+		// (see handlers/profile.go's package doc), so there is no path
+		// param here that could be used to act on someone else's account.
+		r.Route("/api/v1/me", func(r chi.Router) {
+			r.Get("/", orgH.GetProfile)
+			r.Patch("/", orgH.UpdateProfile)
+			r.Post("/change-password", orgH.ChangePassword)
+			r.Get("/sessions", orgH.ListSessions)
+			r.Post("/sessions/revoke-all", orgH.RevokeAllSessions)
+		})
+
 		// ── Org ────────────────────────────────────────────────────
 		r.Route("/api/v1/org", func(r chi.Router) {
 			// No role gate — every authenticated org user (including
