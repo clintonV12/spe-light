@@ -8,21 +8,31 @@ import type { Plan, Report, ReportType, ReportFormat, Phase, ReportSectionConfig
 const ALL_PHASES: Phase[] = ['P1', 'P2', 'P3']
 
 const DEFAULT_CUSTOM_SECTIONS: ReportSectionConfig = {
-  executive_summary: true,
-  phase_activities:   true,
-  phases:             [...ALL_PHASES],
-  progress_status:    true,
-  milestones:         true,
-  dependency_links:   false,
-  ai_summary:         false,
+  executive_summary:     true,
+  vision_mission:        true,
+  situational_analysis:  true,
+  phase_activities:      true,
+  phases:                [...ALL_PHASES],
+  scorecard:             true,
+  org_structure:         true,
+  progress_status:       true,
+  monitoring_evaluation: true,
+  milestones:            true,
+  dependency_links:      false,
+  ai_summary:            false,
 }
 
 // True if the config would actually produce a non-empty report.
 function hasSelectedContent(s: ReportSectionConfig): boolean {
   return (
     s.executive_summary ||
+    s.vision_mission ||
+    s.situational_analysis ||
     (s.phase_activities && s.phases.length > 0) ||
+    s.scorecard ||
+    s.org_structure ||
     s.progress_status ||
+    s.monitoring_evaluation ||
     s.milestones ||
     s.dependency_links ||
     s.ai_summary
@@ -33,8 +43,13 @@ function hasSelectedContent(s: ReportSectionConfig): boolean {
 function countSections(s: ReportSectionConfig): number {
   return [
     s.executive_summary,
+    s.vision_mission,
+    s.situational_analysis,
     s.phase_activities && s.phases.length > 0,
+    s.scorecard,
+    s.org_structure,
     s.progress_status,
+    s.monitoring_evaluation,
     s.milestones,
     s.dependency_links,
     s.ai_summary,
@@ -273,6 +288,42 @@ export default function ReportsPage() {
                 <span className="text-sm text-ink-800">{t('reportsPage.sections.executiveSummary')}</span>
               </label>
 
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+                <input
+                  type="checkbox"
+                  checked={customSections.vision_mission}
+                  onChange={(e) => toggleSection('vision_mission', e.target.checked)}
+                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
+                />
+                <span className="text-sm text-ink-800">
+                  {t('reportsPage.sections.visionMission', { defaultValue: 'Vision, Mission & Core Values' })}
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+                <input
+                  type="checkbox"
+                  checked={customSections.situational_analysis}
+                  onChange={(e) => toggleSection('situational_analysis', e.target.checked)}
+                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
+                />
+                <span className="text-sm text-ink-800">
+                  {t('reportsPage.sections.situationalAnalysis', { defaultValue: 'Situational Analysis (SWOT, PESTEL, Stakeholders)' })}
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+                <input
+                  type="checkbox"
+                  checked={customSections.scorecard}
+                  onChange={(e) => toggleSection('scorecard', e.target.checked)}
+                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
+                />
+                <span className="text-sm text-ink-800">
+                  {t('reportsPage.sections.scorecard', { defaultValue: 'Strategic Scorecard (KPIs + achievement chart)' })}
+                </span>
+              </label>
+
               <div className="px-4 py-3">
                 <label className="flex items-center gap-2.5 cursor-pointer">
                   <input
@@ -303,11 +354,35 @@ export default function ReportsPage() {
               <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
                 <input
                   type="checkbox"
+                  checked={customSections.org_structure}
+                  onChange={(e) => toggleSection('org_structure', e.target.checked)}
+                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
+                />
+                <span className="text-sm text-ink-800">
+                  {t('reportsPage.sections.orgStructure', { defaultValue: 'Organisational Structure (local plans only)' })}
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+                <input
+                  type="checkbox"
                   checked={customSections.progress_status}
                   onChange={(e) => toggleSection('progress_status', e.target.checked)}
                   className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
                 />
                 <span className="text-sm text-ink-800">{t('reportsPage.sections.progressStatus')}</span>
+              </label>
+
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+                <input
+                  type="checkbox"
+                  checked={customSections.monitoring_evaluation}
+                  onChange={(e) => toggleSection('monitoring_evaluation', e.target.checked)}
+                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
+                />
+                <span className="text-sm text-ink-800">
+                  {t('reportsPage.sections.monitoringEvaluation', { defaultValue: 'Monitoring & Evaluation (local plans only)' })}
+                </span>
               </label>
 
               <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">

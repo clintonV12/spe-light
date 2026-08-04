@@ -84,14 +84,29 @@ export type ReportFormat = 'pdf' | 'docx' | 'xlsx'
 // sections of the plan get included instead of using one of the fixed
 // report shapes above. `phases` only applies when `phase_activities` is
 // true and controls which of P1/P2/P3 are pulled in.
+//
+// vision_mission / situational_analysis / org_structure / monitoring_evaluation
+// draw on local-plan-only data (Vision/Mission/Core Values, Stakeholders/
+// SWOT/PESTEL, org_structure_roles, me_items) when the plan is local, and
+// fall back to a best-effort read of the matching international activity's
+// content (vision_mission / swot / pestle / stakeholder_map) when it isn't
+// — org_structure has no international equivalent at all, so it's simply
+// omitted for those plans. scorecard (KPI target/actual/achievement, plus
+// an achievement-by-period chart) works the same for both plan types,
+// since KPIs live on Activity.KPIs regardless of plan type.
 export interface ReportSectionConfig {
-  executive_summary: boolean
-  phase_activities:   boolean
-  phases:             Phase[]
-  progress_status:    boolean
-  milestones:         boolean
-  dependency_links:   boolean
-  ai_summary:         boolean
+  executive_summary:     boolean
+  vision_mission:        boolean
+  situational_analysis:  boolean
+  phase_activities:      boolean
+  phases:                Phase[]
+  scorecard:              boolean
+  org_structure:          boolean
+  progress_status:        boolean
+  monitoring_evaluation:  boolean
+  milestones:             boolean
+  dependency_links:       boolean
+  ai_summary:             boolean
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

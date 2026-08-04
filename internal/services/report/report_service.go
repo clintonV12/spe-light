@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -102,19 +103,26 @@ type DateRange struct {
 // SectionConfig mirrors the frontend's ReportSectionConfig exactly — field
 // names must match its JSON keys.
 type SectionConfig struct {
-	ExecutiveSummary bool           `json:"executive_summary"`
-	PhaseActivities  bool           `json:"phase_activities"`
-	Phases           []models.Phase `json:"phases"`
-	ProgressStatus   bool           `json:"progress_status"`
-	Milestones       bool           `json:"milestones"`
-	DependencyLinks  bool           `json:"dependency_links"`
-	AISummary        bool           `json:"ai_summary"`
+	ExecutiveSummary    bool           `json:"executive_summary"`
+	VisionMission       bool           `json:"vision_mission"`
+	SituationalAnalysis bool           `json:"situational_analysis"`
+	PhaseActivities     bool           `json:"phase_activities"`
+	Phases              []models.Phase `json:"phases"`
+	Scorecard           bool           `json:"scorecard"`
+	OrgStructure        bool           `json:"org_structure"`
+	ProgressStatus      bool           `json:"progress_status"`
+	MonitoringEval      bool           `json:"monitoring_evaluation"`
+	Milestones          bool           `json:"milestones"`
+	DependencyLinks     bool           `json:"dependency_links"`
+	AISummary           bool           `json:"ai_summary"`
 }
 
 func (s SectionConfig) hasContent() bool {
-	return s.ExecutiveSummary ||
+	return s.ExecutiveSummary || s.VisionMission || s.SituationalAnalysis ||
 		(s.PhaseActivities && len(s.Phases) > 0) ||
-		s.ProgressStatus || s.Milestones || s.DependencyLinks || s.AISummary
+		s.Scorecard || s.OrgStructure ||
+		s.ProgressStatus || s.MonitoringEval ||
+		s.Milestones || s.DependencyLinks || s.AISummary
 }
 
 // defaultSections maps the five fixed report types onto an equivalent
@@ -125,15 +133,18 @@ func defaultSections(t models.ReportType) SectionConfig {
 	switch t {
 	case models.ReportFullPlan:
 		return SectionConfig{
-			ExecutiveSummary: true, PhaseActivities: true, Phases: allPhases,
-			ProgressStatus: true, Milestones: true, DependencyLinks: true, AISummary: true,
+			ExecutiveSummary: true, VisionMission: true, SituationalAnalysis: true,
+			PhaseActivities: true, Phases: allPhases,
+			Scorecard: true, OrgStructure: true,
+			ProgressStatus: true, MonitoringEval: true,
+			Milestones: true, DependencyLinks: true, AISummary: true,
 		}
 	case models.ReportExecutiveSummary:
-		return SectionConfig{ExecutiveSummary: true, ProgressStatus: true}
+		return SectionConfig{ExecutiveSummary: true, VisionMission: true, Scorecard: true, ProgressStatus: true}
 	case models.ReportPerPhase:
 		return SectionConfig{PhaseActivities: true, Phases: allPhases}
 	case models.ReportProgressStatus:
-		return SectionConfig{ProgressStatus: true, Milestones: true}
+		return SectionConfig{ProgressStatus: true, Scorecard: true, Milestones: true}
 	case models.ReportActivityDetail:
 		return SectionConfig{PhaseActivities: true, Phases: allPhases, Milestones: true}
 	default:
@@ -418,7 +429,7 @@ func (s *Service) buildMeta(ctx context.Context, plan *models.Plan, orgID, userI
 			if org.ContactPhone != nil && *org.ContactPhone != "" {
 				contact = append(contact, *org.ContactPhone)
 			}
-			meta.OrgContact = strings.Join(contact, "  \u00b7  ")
+			meta.OrgContact = strings.Join(contact, "  |  ")
 		}
 		if user, err := s.orgSvc.GetUserByID(ctx, userID); err == nil && user.Name != "" {
 			meta.GeneratedBy = user.Name
@@ -437,45 +448,6 @@ func planFrameworkLabel(pt models.PlanType) string {
 	return "International"
 }
 
-// buildOrgInfoSection renders the organisation's self-service profile
-// (address, contacts, industry, size, structure — see
-// orgsvc.UpdateOrgProfile / PATCH /api/v1/org) as a two-column table, the
-// report's opening section — the same "Organisational Information" role a
-// letterhead page like the cover's label/value block already partially
-// covers, but with room for the fuller detail that wouldn't fit there
-// without crowding it. Returns nil (section omitted entirely) only if the
-// org lookup itself fails; individual missing profile fields are simply
-// left out of the table rather than shown blank.
-func (s *Service) buildOrgInfoSection(ctx context.Context, orgID uuid.UUID) *contentSection {
-	if s.orgSvc == nil {
-		return nil
-	}
-	org, err := s.orgSvc.GetOrgByID(ctx, orgID)
-	if err != nil {
-		return nil
-	}
-
-	t := &contentTable{Headers: []string{"Field", "Detail"}}
-	t.Rows = append(t.Rows, []string{"Organisation", org.Name})
-
-	addIf := func(label string, val *string) {
-		if val != nil && *val != "" {
-			t.Rows = append(t.Rows, []string{label, *val})
-		}
-	}
-	addIf("Industry", org.Industry)
-	if org.TotalMembers != nil {
-		t.Rows = append(t.Rows, []string{"Total Members", fmt.Sprint(*org.TotalMembers)})
-	}
-	addIf("Address", org.Address)
-	addIf("Country", org.Country)
-	addIf("Contact Email", org.ContactEmail)
-	addIf("Contact Phone", org.ContactPhone)
-	addIf("Organisational Structure", org.OrgStructure)
-
-	return &contentSection{Heading: "Organisational Information", Table: t}
-}
-
 // ── Content assembly ──────────────────────────────────────────────────────
 
 // reportContent is the format-agnostic intermediate representation that
@@ -488,6 +460,10 @@ type contentSection struct {
 	Heading    string
 	Paragraphs []string
 	Table      *contentTable
+	// Chart is optional and independent of Table — a section can have
+	// either, both (e.g. the KPI scorecard's detail table plus its
+	// achievement-by-period chart), or neither.
+	Chart *contentChart
 }
 
 type contentTable struct {
@@ -495,16 +471,401 @@ type contentTable struct {
 	Rows    [][]string
 }
 
+// contentChart is a simple horizontal bar chart — deliberately minimal
+// (one value per bar, 0..Max) rather than a general charting grammar, since
+// every current use case (KPI achievement %, progress %) is exactly that
+// shape. ColorHint on each bar drives red/yellow/green thresholding
+// consistent with TrackingModule.tsx's achievementColor (bad <=50, good
+// >=75, warn in between) — see kpiColorHint in report_service.go.
+type contentChart struct {
+	Title string
+	Unit  string // appended after the value, e.g. "%"
+	Max   float64
+	Bars  []chartBar
+}
+
+type chartBar struct {
+	Label     string
+	Value     float64
+	ColorHint string // "good" | "warn" | "bad" | "" (brand default)
+}
+
+// titleCase capitalises just the first letter — used for the short
+// lowercase enum values (SWOT category, PESTEL factor, KPI period) that
+// read better capitalised in a report than as raw JSON/DB values.
+func titleCase(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// buildVisionMissionSection covers the "Shared Destiny" chapter common to
+// enterprise strategic plans — Vision, Mission, and Core Values. Local
+// plans store these directly (Plan.Vision/Plan.Mission plus the
+// core_values table — see models_local_sections.go); international plans
+// have no equivalent fields, so this falls back to a 'vision_mission'
+// activity's content if one exists. Returns nil (section omitted) if
+// neither source has anything — a plan that hasn't filled this in yet
+// shouldn't get an empty heading in its report.
+func (s *Service) buildVisionMissionSection(ctx context.Context, plan *models.Plan, orgID uuid.UUID) *contentSection {
+	if plan.PlanType == models.PlanTypeLocal {
+		var paras []string
+		if plan.Vision != nil && *plan.Vision != "" {
+			paras = append(paras, "Vision: "+*plan.Vision)
+		}
+		if plan.Mission != nil && *plan.Mission != "" {
+			paras = append(paras, "Mission: "+*plan.Mission)
+		}
+		if values, err := s.planSvc.ListCoreValues(ctx, plan.ID, orgID); err == nil && len(values) > 0 {
+			names := make([]string, len(values))
+			for i, v := range values {
+				names[i] = v.Name
+			}
+			paras = append(paras, "Core Values: "+strings.Join(names, ", "))
+		}
+		if len(paras) == 0 {
+			return nil
+		}
+		return &contentSection{Heading: "Vision, Mission & Core Values", Paragraphs: paras}
+	}
+
+	activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, nil, nil, nil)
+	if err != nil {
+		return nil
+	}
+	for _, a := range activities {
+		if a.Type == "vision_mission" {
+			return buildGenericContentSection("Vision, Mission & Core Values", a.Content)
+		}
+	}
+	return nil
+}
+
+// buildSituationalAnalysisSections covers Stakeholder/SWOT/PESTEL analysis.
+// Local plans have dedicated tables for each (see models_local_sections.go)
+// and get one properly-columned table per sub-section; international plans
+// fall back to whatever 'swot'/'pestle'/'stakeholder_map' activities exist,
+// rendered generically since this package doesn't own those editors' JSON
+// shapes. Returns an empty slice (not nil-vs-empty sensitive — callers just
+// append) if nothing is available for either path.
+func (s *Service) buildSituationalAnalysisSections(ctx context.Context, plan *models.Plan, orgID uuid.UUID) []contentSection {
+	if plan.PlanType != models.PlanTypeLocal {
+		var out []contentSection
+		activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, nil, nil, nil)
+		if err != nil {
+			return nil
+		}
+		headings := map[string]string{
+			"swot": "SWOT Analysis", "pestle": "PESTEL Analysis", "stakeholder_map": "Stakeholder Analysis",
+		}
+		for _, a := range activities {
+			heading, ok := headings[a.Type]
+			if !ok {
+				continue
+			}
+			if sec := buildGenericContentSection(heading, a.Content); sec != nil {
+				out = append(out, *sec)
+			}
+		}
+		return out
+	}
+
+	var out []contentSection
+
+	if stakeholders, err := s.planSvc.ListStakeholders(ctx, plan.ID, orgID); err == nil && len(stakeholders) > 0 {
+		t := &contentTable{Headers: []string{"Stakeholder", "Influence", "Interest", "Notes"}}
+		for _, st := range stakeholders {
+			notes := ""
+			if st.Notes != nil {
+				notes = *st.Notes
+			}
+			t.Rows = append(t.Rows, []string{st.Name, titleCase(string(st.Influence)), titleCase(string(st.Interest)), notes})
+		}
+		out = append(out, contentSection{Heading: "Stakeholder Analysis", Table: t})
+	}
+
+	if swot, err := s.planSvc.ListSWOTItems(ctx, plan.ID, orgID); err == nil && len(swot) > 0 {
+		t := &contentTable{Headers: []string{"Category", "Item"}}
+		for _, it := range swot {
+			t.Rows = append(t.Rows, []string{titleCase(string(it.Category)), it.Text})
+		}
+		out = append(out, contentSection{Heading: "SWOT Analysis", Table: t})
+	}
+
+	if pestel, err := s.planSvc.ListPESTELItems(ctx, plan.ID, orgID); err == nil && len(pestel) > 0 {
+		t := &contentTable{Headers: []string{"Factor", "Implication", "Positive", "Negative"}}
+		for _, it := range pestel {
+			imp, pos, neg := "", "", ""
+			if it.Implication != nil {
+				imp = *it.Implication
+			}
+			if it.Positive != nil {
+				pos = *it.Positive
+			}
+			if it.Negative != nil {
+				neg = *it.Negative
+			}
+			t.Rows = append(t.Rows, []string{titleCase(string(it.Factor)), imp, pos, neg})
+		}
+		out = append(out, contentSection{Heading: "PESTEL Analysis", Table: t})
+	}
+
+	return out
+}
+
+// kpiAchievement computes a KPI's achievement percentage from its Target/
+// Actual pair, mirroring TrackingModule.tsx's computeAchievement exactly
+// (see models.KPI's doc comment for the two formulas) so this report's
+// numbers can never disagree with what the Tracking Module shows on screen.
+func kpiAchievement(k models.KPI) (float64, bool) {
+	if k.TargetValue == nil || k.ActualValue == nil {
+		return 0, false
+	}
+	target, actual := *k.TargetValue, *k.ActualValue
+	if k.Direction == models.KPIDirectionDecrease {
+		if actual == 0 {
+			return 0, false
+		}
+		return (target / actual) * 100, true
+	}
+	if target == 0 {
+		return 0, false
+	}
+	return (actual / target) * 100, true
+}
+
+// kpiColorHint maps an achievement percentage onto the same red/yellow/
+// green thresholds as TrackingModule.tsx's achievementColor (bad <=50%,
+// good >=75%, warn in between), so a report's chart colours mean the same
+// thing the in-app gauges do.
+func kpiColorHint(pct float64) string {
+	switch {
+	case pct >= 75:
+		return "good"
+	case pct <= 50:
+		return "bad"
+	default:
+		return "warn"
+	}
+}
+
+// buildScorecardSections returns the KPI detail table and, if any KPI has
+// a reporting period set, an achievement-by-period bar chart — the same
+// capped-at-100-per-KPI averaging TrackingModule.tsx's periodCompletion
+// uses, so one overachieving KPI can't skew a period's bar past what a
+// fully-met set of KPIs would show.
+//
+// This works identically for both plan types: KPIs live on Activity.KPIs
+// regardless of PlanType (see models.KPI) — local plans just currently have
+// UI (CreateActivityModal / LocalActivityEditor / TrackingModule) to fill
+// them in, so in practice this section is richer there today, but nothing
+// about it is local-plan-specific.
+func (s *Service) buildScorecardSections(ctx context.Context, plan *models.Plan, orgID uuid.UUID) []contentSection {
+	activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, nil, nil, nil)
+	if err != nil {
+		return nil
+	}
+
+	t := &contentTable{Headers: []string{"Activity", "Indicator", "Target", "Actual", "Achievement", "Period"}}
+	periodSums := map[models.KPIPeriod]float64{}
+	periodCounts := map[models.KPIPeriod]int{}
+	haveRows := false
+
+	for _, a := range activities {
+		for _, k := range a.KPIs {
+			haveRows = true
+			pct, ok := kpiAchievement(k)
+			achievement := "—"
+			if ok {
+				achievement = fmt.Sprintf("%.0f%%", pct)
+			}
+			target := "—"
+			if k.TargetValue != nil {
+				target = fmt.Sprintf("%.2f", *k.TargetValue)
+			} else if k.Target != "" {
+				target = k.Target
+			}
+			actual := "—"
+			if k.ActualValue != nil {
+				actual = fmt.Sprintf("%.2f", *k.ActualValue)
+			}
+			period := "—"
+			if a.TargetPeriod != nil {
+				period = titleCase(string(*a.TargetPeriod))
+			}
+			indicator := k.Indicator
+			if indicator == "" {
+				indicator = "—"
+			}
+			t.Rows = append(t.Rows, []string{a.Title, indicator, target, actual, achievement, period})
+
+			if ok && a.TargetPeriod != nil {
+				capped := pct
+				if capped > 100 {
+					capped = 100
+				}
+				periodSums[*a.TargetPeriod] += capped
+				periodCounts[*a.TargetPeriod]++
+			}
+		}
+	}
+
+	if !haveRows {
+		return nil
+	}
+	sections := []contentSection{{Heading: "Strategic Scorecard", Table: t}}
+
+	var bars []chartBar
+	var periodTotal float64
+	var periodN float64
+	for _, p := range models.ValidKPIPeriods {
+		n := periodCounts[p]
+		if n == 0 {
+			continue
+		}
+		avg := periodSums[p] / float64(n)
+		bars = append(bars, chartBar{Label: titleCase(string(p)), Value: avg, ColorHint: kpiColorHint(avg)})
+		periodTotal += avg
+		periodN++
+	}
+	if periodN > 0 {
+		overall := periodTotal / periodN
+		bars = append(bars, chartBar{Label: "Overall", Value: overall, ColorHint: kpiColorHint(overall)})
+	}
+	if len(bars) > 0 {
+		sections = append(sections, contentSection{
+			Heading: "KPI Achievement",
+			Chart:   &contentChart{Title: "Achievement by reporting period", Unit: "%", Max: 100, Bars: bars},
+		})
+	}
+	return sections
+}
+
+// buildOrgStructureSection renders a local plan's org chart (see
+// org_structure_roles in models_local_sections.go) as a flat Role/Reports-To
+// table — enough to reconstruct the hierarchy without needing actual box-
+// and-line diagram rendering, which the hand-rolled renderers here aren't
+// set up for. International plans have no organisational-structure concept
+// in this platform, so this returns nil for them rather than an empty
+// section.
+func (s *Service) buildOrgStructureSection(ctx context.Context, plan *models.Plan, orgID uuid.UUID) *contentSection {
+	if plan.PlanType != models.PlanTypeLocal {
+		return nil
+	}
+	roles, err := s.planSvc.ListOrgStructureRoles(ctx, plan.ID, orgID)
+	if err != nil || len(roles) == 0 {
+		return nil
+	}
+	titleByID := make(map[uuid.UUID]string, len(roles))
+	for _, r := range roles {
+		titleByID[r.ID] = r.Title
+	}
+	t := &contentTable{Headers: []string{"Role", "Reports To"}}
+	for _, r := range roles {
+		reportsTo := "—"
+		if r.ReportsToID != nil {
+			if title, ok := titleByID[*r.ReportsToID]; ok {
+				reportsTo = title
+			}
+		}
+		t.Rows = append(t.Rows, []string{r.Title, reportsTo})
+	}
+	return &contentSection{Heading: "Organisational Structure", Table: t}
+}
+
+// buildMESection renders a local plan's Monitoring & Evaluation chapter
+// (see me_items in models_local_sections.go) grouped by category.
+// International plans use the Progress & Status section (below) as their
+// M&E equivalent instead, so this returns nil for them.
+func (s *Service) buildMESection(ctx context.Context, plan *models.Plan, orgID uuid.UUID) *contentSection {
+	if plan.PlanType != models.PlanTypeLocal {
+		return nil
+	}
+	items, err := s.planSvc.ListMEItems(ctx, plan.ID, orgID, nil)
+	if err != nil || len(items) == 0 {
+		return nil
+	}
+	labels := map[models.MECategory]string{
+		models.MEObjective:             "Objective",
+		models.MECriticalSuccessFactor: "Critical Success Factor",
+		models.MEReviewNote:            "Review Note",
+		models.MEConclusionMeasure:     "Conclusion / Rollout Measure",
+	}
+	t := &contentTable{Headers: []string{"Category", "Detail"}}
+	for _, it := range items {
+		label, ok := labels[it.Category]
+		if !ok {
+			label = titleCase(string(it.Category))
+		}
+		t.Rows = append(t.Rows, []string{label, it.Text})
+	}
+	return &contentSection{Heading: "Monitoring & Evaluation", Table: t}
+}
+
+// buildGenericContentSection turns an arbitrary activity content blob into
+// a readable section without this package needing to know that activity
+// type's exact shape ahead of time — international activities use per-type
+// editors (VisionMissionEditor, SwotEditor, TableEditor, GenericEditor...)
+// with different JSON shapes, and duplicating that knowledge here would
+// mean updating this file every time a frontend editor's content shape
+// changes. String fields become "Label: value" paragraphs; an array of
+// objects (e.g. TableEditor's {"rows": [...]}) becomes a table, columned
+// off the first row's keys. Returns nil if the content has nothing
+// renderable (e.g. an activity that was created but never filled in).
+func buildGenericContentSection(heading string, content map[string]any) *contentSection {
+	if len(content) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(content))
+	for k := range content {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var paras []string
+	var table *contentTable
+	for _, k := range keys {
+		switch v := content[k].(type) {
+		case string:
+			if v != "" {
+				paras = append(paras, titleCase(strings.ReplaceAll(k, "_", " "))+": "+v)
+			}
+		case []any:
+			if table != nil || len(v) == 0 {
+				continue
+			}
+			first, ok := v[0].(map[string]any)
+			if !ok {
+				continue
+			}
+			cols := make([]string, 0, len(first))
+			for c := range first {
+				cols = append(cols, c)
+			}
+			sort.Strings(cols)
+			table = &contentTable{Headers: cols}
+			for _, rawRow := range v {
+				row, ok := rawRow.(map[string]any)
+				if !ok {
+					continue
+				}
+				cells := make([]string, len(cols))
+				for i, c := range cols {
+					cells[i] = fmt.Sprint(row[c])
+				}
+				table.Rows = append(table.Rows, cells)
+			}
+		}
+	}
+	if len(paras) == 0 && table == nil {
+		return nil
+	}
+	return &contentSection{Heading: heading, Paragraphs: paras, Table: table}
+}
+
 func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uuid.UUID, sec SectionConfig) (*reportContent, error) {
 	rc := &reportContent{}
-
-	// Always leads the report, regardless of which sections were requested —
-	// matches the "Organisational Information" opener conventional in
-	// enterprise strategic-plan documents (name, sector, address, contacts),
-	// now that orgs can fill in that fuller profile via PATCH /api/v1/org.
-	if orgSection := s.buildOrgInfoSection(ctx, orgID); orgSection != nil {
-		rc.Sections = append(rc.Sections, *orgSection)
-	}
 
 	// Progress is cheap and several sections depend on it, so fetch it once
 	// up front regardless of which sections were actually requested.
@@ -528,6 +889,20 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 				desc,
 			},
 		})
+	}
+
+	if sec.VisionMission {
+		if vmSection := s.buildVisionMissionSection(ctx, plan, orgID); vmSection != nil {
+			rc.Sections = append(rc.Sections, *vmSection)
+		}
+	}
+
+	if sec.SituationalAnalysis {
+		rc.Sections = append(rc.Sections, s.buildSituationalAnalysisSections(ctx, plan, orgID)...)
+	}
+
+	if sec.Scorecard {
+		rc.Sections = append(rc.Sections, s.buildScorecardSections(ctx, plan, orgID)...)
 	}
 
 	if sec.ProgressStatus {
@@ -628,6 +1003,18 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 					Table:   t,
 				})
 			}
+		}
+	}
+
+	if sec.OrgStructure {
+		if orgStructSection := s.buildOrgStructureSection(ctx, plan, orgID); orgStructSection != nil {
+			rc.Sections = append(rc.Sections, *orgStructSection)
+		}
+	}
+
+	if sec.MonitoringEval {
+		if meSection := s.buildMESection(ctx, plan, orgID); meSection != nil {
+			rc.Sections = append(rc.Sections, *meSection)
 		}
 	}
 
