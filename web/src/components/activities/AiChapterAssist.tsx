@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
-import { Sparkles, RefreshCw, Check, X } from 'lucide-react'
+import { RefreshCw, Check, X } from 'lucide-react'
 import { Button, Input } from '../ui'
 import { aiApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
+import { LwaziFace } from './LwaziAvatar'
 
 // ── Shared "Call Lwazi" AI-draft widget for local-plan chapters ────────────
 //
@@ -78,14 +79,19 @@ export function useAiDraft(planId: string, activityType: string) {
   return { open, keywords, setKeywords, loading, applying, draft, model, start, close, generate, accept }
 }
 
-export const AiAssistTrigger: React.FC<{ onClick: () => void; label?: string }> = ({ onClick, label = 'Draft with AI' }) => (
-  <button
-    onClick={onClick}
-    className="flex items-center gap-1.5 rounded-lg border border-accent-200 bg-accent-50 px-2.5 py-1.5 text-xs font-semibold text-accent hover:bg-accent-100 transition-colors shrink-0"
-  >
-    <Sparkles className="size-3.5" /> {label}
-  </button>
-)
+export const AiAssistTrigger: React.FC<{ onClick: () => void; label?: string }> = ({ onClick, label = 'Ask Lwazi' }) => {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="flex items-center gap-1.5 rounded-lg border border-accent-200 bg-accent-50 px-2.5 py-1.5 text-xs font-semibold text-accent hover:bg-accent-100 transition-colors shrink-0"
+    >
+      <LwaziFace size={16} state={hovered ? 'happy' : 'idle'} /> {label}
+    </button>
+  )
+}
 
 function humanizeKey(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -130,6 +136,11 @@ function renderDraftValue(val: unknown): React.ReactNode {
       </ul>
     )
   }
+  if (typeof val === 'object' && val !== null) {
+    const inline = renderInlineObject(val as Record<string, unknown>)
+    if (!inline) return <p className="text-sm text-ink-400 italic">Nothing suggested.</p>
+    return <p className="text-sm text-ink-800">{inline}</p>
+  }
   return <p className="text-sm text-ink-800">{String(val)}</p>
 }
 
@@ -164,7 +175,7 @@ export const AiAssistPanel: React.FC<{
   <div className="w-full rounded-2xl border-2 border-accent bg-accent-50 p-4 mb-4 space-y-3">
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-1.5">
-        <Sparkles className="size-4 text-accent" />
+        <LwaziFace size={18} state={loading ? 'thinking' : keywords.trim() ? 'listening' : 'idle'} />
         <p className="text-xs font-bold uppercase tracking-wide text-accent">Call Lwazi</p>
       </div>
       <button onClick={onClose} className="text-ink-400 hover:text-ink-700">

@@ -585,12 +585,15 @@ const PESTELTable: React.FC<{
   }
 
   const handleAiAccept = async (draft: Record<string, unknown>) => {
-    const list = Array.isArray(draft.items) ? draft.items as unknown[] : []
-    for (const raw of list) {
+    // Mirrors SWOT_META's pattern above: the backend sends the draft flat,
+    // keyed directly by factor (draft.political, draft.economic, ...), each
+    // holding the three sub-fields — not a generic draft.items[] array.
+    // Reading draft.items (as this used to) always came back empty, so an
+    // AI-drafted PESTEL row was silently skipped for every factor.
+    for (const factor of PESTEL_FACTORS) {
+      const raw = draft[factor]
       if (typeof raw !== 'object' || raw === null) continue
-      const row = raw as { factor?: unknown; implication?: unknown; positive?: unknown; negative?: unknown }
-      const factor = PESTEL_FACTORS.find((f) => f === row.factor)
-      if (!factor) continue
+      const row = raw as { implication?: unknown; positive?: unknown; negative?: unknown }
       const implication = typeof row.implication === 'string' ? row.implication.trim() : ''
       const positive = typeof row.positive === 'string' ? row.positive.trim() : ''
       const negative = typeof row.negative === 'string' ? row.negative.trim() : ''
