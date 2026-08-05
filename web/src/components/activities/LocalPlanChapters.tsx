@@ -585,30 +585,67 @@ const PESTELTable: React.FC<{
   }
 
   const handleAiAccept = async (draft: Record<string, unknown>) => {
-    // Mirrors SWOT_META's pattern above: the backend sends the draft flat,
-    // keyed directly by factor (draft.political, draft.economic, ...), each
-    // holding the three sub-fields — not a generic draft.items[] array.
-    // Reading draft.items (as this used to) always came back empty, so an
-    // AI-drafted PESTEL row was silently skipped for every factor.
-    for (const factor of PESTEL_FACTORS) {
-      const raw = draft[factor]
-      if (typeof raw !== 'object' || raw === null) continue
-      const row = raw as { implication?: unknown; positive?: unknown; negative?: unknown }
-      const implication = typeof row.implication === 'string' ? row.implication.trim() : ''
-      const positive = typeof row.positive === 'string' ? row.positive.trim() : ''
-      const negative = typeof row.negative === 'string' ? row.negative.trim() : ''
+    // 1. Extract the items array regardless of how the payload wraps it
+    let items: Array<Record<string, unknown>> = []
+
+    if (Array.isArray(draft)) {
+      items = draft
+    } else if (Array.isArray(draft.items)) {
+      items = draft.items as Array<Record<string, unknown>>
+    } else if (draft.draft && typeof draft.draft === 'object' && Array.isArray((draft.draft as Record<string, unknown>).items)) {
+      items = (draft.draft as Record<string, unknown>).items as Array<Record<string, unknown>>
+    } else {
+      // Fallback: If it's a flat object like { political: {...}, economic: {...} }
+      items = Object.entries(draft).map(([factor, data]) => ({
+        factor,
+        ...(typeof data === 'object' && data !== null ? data : { implication: String(data) }),
+      }))
+    }
+
+    if (items.length === 0) {
+      throw new Error('No items found in AI response')
+    }
+
+    let created = 0
+
+    // 2. Iterate through the array of items directly
+    for (const rawItem of items) {
+      const rawFactor = String(rawItem.factor || '').toLowerCase().trim() as PESTELFactor
+      
+      // Ensure it matches one of our valid PESTEL factors
+      if (!PESTEL_FACTORS.includes(rawFactor)) continue
+
+      // Helper to grab string values from multiple possible key names
+      const pick = (...keys: string[]) => {
+        for (const key of keys) {
+          const v = rawItem[key]
+          if (typeof v === 'string' && v.trim()) return v.trim()
+        }
+        return ''
+      }
+
+      const implication = pick('implication', 'implications', 'implication_angle')
+      const positive = pick('positive', 'positive_angle', 'positiveangle')
+      const negative = pick('negative', 'negative_angle', 'negativeangle')
+
       if (!implication && !positive && !negative) continue
+
       try {
-        const item = await pestelApi.create(plan.id, {
-          factor,
+        const newItem = await pestelApi.create(plan.id, {
+          factor: rawFactor,
           implication: implication || undefined,
           positive: positive || undefined,
           negative: negative || undefined,
         })
-        setPestel((prev) => [...prev, item])
-      } catch {
-        // best-effort — skip a factor that fails to save rather than aborting the rest
+        setPestel((prev) => [...prev, newItem])
+        created++
+      } catch (err) {
+        console.error(`Failed to create PESTEL item for factor ${rawFactor}:`, err)
       }
+    }
+
+    if (created === 0) {
+      throw new Error('Failed to save any PESTEL items from AI draft')
     }
   }
 
