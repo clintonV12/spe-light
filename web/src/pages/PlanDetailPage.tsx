@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   Plus, ArrowLeft, BarChart2, Sparkles, AlertTriangle,
@@ -11,6 +11,7 @@ import { usePermission } from '../hooks'
 import { ProgressBar, EmptyState } from '../components/ui'
 import CreateActivityModal from '../components/activities/CreateActivityModal'
 import LocalPlanChapters from '../components/activities/LocalPlanChapters'
+import type { ChapterKey } from '../components/activities/LocalPlanChapters'
 import { SHORTCUT_CREATE_EVENT } from '../components/layout/AppShell'
 import type { Plan, Activity, Phase, ActivityStatus, PlanStatus } from '../types'
 
@@ -238,6 +239,8 @@ function ActivityRow({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function PlanDetailPage() {
   const { planId } = useParams<{ planId: string }>()
+  const [searchParams] = useSearchParams()
+  const initialChapter = searchParams.get('tab') as ChapterKey | null
   const navigate = useNavigate()
   const { can } = usePermission()
   const { t } = useTranslation()
@@ -405,7 +408,8 @@ export default function PlanDetailPage() {
           canEdit={can.editActivity}
           canDelete={can.createPlan}
           onChanged={load}
-         onPlanUpdated={setPlan}
+          onPlanUpdated={setPlan}
+          initialChapter={initialChapter ?? undefined}
         />
       ) : (
         <>

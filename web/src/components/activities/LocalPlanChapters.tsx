@@ -24,9 +24,16 @@ interface LocalPlanChaptersProps {
   canDelete: boolean
   onChanged: () => void
   onPlanUpdated: (plan: Plan) => void
+  /**
+   * Which chapter tab to open on first render (e.g. so navigating back from
+   * an activity editor can land the person back on the tab they came from
+   * instead of always resetting to 'focus'). Falls back to 'focus' if
+   * omitted or not a recognized chapter key.
+   */
+  initialChapter?: ChapterKey
 }
 
-type ChapterKey = 'focus' | 'analysis' | 'pillars' | 'org' | 'me' | 'tracking'
+export type ChapterKey = 'focus' | 'analysis' | 'pillars' | 'org' | 'me' | 'tracking'
 
 const CHAPTERS: { key: ChapterKey; label: string; icon: React.ElementType }[] = [
   { key: 'focus',    label: 'Vision, Mission & Values', icon: Compass },
@@ -38,9 +45,12 @@ const CHAPTERS: { key: ChapterKey; label: string; icon: React.ElementType }[] = 
 ]
 
 export const LocalPlanChapters: React.FC<LocalPlanChaptersProps> = ({
-  plan, activities, canEdit, canDelete, onChanged, onPlanUpdated,
+  plan, activities, canEdit, canDelete, onChanged, onPlanUpdated, initialChapter,
 }) => {
-  const [active, setActive] = useState<ChapterKey>('focus')
+  const isValidChapter = (key: ChapterKey | undefined): key is ChapterKey =>
+    !!key && CHAPTERS.some((c) => c.key === key)
+
+  const [active, setActive] = useState<ChapterKey>(isValidChapter(initialChapter) ? initialChapter : 'focus')
 
   return (
     <div>

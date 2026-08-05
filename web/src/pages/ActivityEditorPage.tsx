@@ -481,11 +481,13 @@ export default function ActivityEditorPage() {
     setDeleting(true)
     try {
       await activitiesApi.delete(activityId)
-      navigate(`/plans/${planId}`)
+      // Same rule as the back button: local-plan activities return to the
+      // Strategic Pillars tab rather than LocalPlanChapters' default tab.
+      navigate(activity?.objective_id ? `/plans/${planId}?tab=pillars` : `/plans/${planId}`)
     } catch {
       setDeleting(false)
     }
-  }, [activityId, planId, navigate])
+  }, [activityId, planId, navigate, activity])
 
   // ── Cmd+S instant save ──────────────────────────────────────────────────────
 
@@ -532,9 +534,11 @@ export default function ActivityEditorPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
-      {/* Back */}
+      {/* Back — local-plan activities live under the Strategic Pillars
+          chapter (LocalPlanBoard), so return there directly rather than
+          dropping back to LocalPlanChapters' default 'focus' tab. */}
       <button
-        onClick={() => navigate(`/plans/${planId}`)}
+        onClick={() => navigate(isLocal ? `/plans/${planId}?tab=pillars` : `/plans/${planId}`)}
         className="flex items-center gap-1.5 text-sm text-ink-400 hover:text-ink-700 transition-colors"
       >
         <ArrowLeft className="size-4" /> {t('activityEditor.backToPlan')}

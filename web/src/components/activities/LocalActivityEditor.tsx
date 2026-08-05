@@ -163,47 +163,6 @@ export const LocalActivityEditor: React.FC<LocalActivityEditorProps> = ({ activi
         />
       </div>
 
-      {/* Budget / Responsibility / Measurement period */}
-      <div className="rounded-2xl border border-ink-100 bg-white p-5 space-y-4">
-        <h3 className="font-display text-sm font-bold text-ink-900">Implementation details</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input
-            label="Budget"
-            type="number"
-            placeholder="0.00"
-            value={budget}
-            disabled={!canEdit}
-            onChange={(e) => setBudget(e.target.value)}
-            onBlur={saveBudget}
-          />
-          <Input
-            label="Responsibility"
-            placeholder="e.g. Board / HR Committee"
-            value={responsibility}
-            disabled={!canEdit}
-            onChange={(e) => setResponsibility(e.target.value)}
-            onBlur={saveResponsibility}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink-700 mb-1.5">Measurement Period</label>
-          <select
-            disabled={!canEdit}
-            value={activity.target_period ?? ''}
-            onChange={(e) => savePeriod(e.target.value as KPIPeriod | '')}
-            className="w-full sm:w-64 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 outline-none focus:border-accent disabled:bg-ink-50"
-          >
-            <option value="">No measurement period</option>
-            {KPI_PERIODS.map((p) => (
-              <option key={p} value={p}>{PERIOD_META[p].label}</option>
-            ))}
-          </select>
-          <p className="text-xs text-ink-400 mt-1">
-            Which Tracking Module gauge this activity's KPIs count toward.
-          </p>
-        </div>
-      </div>
-
       {/* KPIs */}
       <div className="rounded-2xl border border-ink-100 bg-white p-5">
         <div className="flex items-center justify-between mb-3">
@@ -282,6 +241,48 @@ export const LocalActivityEditor: React.FC<LocalActivityEditorProps> = ({ activi
           })}
         </div>
       </div>
+
+      {/* Budget / Responsibility / Measurement period */}
+      <div className="rounded-2xl border border-ink-100 bg-white p-5 space-y-4">
+        <h3 className="font-display text-sm font-bold text-ink-900">Implementation details</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Input
+            label="Budget"
+            type="number"
+            placeholder="0.00"
+            value={budget}
+            disabled={!canEdit}
+            onChange={(e) => setBudget(e.target.value)}
+            onBlur={saveBudget}
+          />
+          <Input
+            label="Responsibility"
+            placeholder="e.g. Board / HR Committee"
+            value={responsibility}
+            disabled={!canEdit}
+            onChange={(e) => setResponsibility(e.target.value)}
+            onBlur={saveResponsibility}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-ink-700 mb-1.5">Measurement Period</label>
+          <select
+            disabled={!canEdit}
+            value={activity.target_period ?? ''}
+            onChange={(e) => savePeriod(e.target.value as KPIPeriod | '')}
+            className="w-full sm:w-64 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 outline-none focus:border-accent disabled:bg-ink-50"
+          >
+            <option value="">No measurement period</option>
+            {KPI_PERIODS.map((p) => (
+              <option key={p} value={p}>{PERIOD_META[p].label}</option>
+            ))}
+          </select>
+          <p className="text-xs text-ink-400 mt-1">
+            Which Tracking Module gauge this activity's KPIs count toward.
+          </p>
+        </div>
+      </div>
+
     </div>
   )
 }
