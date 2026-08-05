@@ -141,7 +141,7 @@ func (s *Service) ListInvitations(ctx context.Context, orgID uuid.UUID) ([]model
 	}
 	defer rows.Close()
 
-	var invites []models.Invitation
+	invites := []models.Invitation{}
 	for rows.Next() {
 		var inv models.Invitation
 		if err := rows.Scan(
@@ -323,7 +323,7 @@ func (s *Service) ListUsers(ctx context.Context, orgID uuid.UUID) ([]models.User
 	}
 	defer rows.Close()
 
-	var users []models.User
+	users := []models.User{}
 	for rows.Next() {
 		var u models.User
 		if err := rows.Scan(

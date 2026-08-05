@@ -23,7 +23,9 @@
     "progress": "Progress",
     "reports": "Reports",
     "admin": "Admin",
-    "platformConsole": "Platform console"
+    "platformConsole": "Platform console",
+    "logout": "Log out",
+    "account": "Account settings"
   },
   "plan": {
     "status": {
@@ -77,7 +79,8 @@
     "signInButton": "Sign in",
     "signInError": "Incorrect email or password. Check your details and try again.",
     "noAccount": "Don't have an account?",
-    "noAccountHelp": "Ask your organisation admin to send an invite."
+    "noAccountHelp": "Ask your organisation admin to send an invite.",
+    "forgotPassword": "Forgot password?"
   },
   "activityEditor": {
     "backToPlan": "Back to plan",
@@ -203,7 +206,12 @@
       "progressStatus": "Progress status",
       "milestones": "Milestones",
       "dependencyLinks": "Dependency links",
-      "aiSummary": "AI summary"
+      "aiSummary": "AI summary",
+      "visionMission": "Vision, Mission & Core Values",
+      "situationalAnalysis": "Situational Analysis (SWOT, PESTEL, Stakeholders)",
+      "scorecard": "Strategic Scorecard (KPIs + achievement chart)",
+      "orgStructure": "Organisational Structure (local plans only)",
+      "monitoringEvaluation": "Monitoring & Evaluation (local plans only)"
     }
   },
   "acceptInvite": {
@@ -857,5 +865,63 @@
     "submit": "Create plan",
     "created": "Plan created",
     "createFailed": "Failed to create plan"
+  },
+  "forgotPassword": {
+    "title": "Forgot your password?",
+    "subtitle": "Enter the email on your account and we'll send you a link to reset it.",
+    "sendLink": "Send reset link",
+    "checkEmailTitle": "Check your email",
+    "checkEmailDesc": "If an account exists for {{email}}, we've sent a link to reset your password.",
+    "backToSignIn": "Back to sign in"
+  },
+  "resetPassword": {
+    "title": "Choose a new password",
+    "subtitle": "This link is single-use and expires shortly, so finish here.",
+    "newPassword": "New password",
+    "updatePassword": "Update password",
+    "successTitle": "Password updated",
+    "successDesc": "You can now sign in with your new password.",
+    "goToSignIn": "Go to sign in",
+    "invalidOrExpired": "This reset link is invalid or has expired. Request a new one to continue.",
+    "requestNewLink": "Request a new link"
+  },
+  "profile": {
+    "title": "Your account",
+    "subtitle": "Manage your personal details, password, and active sessions.",
+    "loadError": "Couldn't load your profile. Try refreshing the page.",
+    "platformTeam": "Platform team",
+    "orgAccount": "Organisation account",
+    "detailsTitle": "Profile details",
+    "name": "Full name",
+    "phone": "Phone number",
+    "phonePlaceholder": "Optional",
+    "locale": "Language",
+    "email": "Email address",
+    "emailLocked": "Email can't be changed here — contact your admin.",
+    "saveChanges": "Save changes",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "saveError": "Couldn't save your changes. Try again.",
+    "passwordTitle": "Change password",
+    "passwordSubtitle": "Changing your password signs you out of every device, including this one.",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "passwordError": "Current password is incorrect, or the new password is invalid.",
+    "updatePassword": "Update password",
+    "updating": "Updating…",
+    "passwordUpdated": "Password updated",
+    "passwordUpdatedDesc": "For your security, you have been signed out everywhere. Redirecting to sign in…",
+    "sessionsTitle": "Active sessions",
+    "sessionsSubtitle": "Everywhere you're currently signed in.",
+    "sessionsError": "Couldn't load your sessions.",
+    "signOutEverywhere": "Sign out everywhere",
+    "confirmRevoke": "Sign out of every session?",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "signingOut": "Signing out…",
+    "revokeError": "Couldn't sign out of all sessions. Try again.",
+    "signedInSince": "Signed in {{date}}",
+    "expires": "Expires {{date}}",
+    "noSessions": "No other active sessions."
   }
 }

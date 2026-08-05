@@ -23,7 +23,9 @@
     "progress": "Progresso",
     "reports": "Relatórios",
     "admin": "Administração",
-    "platformConsole": "Consola da plataforma"
+    "platformConsole": "Consola da plataforma",
+    "logout": "Terminar sessão",
+    "account": "Definições da conta"
   },
   "plan": {
     "status": {
@@ -77,7 +79,8 @@
     "signInButton": "Entrar",
     "signInError": "E-mail ou palavra-passe incorretos. Verifique os seus dados e tente novamente.",
     "noAccount": "Não tem uma conta?",
-    "noAccountHelp": "Peça ao administrador da sua organização para lhe enviar um convite."
+    "noAccountHelp": "Peça ao administrador da sua organização para lhe enviar um convite.",
+    "forgotPassword": "Esqueceu-se da palavra-passe?"
   },
   "activityEditor": {
     "backToPlan": "Voltar ao plano",
@@ -203,7 +206,12 @@
       "progressStatus": "Estado do progresso",
       "milestones": "Marcos",
       "dependencyLinks": "Ligações de dependência",
-      "aiSummary": "Resumo da IA"
+      "aiSummary": "Resumo da IA",
+      "visionMission": "Visão, missão e valores fundamentais",
+      "situationalAnalysis": "Análise situacional (SWOT, PESTEL, partes interessadas)",
+      "scorecard": "Painel estratégico (KPIs + gráfico de resultados)",
+      "orgStructure": "Estrutura organizacional (apenas planos locais)",
+      "monitoringEvaluation": "Monitorização e avaliação (apenas planos locais)"
     }
   },
   "acceptInvite": {
@@ -857,5 +865,63 @@
     "submit": "Criar plano",
     "created": "Plano criado",
     "createFailed": "Falha ao criar o plano"
+  },
+  "forgotPassword": {
+    "title": "Esqueceu-se da palavra-passe?",
+    "subtitle": "Introduza o e-mail da sua conta e enviaremos um link para a repor.",
+    "sendLink": "Enviar link de reposição",
+    "checkEmailTitle": "Verifique o seu e-mail",
+    "checkEmailDesc": "Se existir uma conta para {{email}}, enviámos um link para repor a sua palavra-passe.",
+    "backToSignIn": "Voltar ao início de sessão"
+  },
+  "resetPassword": {
+    "title": "Escolha uma nova palavra-passe",
+    "subtitle": "Este link é de utilização única e expira rapidamente, por isso conclua aqui.",
+    "newPassword": "Nova palavra-passe",
+    "updatePassword": "Atualizar palavra-passe",
+    "successTitle": "Palavra-passe atualizada",
+    "successDesc": "Já pode iniciar sessão com a sua nova palavra-passe.",
+    "goToSignIn": "Ir para o início de sessão",
+    "invalidOrExpired": "Este link de reposição é inválido ou expirou. Peça um novo para continuar.",
+    "requestNewLink": "Pedir um novo link"
+  },
+  "profile": {
+    "title": "A sua conta",
+    "subtitle": "Faça a gestão dos seus dados pessoais, palavra-passe e sessões ativas.",
+    "loadError": "Não foi possível carregar o seu perfil. Tente atualizar a página.",
+    "platformTeam": "Equipa da plataforma",
+    "orgAccount": "Conta de organização",
+    "detailsTitle": "Dados do perfil",
+    "name": "Nome completo",
+    "phone": "Número de telefone",
+    "phonePlaceholder": "Opcional",
+    "locale": "Idioma",
+    "email": "Endereço de e-mail",
+    "emailLocked": "O e-mail não pode ser alterado aqui — contacte o seu administrador.",
+    "saveChanges": "Guardar alterações",
+    "saving": "A guardar…",
+    "saved": "Guardado",
+    "saveError": "Não foi possível guardar as alterações. Tente novamente.",
+    "passwordTitle": "Alterar palavra-passe",
+    "passwordSubtitle": "Alterar a sua palavra-passe termina a sessão em todos os dispositivos, incluindo este.",
+    "currentPassword": "Palavra-passe atual",
+    "newPassword": "Nova palavra-passe",
+    "passwordError": "A palavra-passe atual está incorreta, ou a nova palavra-passe é inválida.",
+    "updatePassword": "Atualizar palavra-passe",
+    "updating": "A atualizar…",
+    "passwordUpdated": "Palavra-passe atualizada",
+    "passwordUpdatedDesc": "Por segurança, terminámos a sua sessão em todo o lado. A redirecionar para o início de sessão…",
+    "sessionsTitle": "Sessões ativas",
+    "sessionsSubtitle": "Todos os locais onde tem sessão iniciada atualmente.",
+    "sessionsError": "Não foi possível carregar as suas sessões.",
+    "signOutEverywhere": "Terminar sessão em todo o lado",
+    "confirmRevoke": "Terminar sessão em todas as sessões?",
+    "confirm": "Confirmar",
+    "cancel": "Cancelar",
+    "signingOut": "A terminar sessão…",
+    "revokeError": "Não foi possível terminar todas as sessões. Tente novamente.",
+    "signedInSince": "Sessão iniciada em {{date}}",
+    "expires": "Expira em {{date}}",
+    "noSessions": "Não existem outras sessões ativas."
   }
 }

@@ -23,7 +23,9 @@
     "progress": "Avancement",
     "reports": "Rapports",
     "admin": "Administration",
-    "platformConsole": "Console plateforme"
+    "platformConsole": "Console plateforme",
+    "logout": "Déconnexion",
+    "account": "Paramètres du compte"
   },
   "plan": {
     "status": {
@@ -77,7 +79,8 @@
     "signInButton": "Se connecter",
     "signInError": "E-mail ou mot de passe incorrect. Vérifiez vos informations et réessayez.",
     "noAccount": "Vous n'avez pas de compte ?",
-    "noAccountHelp": "Demandez à l'administrateur de votre organisation de vous envoyer une invitation."
+    "noAccountHelp": "Demandez à l'administrateur de votre organisation de vous envoyer une invitation.",
+    "forgotPassword": "Mot de passe oublié ?"
   },
   "activityEditor": {
     "backToPlan": "Retour au plan",
@@ -203,7 +206,12 @@
       "progressStatus": "État d'avancement",
       "milestones": "Jalons",
       "dependencyLinks": "Liens de dépendance",
-      "aiSummary": "Résumé IA"
+      "aiSummary": "Résumé IA",
+      "visionMission": "Vision, mission et valeurs fondamentales",
+      "situationalAnalysis": "Analyse de la situation (SWOT, PESTEL, parties prenantes)",
+      "scorecard": "Tableau de bord stratégique (KPI + graphique de réalisation)",
+      "orgStructure": "Structure organisationnelle (plans locaux uniquement)",
+      "monitoringEvaluation": "Suivi et évaluation (plans locaux uniquement)"
     }
   },
   "acceptInvite": {
@@ -857,5 +865,63 @@
     "submit": "Créer le plan",
     "created": "Plan créé",
     "createFailed": "Échec de la création du plan"
+  },
+  "forgotPassword": {
+    "title": "Mot de passe oublié ?",
+    "subtitle": "Saisissez l'e-mail de votre compte et nous vous enverrons un lien pour le réinitialiser.",
+    "sendLink": "Envoyer le lien",
+    "checkEmailTitle": "Consultez vos e-mails",
+    "checkEmailDesc": "Si un compte existe pour {{email}}, nous avons envoyé un lien de réinitialisation du mot de passe.",
+    "backToSignIn": "Retour à la connexion"
+  },
+  "resetPassword": {
+    "title": "Choisissez un nouveau mot de passe",
+    "subtitle": "Ce lien est à usage unique et expire rapidement, terminez donc ici.",
+    "newPassword": "Nouveau mot de passe",
+    "updatePassword": "Mettre à jour le mot de passe",
+    "successTitle": "Mot de passe mis à jour",
+    "successDesc": "Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.",
+    "goToSignIn": "Aller à la connexion",
+    "invalidOrExpired": "Ce lien de réinitialisation est invalide ou a expiré. Demandez-en un nouveau pour continuer.",
+    "requestNewLink": "Demander un nouveau lien"
+  },
+  "profile": {
+    "title": "Votre compte",
+    "subtitle": "Gérez vos informations personnelles, votre mot de passe et vos sessions actives.",
+    "loadError": "Impossible de charger votre profil. Essayez d'actualiser la page.",
+    "platformTeam": "Équipe plateforme",
+    "orgAccount": "Compte d'organisation",
+    "detailsTitle": "Informations du profil",
+    "name": "Nom complet",
+    "phone": "Numéro de téléphone",
+    "phonePlaceholder": "Facultatif",
+    "locale": "Langue",
+    "email": "Adresse e-mail",
+    "emailLocked": "L'e-mail ne peut pas être modifié ici — contactez votre administrateur.",
+    "saveChanges": "Enregistrer les modifications",
+    "saving": "Enregistrement…",
+    "saved": "Enregistré",
+    "saveError": "Impossible d’enregistrer vos modifications. Réessayez.",
+    "passwordTitle": "Modifier le mot de passe",
+    "passwordSubtitle": "La modification de votre mot de passe vous déconnecte de tous vos appareils, y compris celui-ci.",
+    "currentPassword": "Mot de passe actuel",
+    "newPassword": "Nouveau mot de passe",
+    "passwordError": "Le mot de passe actuel est incorrect, ou le nouveau mot de passe n'est pas valide.",
+    "updatePassword": "Mettre à jour le mot de passe",
+    "updating": "Mise à jour…",
+    "passwordUpdated": "Mot de passe mis à jour",
+    "passwordUpdatedDesc": "Pour votre sécurité, vous avez été déconnecté(e) de partout. Redirection vers la connexion…",
+    "sessionsTitle": "Sessions actives",
+    "sessionsSubtitle": "Partout où vous êtes actuellement connecté(e).",
+    "sessionsError": "Impossible de charger vos sessions.",
+    "signOutEverywhere": "Se déconnecter partout",
+    "confirmRevoke": "Se déconnecter de toutes les sessions ?",
+    "confirm": "Confirmer",
+    "cancel": "Annuler",
+    "signingOut": "Déconnexion…",
+    "revokeError": "Impossible de déconnecter toutes les sessions. Réessayez.",
+    "signedInSince": "Connecté(e) depuis le {{date}}",
+    "expires": "Expire le {{date}}",
+    "noSessions": "Aucune autre session active."
   }
 }

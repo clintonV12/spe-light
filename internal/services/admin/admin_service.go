@@ -75,7 +75,7 @@ func (s *Service) ListOrgs(ctx context.Context, req ListOrgsRequest) ([]models.O
 	}
 	defer rows.Close()
 
-	var orgs []models.Organisation
+	orgs := []models.Organisation{}
 	for rows.Next() {
 		var o models.Organisation
 		if err := rows.Scan(

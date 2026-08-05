@@ -23,7 +23,9 @@
     "progress": "Progreso",
     "reports": "Informes",
     "admin": "Administración",
-    "platformConsole": "Consola de la plataforma"
+    "platformConsole": "Consola de la plataforma",
+    "logout": "Cerrar sesión",
+    "account": "Ajustes de la cuenta"
   },
   "plan": {
     "status": {
@@ -77,7 +79,8 @@
     "signInButton": "Iniciar sesión",
     "signInError": "Correo o contraseña incorrectos. Comprueba tus datos e inténtalo de nuevo.",
     "noAccount": "¿No tienes una cuenta?",
-    "noAccountHelp": "Pide al administrador de tu organización que te envíe una invitación."
+    "noAccountHelp": "Pide al administrador de tu organización que te envíe una invitación.",
+    "forgotPassword": "¿Olvidaste tu contraseña?"
   },
   "activityEditor": {
     "backToPlan": "Volver al plan",
@@ -203,7 +206,12 @@
       "progressStatus": "Estado del progreso",
       "milestones": "Hitos",
       "dependencyLinks": "Enlaces de dependencia",
-      "aiSummary": "Resumen de la IA"
+      "aiSummary": "Resumen de la IA",
+      "visionMission": "Visión, misión y valores fundamentales",
+      "situationalAnalysis": "Análisis situacional (FODA, PESTEL, partes interesadas)",
+      "scorecard": "Cuadro de mando estratégico (KPI + gráfico de logros)",
+      "orgStructure": "Estructura organizativa (solo planes locales)",
+      "monitoringEvaluation": "Seguimiento y evaluación (solo planes locales)"
     }
   },
   "acceptInvite": {
@@ -857,5 +865,63 @@
     "submit": "Crear plan",
     "created": "Plan creado",
     "createFailed": "Error al crear el plan"
+  },
+  "forgotPassword": {
+    "title": "¿Olvidaste tu contraseña?",
+    "subtitle": "Introduce el correo de tu cuenta y te enviaremos un enlace para restablecerla.",
+    "sendLink": "Enviar enlace",
+    "checkEmailTitle": "Revisa tu correo",
+    "checkEmailDesc": "Si existe una cuenta para {{email}}, te hemos enviado un enlace para restablecer tu contraseña.",
+    "backToSignIn": "Volver a iniciar sesión"
+  },
+  "resetPassword": {
+    "title": "Elige una nueva contraseña",
+    "subtitle": "Este enlace es de un solo uso y caduca pronto, así que termina aquí.",
+    "newPassword": "Nueva contraseña",
+    "updatePassword": "Actualizar contraseña",
+    "successTitle": "Contraseña actualizada",
+    "successDesc": "Ya puedes iniciar sesión con tu nueva contraseña.",
+    "goToSignIn": "Ir a iniciar sesión",
+    "invalidOrExpired": "Este enlace de restablecimiento no es válido o ha caducado. Solicita uno nuevo para continuar.",
+    "requestNewLink": "Solicitar un nuevo enlace"
+  },
+  "profile": {
+    "title": "Tu cuenta",
+    "subtitle": "Gestiona tus datos personales, tu contraseña y tus sesiones activas.",
+    "loadError": "No se pudo cargar tu perfil. Intenta actualizar la página.",
+    "platformTeam": "Equipo de la plataforma",
+    "orgAccount": "Cuenta de organización",
+    "detailsTitle": "Datos del perfil",
+    "name": "Nombre completo",
+    "phone": "Número de teléfono",
+    "phonePlaceholder": "Opcional",
+    "locale": "Idioma",
+    "email": "Correo electrónico",
+    "emailLocked": "El correo no se puede cambiar aquí — contacta con tu administrador.",
+    "saveChanges": "Guardar cambios",
+    "saving": "Guardando…",
+    "saved": "Guardado",
+    "saveError": "No se pudieron guardar los cambios. Inténtalo de nuevo.",
+    "passwordTitle": "Cambiar contraseña",
+    "passwordSubtitle": "Cambiar tu contraseña cierra la sesión en todos tus dispositivos, incluido este.",
+    "currentPassword": "Contraseña actual",
+    "newPassword": "Nueva contraseña",
+    "passwordError": "La contraseña actual es incorrecta o la nueva contraseña no es válida.",
+    "updatePassword": "Actualizar contraseña",
+    "updating": "Actualizando…",
+    "passwordUpdated": "Contraseña actualizada",
+    "passwordUpdatedDesc": "Por tu seguridad, se ha cerrado la sesión en todas partes. Redirigiendo al inicio de sesión…",
+    "sessionsTitle": "Sesiones activas",
+    "sessionsSubtitle": "Todos los lugares donde has iniciado sesión actualmente.",
+    "sessionsError": "No se pudieron cargar tus sesiones.",
+    "signOutEverywhere": "Cerrar sesión en todas partes",
+    "confirmRevoke": "¿Cerrar sesión en todas las sesiones?",
+    "confirm": "Confirmar",
+    "cancel": "Cancelar",
+    "signingOut": "Cerrando sesión…",
+    "revokeError": "No se pudieron cerrar todas las sesiones. Inténtalo de nuevo.",
+    "signedInSince": "Sesión iniciada el {{date}}",
+    "expires": "Caduca el {{date}}",
+    "noSessions": "No hay otras sesiones activas."
   }
 }

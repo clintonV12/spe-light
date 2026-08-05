@@ -23,7 +23,9 @@
     "progress": "Inqubekelaphambili",
     "reports": "Imibiko",
     "admin": "Ukuphathwa",
-    "platformConsole": "Ipulatifomu yokuphatha"
+    "platformConsole": "Ipulatifomu yokuphatha",
+    "logout": "Phuma",
+    "account": "Izilungiselelo ze-akhawunti"
   },
   "plan": {
     "status": {
@@ -77,7 +79,8 @@
     "signInButton": "Ngena",
     "signInError": "I-imeyili noma iphasiwedi engalungile. Hlola imininingwane yakho uphinde uzame futhi.",
     "noAccount": "Awunayo i-akhawunti?",
-    "noAccountHelp": "Cela umlawuli wenhlangano yakho akuthumelele isimemo."
+    "noAccountHelp": "Cela umlawuli wenhlangano yakho akuthumelele isimemo.",
+    "forgotPassword": "Ukhohlwe iphasiwedi?"
   },
   "activityEditor": {
     "backToPlan": "Buyela ohlelweni",
@@ -203,7 +206,12 @@
       "progressStatus": "Isimo Senqubekelaphambili",
       "milestones": "Izinkomba Zomsebenzi",
       "dependencyLinks": "Izixhumanisi Zokuncika",
-      "aiSummary": "Isifinyezo se-AI"
+      "aiSummary": "Isifinyezo se-AI",
+      "visionMission": "Umbono, Umsebenzi Nezinsika Eziyisisekelo",
+      "situationalAnalysis": "Ukuhlaziywa Kwesimo (I-SWOT, I-PESTEL, Ababambe Iqhaza)",
+      "scorecard": "Ikhadi Lamaphuzu Esu (Ama-KPI + ishadi lokufezwa)",
+      "orgStructure": "Isakhiwo Senhlangano (amasu endawo kuphela)",
+      "monitoringEvaluation": "Ukuqapha Nokuhlola (amasu endawo kuphela)"
     }
   },
   "acceptInvite": {
@@ -857,5 +865,63 @@
     "submit": "Dala uhlelo",
     "created": "Uhlelo ludaliwe",
     "createFailed": "Kwehlulekile ukudala uhlelo"
+  },
+  "forgotPassword": {
+    "title": "Ukhohlwe iphasiwedi yakho?",
+    "subtitle": "Faka i-imeyili yakho ye-akhawunti futhi sizokuthumelela isixhumanisi sokuyisetha kabusha.",
+    "sendLink": "Thumela isixhumanisi",
+    "checkEmailTitle": "Hlola i-imeyili yakho",
+    "checkEmailDesc": "Uma i-akhawunti ikhona ye-{{email}}, sesithumele isixhumanisi sokusetha kabusha iphasiwedi yakho.",
+    "backToSignIn": "Buyela ekungeneni"
+  },
+  "resetPassword": {
+    "title": "Khetha iphasiwedi entsha",
+    "subtitle": "Lesi sixhumanisi sisetshenziswa kanye futhi siphelelwa yisikhathi ngokushesha, ngakho qedela lapha.",
+    "newPassword": "Iphasiwedi entsha",
+    "updatePassword": "Buyekeza iphasiwedi",
+    "successTitle": "Iphasiwedi ibuyekeziwe",
+    "successDesc": "Manje usungangena ngephasiwedi yakho entsha.",
+    "goToSignIn": "Yiya ekungeneni",
+    "invalidOrExpired": "Lesi sixhumanisi sokusetha kabusha asisebenzi noma sesiphelelwe yisikhathi. Cela esisha ukuze uqhubeke.",
+    "requestNewLink": "Cela isixhumanisi esisha"
+  },
+  "profile": {
+    "title": "I-akhawunti yakho",
+    "subtitle": "Phatha imininingwane yakho, iphasiwedi, nezikhathi zokungena ezisebenzayo.",
+    "loadError": "Ayikwazanga ukulayisha iphrofayela yakho. Zama ukuvuselela ikhasi.",
+    "platformTeam": "Ithimba lepulatifomu",
+    "orgAccount": "I-akhawunti yenhlangano",
+    "detailsTitle": "Imininingwane yephrofayela",
+    "name": "Igama eliphelele",
+    "phone": "Inombolo yocingo",
+    "phonePlaceholder": "Akuphoqelekile",
+    "locale": "Ulimi",
+    "email": "Ikheli le-imeyili",
+    "emailLocked": "I-imeyili ayikwazi ukushintshwa lapha — xhumana nomlawuli wakho.",
+    "saveChanges": "Londoloza izinguquko",
+    "saving": "Iyalondoloza…",
+    "saved": "Kulondoloziwe",
+    "saveError": "Ayikwazanga ukulondoloza izinguquko zakho. Zama futhi.",
+    "passwordTitle": "Shintsha iphasiwedi",
+    "passwordSubtitle": "Ukushintsha iphasiwedi yakho kukukhipha kuwo wonke amadivayisi, kuhlanganise nalokhu.",
+    "currentPassword": "Iphasiwedi yamanje",
+    "newPassword": "Iphasiwedi entsha",
+    "passwordError": "Iphasiwedi yamanje ayilungile, noma iphasiwedi entsha ayisebenzi.",
+    "updatePassword": "Buyekeza iphasiwedi",
+    "updating": "Iyabuyekeza…",
+    "passwordUpdated": "Iphasiwedi ibuyekeziwe",
+    "passwordUpdatedDesc": "Ngenxa yokuphepha kwakho, ukhishiwe yonke indawo. Kuqondiswa ekungeneni…",
+    "sessionsTitle": "Izikhathi zokungena ezisebenzayo",
+    "sessionsSubtitle": "Yonke indawo ongene kuyo njengamanje.",
+    "sessionsError": "Ayikwazanga ukulayisha izikhathi zakho zokungena.",
+    "signOutEverywhere": "Phuma yonke indawo",
+    "confirmRevoke": "Phuma kuzo zonke izikhathi zokungena?",
+    "confirm": "Qinisekisa",
+    "cancel": "Khansela",
+    "signingOut": "Iyaphuma…",
+    "revokeError": "Ayikwazanga ukukhipha zonke izikhathi zokungena. Zama futhi.",
+    "signedInSince": "Ungene ngo-{{date}}",
+    "expires": "Iphelelwa yisikhathi ngo-{{date}}",
+    "noSessions": "Azikho ezinye izikhathi zokungena ezisebenzayo."
   }
 }
