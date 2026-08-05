@@ -101,11 +101,11 @@ func (s *Service) CreatePlan(ctx context.Context, orgID, ownerID uuid.UUID, req 
 func (s *Service) GetPlan(ctx context.Context, planID, orgID uuid.UUID) (*models.Plan, error) {
 	var p models.Plan
 	err := s.db.QueryRow(ctx,
-		`SELECT id, org_id, title, description, status, plan_type, owner_id, start_date, end_date, created_at, updated_at
+		`SELECT id, org_id, title, description, status, plan_type, owner_id, start_date, end_date, vision, mission, created_at, updated_at
 		 FROM plans WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
 		planID, orgID,
 	).Scan(&p.ID, &p.OrgID, &p.Title, &p.Description, &p.Status, &p.PlanType,
-		&p.OwnerID, &p.StartDate, &p.EndDate, &p.CreatedAt, &p.UpdatedAt)
+		&p.OwnerID, &p.StartDate, &p.EndDate, &p.Vision, &p.Mission, &p.CreatedAt, &p.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("plan not found")
 	}
