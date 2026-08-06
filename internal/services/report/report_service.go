@@ -43,6 +43,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// naText is shown wherever a field simply has no data yet (an unfilled KPI
+// target, an activity with no budget set, an org role with nothing above
+// it, ...). Previously this was an em-dash ("—"), which reads fine on
+// screen but isn't in render.go's PDF font's printable-ASCII range — every
+// blank field in a PDF report came out as a literal "?", and since blanks
+// tend to cluster (a whole KPI table before anyone's filled in Actual
+// values, say), reports could end up mostly "?" and read as broken rather
+// than just incomplete. "N/A" is plain ASCII, so it renders identically in
+// PDF, DOCX, and XLSX, and it reads unambiguously as "not available" rather
+// than as a stray punctuation mark or a rendering glitch.
+const naText = "N/A"
+
 // AISummaryFn adapts to aisvc.Service.Summary without this package needing
 // to import the ai service's request/response types directly — router.go
 // wires the real implementation in as a closure at construction time.
@@ -676,27 +688,27 @@ func (s *Service) buildScorecardSections(ctx context.Context, plan *models.Plan,
 		for _, k := range a.KPIs {
 			haveRows = true
 			pct, ok := kpiAchievement(k)
-			achievement := "—"
+			achievement := naText
 			if ok {
 				achievement = fmt.Sprintf("%.0f%%", pct)
 			}
-			target := "—"
+			target := naText
 			if k.TargetValue != nil {
 				target = fmt.Sprintf("%.2f", *k.TargetValue)
 			} else if k.Target != "" {
 				target = k.Target
 			}
-			actual := "—"
+			actual := naText
 			if k.ActualValue != nil {
 				actual = fmt.Sprintf("%.2f", *k.ActualValue)
 			}
-			period := "—"
+			period := naText
 			if a.TargetPeriod != nil {
 				period = titleCase(string(*a.TargetPeriod))
 			}
 			indicator := k.Indicator
 			if indicator == "" {
-				indicator = "—"
+				indicator = naText
 			}
 			t.Rows = append(t.Rows, []string{a.Title, indicator, target, actual, achievement, period})
 
@@ -763,7 +775,7 @@ func (s *Service) buildOrgStructureSection(ctx context.Context, plan *models.Pla
 	}
 	t := &contentTable{Headers: []string{"Role", "Reports To"}}
 	for _, r := range roles {
-		reportsTo := "—"
+		reportsTo := naText
 		if r.ReportsToID != nil {
 			if title, ok := titleByID[*r.ReportsToID]; ok {
 				reportsTo = title
@@ -874,20 +886,73 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 		return nil, err
 	}
 
-	if sec.ExecutiveSummary {
-		desc := "No description was provided for this plan."
-		if plan.Description != nil && *plan.Description != "" {
-			desc = *plan.Description
+	// aiSummary lazily calls aiSummaryFn at most once per report. Both the
+	// Executive Summary's "no description on file" fallback (below) and the
+	// standalone AI Summary section want the same thing — an AI-written
+	// overview of the plan, grounded in the plan/org's other available
+	// information (see aisvc's context building) — so if a report requests
+	// both and the plan has no description, this reuses the one call
+	// instead of hitting the AI service twice for near-identical content.
+	// Failure (nil aiSummaryFn, an error, or an empty result) is treated as
+	// "AI unavailable" everywhere this is used — callers fall back to their
+	// own plain, professional message rather than surfacing an error.
+	var aiSummaryText string
+	var aiSummaryTried bool
+	aiSummary := func() (string, bool) {
+		if aiSummaryTried {
+			return aiSummaryText, aiSummaryText != ""
 		}
+		aiSummaryTried = true
+		if s.aiSummaryFn == nil {
+			return "", false
+		}
+		summary, err := s.aiSummaryFn(ctx, orgID, plan.ID)
+		if err != nil || summary == "" {
+			return "", false
+		}
+		aiSummaryText = summary
+		return aiSummaryText, true
+	}
+
+	if sec.ExecutiveSummary {
+		var desc string
+		var aiGenerated bool
+		switch {
+		case plan.Description != nil && *plan.Description != "":
+			desc = *plan.Description
+		default:
+			if summary, ok := aiSummary(); ok {
+				desc = summary
+				aiGenerated = true
+			} else {
+				// Neither an authored description nor a working AI service —
+				// fall back to a plain, professional note rather than an
+				// error string or leaving the section looking broken.
+				desc = "No description was provided for this plan."
+			}
+		}
+		paragraphs := []string{
+			fmt.Sprintf(
+				"%s is currently %s. %.0f%% of its %d total activities are complete, with %d overdue.",
+				plan.Title, plan.Status, progress.Overall.Percent, progress.Overall.Total, progress.Overall.Overdue,
+			),
+		}
+		if aiGenerated {
+			// Labeled rather than presented as if the org wrote it —
+			// consistent with how the frontend labels AI-drafted content
+			// (see AiDraftPanel.tsx / AiChapterAssist.tsx's "AI Draft ·
+			// {model}" / "review before accepting" treatment) so a reader
+			// of the finished report knows this paragraph wasn't authored
+			// by the organisation and should be reviewed, not just an
+			// unexplained description appearing from nowhere.
+			paragraphs = append(paragraphs,
+				"This plan has no description on file. The overview below was generated automatically from the plan's available details and should be reviewed for accuracy.",
+			)
+		}
+		paragraphs = append(paragraphs, desc)
 		rc.Sections = append(rc.Sections, contentSection{
-			Heading: "Executive Summary",
-			Paragraphs: []string{
-				fmt.Sprintf(
-					"%s is currently %s. %.0f%% of its %d total activities are complete, with %d overdue.",
-					plan.Title, plan.Status, progress.Overall.Percent, progress.Overall.Total, progress.Overall.Overdue,
-				),
-				desc,
-			},
+			Heading:    "Executive Summary",
+			Paragraphs: paragraphs,
 		})
 	}
 
@@ -965,7 +1030,7 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 				}
 				t := &contentTable{Headers: []string{"Activity", "Status", "Target Period", "Responsible", "Budget"}}
 				for _, a := range activities {
-					period, responsible, budget := "—", "—", "—"
+					period, responsible, budget := naText, naText, naText
 					if a.TargetPeriod != nil && *a.TargetPeriod != "" {
 						period = string(*a.TargetPeriod)
 					}
@@ -992,7 +1057,7 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 				}
 				t := &contentTable{Headers: []string{"Title", "Type", "Status", "Due Date"}}
 				for _, a := range activities {
-					due := "—"
+					due := naText
 					if a.DueDate != nil {
 						due = a.DueDate.Format("2006-01-02")
 					}
@@ -1051,10 +1116,8 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 
 	if sec.AISummary {
 		text := "A summary is unavailable — the AI service could not be reached."
-		if s.aiSummaryFn != nil {
-			if summary, err := s.aiSummaryFn(ctx, orgID, plan.ID); err == nil && summary != "" {
-				text = summary
-			}
+		if summary, ok := aiSummary(); ok {
+			text = summary
 		}
 		rc.Sections = append(rc.Sections, contentSection{Heading: "Summary", Paragraphs: []string{text}})
 	}

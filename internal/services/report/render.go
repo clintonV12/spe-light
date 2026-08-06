@@ -308,6 +308,7 @@ func pdfText(p *pdfPage, font string, size float64, x, y float64, c [3]float64, 
 // this hand-rolled renderer, so this is a good-enough estimate, not exact
 // kerning).
 func pdfTextRight(p *pdfPage, font string, size float64, rightX, y float64, c [3]float64, text string) {
+	text = asciiFold(text)
 	width := float64(len(text)) * size * 0.5
 	pdfText(p, font, size, rightX-width, y, c, text)
 }
@@ -456,6 +457,7 @@ func (d *pdfDoc) buildCover() {
 }
 
 func (d *pdfDoc) heading(text string) {
+	text = asciiFold(text)
 	d.ensureSpace(36)
 	d.y -= 4
 	pdfRect(d.cur, pdfMarginL, d.y-3, 3, 15, brandAccent)
@@ -466,6 +468,7 @@ func (d *pdfDoc) heading(text string) {
 }
 
 func (d *pdfDoc) paragraph(text string) {
+	text = asciiFold(text)
 	lines := wrapText(text, charsForWidth(pdfContentW, 9.5))
 	for _, ln := range lines {
 		d.ensureSpace(13)
@@ -480,11 +483,30 @@ func (d *pdfDoc) table(t *contentTable) {
 		return
 	}
 	n := len(t.Headers)
-	weights := make([]float64, n)
+
+	// Fold to ASCII once, up front, and use these folded copies for both
+	// the width weighting below and the actual drawing later — that's what
+	// keeps the two in agreement. Measuring the original UTF-8 text (e.g.
+	// a 3-byte "—") against len() while drawing a different, folded string
+	// is exactly what let columns drift out of alignment before.
+	headers := make([]string, n)
 	for i, h := range t.Headers {
+		headers[i] = asciiFold(h)
+	}
+	rows := make([][]string, len(t.Rows))
+	for r, row := range t.Rows {
+		folded := make([]string, len(row))
+		for i, c := range row {
+			folded[i] = asciiFold(c)
+		}
+		rows[r] = folded
+	}
+
+	weights := make([]float64, n)
+	for i, h := range headers {
 		weights[i] = float64(len(h))
 	}
-	for _, row := range t.Rows {
+	for _, row := range rows {
 		for i, c := range row {
 			if i < n && float64(len(c)) > weights[i] {
 				weights[i] = float64(len(c))
@@ -568,8 +590,8 @@ func (d *pdfDoc) table(t *contentTable) {
 		d.y -= rowH
 	}
 
-	drawRow(t.Headers, true, false)
-	for i, row := range t.Rows {
+	drawRow(headers, true, false)
+	for i, row := range rows {
 		drawRow(row, false, i%2 == 1)
 	}
 	d.y -= 10
@@ -595,10 +617,12 @@ func chartBarColor(hint string) [3]float64 {
 
 // truncateLabel keeps a bar label from overrunning its column, using the
 // same average-glyph-width heuristic as charsForWidth (there's no
-// font-metrics table in this hand-rolled renderer). ASCII-only ".." rather
-// than an ellipsis glyph, since escapePDFText drops anything outside
-// printable ASCII.
+// font-metrics table in this hand-rolled renderer). Folds to ASCII first
+// so len() (used for both the width check and the wrapText/charsForWidth
+// math elsewhere) matches the rendered character count, and uses ASCII
+// ".." rather than an ellipsis glyph for the same reason.
 func truncateLabel(s string, widthPt float64) string {
+	s = asciiFold(s)
 	maxChars := int(widthPt / (8 * 0.5))
 	if maxChars < 3 {
 		maxChars = 3
@@ -706,10 +730,15 @@ func renderPDF(meta reportMeta, rc *reportContent, logo *pdfLogo) ([]byte, error
 	return d.build(), nil
 }
 
-// escapePDFText escapes PDF string-literal special characters and drops
-// anything outside the printable ASCII range, since we're using a standard
-// Type1 font with no custom encoding.
+// escapePDFText escapes PDF string-literal special characters. Anything
+// outside printable ASCII is first run through asciiFold (below) since
+// we're using a standard Type1 font with no custom encoding — without
+// that, ordinary content like an em-dash, a curly quote pasted from Word,
+// or an accented name renders as a literal "?", and a report full of
+// "missing data" placeholders (previously an em-dash) turned into a wall
+// of "?" that read as broken rather than just incomplete.
 func escapePDFText(s string) string {
+	s = asciiFold(s)
 	var b strings.Builder
 	for _, r := range s {
 		switch {
@@ -719,7 +748,79 @@ func escapePDFText(s string) string {
 		case r >= 32 && r < 127:
 			b.WriteRune(r)
 		default:
-			b.WriteByte('?')
+			// asciiFold already converted or dropped everything it knows
+			// how to handle; whatever's left here (rare control chars,
+			// unmapped scripts) is genuinely unsupported by this font —
+			// drop it rather than emit a misleading "?".
+		}
+	}
+	return b.String()
+}
+
+// isASCIIText reports whether s is already pure ASCII, so the common case
+// (which is most report content) can skip asciiFold's rune-by-rune work.
+func isASCIIText(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 128 {
+			return false
+		}
+	}
+	return true
+}
+
+// asciiFoldTable maps typographic Unicode punctuation and accented Latin
+// letters (the characters actually likely to show up in report content —
+// smart-quoted text pasted from Word, em-dashes, names with diacritics) to
+// a plain-ASCII equivalent of the same rendered width where possible, so
+// escapePDFText doesn't have to fall back to "?" for ordinary text.
+var asciiFoldTable = map[rune]string{
+	'\u2014': "-",                // em dash —
+	'\u2013': "-",                // en dash –
+	'\u2018': "'", '\u2019': "'", // curly single quotes ‘ ’
+	'\u201c': `"`, '\u201d': `"`, // curly double quotes “ ”
+	'\u2026': "...", // ellipsis …
+	'\u2022': "-",   // bullet •
+	'\u00a0': " ",   // non-breaking space
+	// Accented Latin letters commonly seen in names/addresses.
+	'á': "a", 'à': "a", 'â': "a", 'ä': "a", 'ã': "a", 'å': "a",
+	'Á': "A", 'À': "A", 'Â': "A", 'Ä': "A", 'Ã': "A", 'Å': "A",
+	'é': "e", 'è': "e", 'ê': "e", 'ë': "e",
+	'É': "E", 'È': "E", 'Ê': "E", 'Ë': "E",
+	'í': "i", 'ì': "i", 'î': "i", 'ï': "i",
+	'Í': "I", 'Ì': "I", 'Î': "I", 'Ï': "I",
+	'ó': "o", 'ò': "o", 'ô': "o", 'ö': "o", 'õ': "o",
+	'Ó': "O", 'Ò': "O", 'Ô': "O", 'Ö': "O", 'Õ': "O",
+	'ú': "u", 'ù': "u", 'û': "u", 'ü': "u",
+	'Ú': "U", 'Ù': "U", 'Û': "U", 'Ü': "U",
+	'ñ': "n", 'Ñ': "N",
+	'ç': "c", 'Ç': "C",
+	'ý': "y", 'ÿ': "y", 'Ý': "Y",
+}
+
+// asciiFold converts s to plain ASCII: known typographic punctuation and
+// accented letters are mapped via asciiFoldTable, and any remaining
+// non-ASCII rune (CJK, Arabic, emoji, anything else this hand-rolled Type1
+// renderer can't display) is dropped rather than replaced with "?".
+//
+// This is also what keeps table/paragraph layout aligned: colW and
+// wrapText below measure text with len() (a byte count), which only
+// matches the rendered character count once text is ASCII. Folding text
+// before that measurement — not just before drawing — is what makes the
+// two agree; measuring the original UTF-8 (where a single "—" is 3 bytes
+// but 1 rendered glyph) is what caused columns to drift.
+func asciiFold(s string) string {
+	if isASCIIText(s) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r < 128 {
+			b.WriteRune(r)
+			continue
+		}
+		if repl, ok := asciiFoldTable[r]; ok {
+			b.WriteString(repl)
 		}
 	}
 	return b.String()
