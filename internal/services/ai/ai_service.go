@@ -760,6 +760,31 @@ func draftSchemaFor(activityType string) (schema string, instructions string) {
 				"\"critical_success_factor\", \"review_note\", or \"conclusion_measure\" (lowercase, exactly " +
 				"as written). \"text\" is a single concise sentence."
 
+	// ── Local-plan activity KPIs ────────────────────────────────────────
+	//
+	// Backs the "Suggest KPIs" button in LocalActivityEditor.tsx (an
+	// existing activity, activity_id set — activityTitle above is
+	// populated and grounds the draft) and CreateActivityModal.tsx (no
+	// activity yet, activity_id omitted — drafted from keywords/plan
+	// context alone). Matches the frontend's KPI shape in types/index.ts
+	// (indicator/target/target_value/direction) exactly so
+	// LocalActivityEditor's/CreateActivityModal's acceptAiKpis can drop
+	// each row straight into Activity.kpis with no reshaping. Unlike
+	// kpi_framework/okr_balanced_scorecard above, these KPIs already track
+	// the local-plan Strategic Objective the activity itself belongs to
+	// (activities.objective_id) — there's no separate objective-tagging
+	// step here.
+	case "local_activity_kpis":
+		return `{"kpis": [{"indicator": "...", "target": "...", "target_value": 0, "direction": "increase"}]}`,
+			"Draft 2-4 Key Performance Indicators for this specific activity. \"indicator\" is a short name " +
+				"for what's being measured (e.g. \"Membership growth rate\"). \"target\" is a short free-text " +
+				"description of the goal (e.g. \"20% increase by Year 1\"). \"target_value\" is the same goal " +
+				"expressed as a plain number only, with no units, currency symbol, percent sign, or commas " +
+				"(e.g. 20, not \"20%\") — use your best numeric estimate of the target even if the activity " +
+				"title/keywords don't state one explicitly. \"direction\" must be exactly \"increase\" if a " +
+				"higher actual value is better (e.g. revenue, membership) or \"decrease\" if a lower actual " +
+				"value is better (e.g. defect rate, dropout rate)."
+
 	default:
 		sections, ok := genericSectionKeys[activityType]
 		if !ok {

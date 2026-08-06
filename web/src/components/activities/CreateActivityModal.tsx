@@ -6,6 +6,7 @@ import { activitiesApi, pillarsApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
 import type { Phase, ActivityType, Plan, StrategicPillar, StrategicObjective, KPI, KPIPeriod } from '../../types'
 import { KPI_PERIODS } from '../../types'
+import { useAiDraft, AiAssistTrigger, AiAssistPanel, parseKpiDraft } from './AiChapterAssist'
 
 // Labels come from t(`activityTypes.${value}`) — value stays the raw
 // ActivityType id so the API contract and toastError etc are unaffected.
@@ -156,6 +157,27 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
   const addKpi = () => setKpis((prev) => [...prev, emptyKPI()])
   const removeKpi = (index: number) => setKpis((prev) => prev.filter((_, i) => i !== index))
 
+  // ── AI-suggested KPIs ───────────────────────────────────────────────────
+  //
+  // No activity_id yet — the activity doesn't exist until submit — so this
+  // is grounded only in whatever the person has typed as keywords, same as
+  // the plan-wide chapter drafts in LocalPlanChapters.tsx. Once the
+  // activity exists, LocalActivityEditor's own "Suggest KPIs" passes
+  // activity_id for a more grounded follow-up draft.
+  const ai = useAiDraft(planId, 'local_activity_kpis')
+  const acceptAiKpis = async (draft: Record<string, unknown>) => {
+    // Throws if the draft didn't contain any usable KPIs — let that
+    // propagate to useAiDraft.accept()'s catch so the person sees an error
+    // instead of a false "applied" toast with nothing actually added.
+    const suggested = parseKpiDraft(draft)
+    // Drop any still-empty rows (e.g. the single blank row the form starts
+    // with) so accepting suggestions doesn't leave blank cards behind them.
+    setKpis((prev) => {
+      const existing = prev.filter((k) => k.indicator.trim() || k.target.trim())
+      return [...existing, ...suggested]
+    })
+  }
+
   const canSubmit = title.trim().length > 0 && (!isLocal || objectiveId.length > 0)
 
   const handleSubmit = async () => {
@@ -253,14 +275,33 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
 
               {/* KPIs — the ESWAMCU table commonly lists more than one per activity */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between mb-1.5 gap-2">
                   <p className="text-sm font-medium text-ink-700">
                     {t('createActivityModal.kpis', { defaultValue: 'Key Performance Indicators' })}
                   </p>
-                  <button onClick={addKpi} className="flex items-center gap-1 text-xs text-accent hover:text-accent-600">
-                    <Plus className="size-3.5" /> {t('common.add', { defaultValue: 'Add' })}
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <AiAssistTrigger onClick={ai.start} label="Suggest KPIs" />
+                    <button onClick={addKpi} className="flex items-center gap-1 text-xs text-accent hover:text-accent-600">
+                      <Plus className="size-3.5" /> {t('common.add', { defaultValue: 'Add' })}
+                    </button>
+                  </div>
                 </div>
+
+                {ai.open && (
+                  <AiAssistPanel
+                    keywords={ai.keywords}
+                    onKeywordsChange={ai.setKeywords}
+                    onGenerate={ai.generate}
+                    loading={ai.loading}
+                    applying={ai.applying}
+                    draft={ai.draft}
+                    model={ai.model}
+                    onRegenerate={ai.generate}
+                    onClose={ai.close}
+                    onAccept={() => ai.accept(acceptAiKpis)}
+                  />
+                )}
+
                 <div className="space-y-2">
                   {kpis.map((k, i) => (
                     <div key={i} className="flex items-start gap-2">

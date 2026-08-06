@@ -4,6 +4,7 @@ import { Button, Input } from '../ui'
 import { aiApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
 import { LwaziFace } from './LwaziAvatar'
+import type { KPI } from '../../types'
 
 // ── Shared "Call Lwazi" AI-draft widget for local-plan chapters ────────────
 //
@@ -26,7 +27,7 @@ import { LwaziFace } from './LwaziAvatar'
 //     previously — cramming a growing card into a `justify-between` row
 //     next to a title left it fighting for width instead of owning a row.
 
-export function useAiDraft(planId: string, activityType: string) {
+export function useAiDraft(planId: string, activityType: string, activityId?: string) {
   const [open, setOpen] = useState(false)
   const [keywords, setKeywords] = useState('')
   const [loading, setLoading] = useState(false)
@@ -42,7 +43,18 @@ export function useAiDraft(planId: string, activityType: string) {
     setLoading(true)
     setDraft(null)
     try {
-      const result = await aiApi.draft({ plan_id: planId, activity_type: activityType, keywords: kw })
+      const result = await aiApi.draft({
+        plan_id: planId,
+        activity_type: activityType,
+        keywords: kw,
+        // Only set once the activity actually exists (e.g. KPI suggestions
+        // from LocalActivityEditor, editing an already-created activity) —
+        // grounds the draft in that activity's own title/objective rather
+        // than the plan in general. Omitted for chapter-level drafts and
+        // for KPI suggestions made while an activity is still being
+        // created in CreateActivityModal (no id yet).
+        ...(activityId ? { activity_id: activityId } : {}),
+      })
       setDraft(result.draft)
       setModel(result.model)
     } catch {
@@ -77,6 +89,43 @@ export function useAiDraft(planId: string, activityType: string) {
   }
 
   return { open, keywords, setKeywords, loading, applying, draft, model, start, close, generate, accept }
+}
+
+// Shared by LocalActivityEditor.tsx and CreateActivityModal.tsx — both parse
+// the same `{"kpis": [{indicator, target, target_value?, direction?}]}`
+// draft shape (see ai_service.go's "local_activity_kpis" case) into KPI[].
+// Kept in one place after a bug where the backend had no case for that
+// activity_type, silently fell through to the generic {content, notes}
+// schema, and the caller's `if (suggested.length === 0) return` swallowed
+// the mismatch — "AI draft applied" toasted with nothing actually saved.
+// Throwing here instead of returning an empty array means
+// useAiDraft.accept()'s catch block now surfaces that as a real error
+// rather than a false success, whatever caused zero rows to come back.
+export function parseKpiDraft(draft: Record<string, unknown>): KPI[] {
+  const list = Array.isArray(draft.kpis) ? draft.kpis as unknown[] : []
+  const suggested: KPI[] = []
+  for (const raw of list) {
+    if (typeof raw !== 'object' || raw === null) continue
+    const row = raw as { indicator?: unknown; target?: unknown; target_value?: unknown; direction?: unknown }
+    const indicator = typeof row.indicator === 'string' ? row.indicator.trim() : ''
+    const target = typeof row.target === 'string' ? row.target.trim() : ''
+    if (!indicator && !target) continue
+    // Numeric, tolerating a model that ignores the "plain number" instruction
+    // and sends "20" or "20%" as a string.
+    let targetValue: number | undefined
+    if (typeof row.target_value === 'number') {
+      targetValue = row.target_value
+    } else if (typeof row.target_value === 'string') {
+      const parsed = Number(row.target_value.replace(/[^0-9.-]/g, ''))
+      targetValue = Number.isNaN(parsed) ? undefined : parsed
+    }
+    const direction = row.direction === 'decrease' ? 'decrease' : row.direction === 'increase' ? 'increase' : undefined
+    suggested.push({ indicator, target, target_value: targetValue, direction })
+  }
+  if (suggested.length === 0) {
+    throw new Error('AI response did not contain any usable KPIs')
+  }
+  return suggested
 }
 
 export const AiAssistTrigger: React.FC<{ onClick: () => void; label?: string }> = ({ onClick, label = 'Ask Lwazi' }) => {

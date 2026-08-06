@@ -5,6 +5,7 @@ import { activitiesApi, pillarsApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
 import type { Activity, KPI, KPIPeriod, StrategicPillar, StrategicObjective } from '../../types'
 import { KPI_PERIODS } from '../../types'
+import { useAiDraft, AiAssistTrigger, AiAssistPanel, parseKpiDraft } from './AiChapterAssist'
 
 // ── Local-plan activity editor ──────────────────────────────────────────────
 //
@@ -145,6 +146,26 @@ export const LocalActivityEditor: React.FC<LocalActivityEditorProps> = ({ activi
     void patch({ kpis: newKpis })
   }
 
+  // ── AI-suggested KPIs ───────────────────────────────────────────────────
+  //
+  // Grounded in this activity specifically (activity.id passed through so
+  // the backend prompt has the activity's own title/objective to work
+  // from, not just the plan) rather than the plan-wide chapter drafts.
+  const ai = useAiDraft(activity.plan_id, 'local_activity_kpis', activity.id)
+  const acceptAiKpis = async (draft: Record<string, unknown>) => {
+    // Throws if the draft didn't contain any usable KPIs — let that
+    // propagate to useAiDraft.accept()'s catch so the person sees an error
+    // instead of a false "applied" toast with nothing actually saved.
+    const suggested = parseKpiDraft(draft)
+    // Drop any still-empty rows already sitting in the list so accepting
+    // suggestions doesn't leave blank KPI cards behind them.
+    const existing = kpis.filter((k) => k.indicator.trim() || k.target.trim())
+    const newKpis = [...existing, ...suggested]
+    setKpis(newKpis)
+    setDrafts(newKpis.map((k) => ({ target: k.target_value?.toString() ?? '', actual: k.actual_value?.toString() ?? '' })))
+    await patch({ kpis: newKpis })
+  }
+
   return (
     <div className="space-y-6 max-w-3xl">
       {/* Header: breadcrumb, title */}
@@ -165,14 +186,32 @@ export const LocalActivityEditor: React.FC<LocalActivityEditorProps> = ({ activi
 
       {/* KPIs */}
       <div className="rounded-2xl border border-ink-100 bg-white p-5">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 gap-2">
           <h3 className="font-display text-sm font-bold text-ink-900">Key Performance Indicators</h3>
           {canEdit && (
-            <button onClick={addKpi} className="flex items-center gap-1 text-xs text-accent hover:text-accent-600">
-              <Plus className="size-3.5" /> Add
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <AiAssistTrigger onClick={ai.start} label="Suggest KPIs" />
+              <button onClick={addKpi} className="flex items-center gap-1 text-xs text-accent hover:text-accent-600">
+                <Plus className="size-3.5" /> Add
+              </button>
+            </div>
           )}
         </div>
+
+        {canEdit && ai.open && (
+          <AiAssistPanel
+            keywords={ai.keywords}
+            onKeywordsChange={ai.setKeywords}
+            onGenerate={ai.generate}
+            loading={ai.loading}
+            applying={ai.applying}
+            draft={ai.draft}
+            model={ai.model}
+            onRegenerate={ai.generate}
+            onClose={ai.close}
+            onAccept={() => ai.accept(acceptAiKpis)}
+          />
+        )}
 
         {kpis.length === 0 && <p className="text-sm text-ink-400">No KPIs added yet.</p>}
 
