@@ -229,12 +229,12 @@ func (s *Service) Generate(ctx context.Context, planID, orgID, userID uuid.UUID,
 		return nil, err
 	}
 
-	content, err := s.buildContent(ctx, plan, orgID, sections)
+	content, stats, err := s.buildContent(ctx, plan, orgID, sections)
 	if err != nil {
 		return nil, fmt.Errorf("build report content: %w", err)
 	}
 
-	meta := s.buildMeta(ctx, plan, orgID, userID, req.Type)
+	meta := s.buildMeta(ctx, plan, orgID, userID, req.Type, stats)
 
 	var fileBytes []byte
 	switch req.Format {
@@ -404,7 +404,7 @@ func (s *Service) get(ctx context.Context, id, orgID uuid.UUID) (*models.Report,
 // who/when it was generated. Falls back to safe defaults on any lookup
 // failure rather than failing generation outright, since none of this is
 // essential to the report's actual data.
-func (s *Service) buildMeta(ctx context.Context, plan *models.Plan, orgID, userID uuid.UUID, reportType models.ReportType) reportMeta {
+func (s *Service) buildMeta(ctx context.Context, plan *models.Plan, orgID, userID uuid.UUID, reportType models.ReportType, stats coverStats) reportMeta {
 	meta := reportMeta{
 		ReportTitle:     plan.Title,
 		ReportTypeLabel: reportTypeLabel(string(reportType)),
@@ -414,6 +414,7 @@ func (s *Service) buildMeta(ctx context.Context, plan *models.Plan, orgID, userI
 		OrgName:         "Your Organisation",
 		GeneratedBy:     "System",
 		GeneratedAt:     time.Now(),
+		Progress:        stats,
 	}
 	if s.orgSvc != nil {
 		if org, err := s.orgSvc.GetOrgByID(ctx, orgID); err == nil {
@@ -882,14 +883,30 @@ func buildGenericContentSection(heading string, content map[string]any) *content
 	return &contentSection{Heading: heading, Paragraphs: paras, Table: table}
 }
 
-func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uuid.UUID, sec SectionConfig) (*reportContent, error) {
+// coverStats is the small slice of plan-progress numbers shown on the PDF
+// cover page's completion badge (see render.go's buildCover) — pulled out
+// of the richer progress result buildContent already fetches for the
+// report body, rather than querying progress a second time just for the
+// cover page.
+type coverStats struct {
+	OverallPercent    float64
+	TotalActivities   int
+	OverdueActivities int
+}
+
+func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uuid.UUID, sec SectionConfig) (*reportContent, coverStats, error) {
 	rc := &reportContent{}
 
 	// Progress is cheap and several sections depend on it, so fetch it once
 	// up front regardless of which sections were actually requested.
 	progress, err := s.planSvc.GetProgress(ctx, plan.ID, orgID)
 	if err != nil {
-		return nil, err
+		return nil, coverStats{}, err
+	}
+	stats := coverStats{
+		OverallPercent:    progress.Overall.Percent,
+		TotalActivities:   progress.Overall.Total,
+		OverdueActivities: progress.Overall.Overdue,
 	}
 
 	// aiSummary lazily calls aiSummaryFn at most once per report. Both the
@@ -1017,7 +1034,7 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 			// > Activity hierarchy the local-plan UI itself uses.
 			pillars, err := s.planSvc.ListPillars(ctx, plan.ID, orgID)
 			if err != nil {
-				return nil, err
+				return nil, coverStats{}, err
 			}
 			pillarTitle := make(map[uuid.UUID]string, len(pillars))
 			for _, p := range pillars {
@@ -1026,13 +1043,13 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 
 			objectives, err := s.planSvc.ListObjectives(ctx, plan.ID, orgID)
 			if err != nil {
-				return nil, err
+				return nil, coverStats{}, err
 			}
 			for _, obj := range objectives {
 				objID := obj.ID
 				activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, nil, &objID, nil)
 				if err != nil {
-					return nil, err
+					return nil, coverStats{}, err
 				}
 				// One row per (activity, KPI) rather than one row per
 				// activity — Target Period/Responsible/Budget moved off
@@ -1075,7 +1092,7 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 				ph := phase
 				activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, &ph, nil, nil)
 				if err != nil {
-					return nil, err
+					return nil, coverStats{}, err
 				}
 				t := &contentTable{Headers: []string{"Title", "Type", "Status", "Due Date"}}
 				for _, a := range activities {
@@ -1108,7 +1125,7 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 	if sec.Milestones {
 		milestones, err := s.milestoneSvc.ListMilestones(ctx, plan.ID, orgID)
 		if err != nil {
-			return nil, err
+			return nil, coverStats{}, err
 		}
 		t := &contentTable{Headers: []string{"Title", "Due Date", "Status"}}
 		for _, m := range milestones {
@@ -1120,12 +1137,12 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 	if sec.DependencyLinks {
 		links, err := s.planSvc.ListLinks(ctx, plan.ID, orgID, nil)
 		if err != nil {
-			return nil, err
+			return nil, coverStats{}, err
 		}
 		// Resolve activity IDs to titles for a readable table instead of raw UUIDs.
 		titles, err := s.activityTitleIndex(ctx, plan.ID, orgID)
 		if err != nil {
-			return nil, err
+			return nil, coverStats{}, err
 		}
 		t := &contentTable{Headers: []string{"Source", "Target", "Type"}}
 		for _, l := range links {
@@ -1144,7 +1161,7 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 		rc.Sections = append(rc.Sections, contentSection{Heading: "Summary", Paragraphs: []string{text}})
 	}
 
-	return rc, nil
+	return rc, stats, nil
 }
 
 // activityTitleIndex builds an id -> title lookup for the whole plan, used

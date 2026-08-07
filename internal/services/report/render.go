@@ -67,6 +67,12 @@ type reportMeta struct {
 	OrgContact  string
 	GeneratedBy string
 	GeneratedAt time.Time
+	// Progress feeds the cover page's circular completion badge (see
+	// buildCover) — pulled from the same progress data buildContent
+	// already fetches for the report body, so the cover shows a real,
+	// current stat rather than decorative stock imagery. See
+	// report_service.go's coverStats.
+	Progress coverStats
 }
 
 // reportTypeLabel maps the fixed report type enum onto a human-readable
@@ -298,6 +304,85 @@ func pdfLine(p *pdfPage, x1, y1, x2, y2 float64, c [3]float64, width float64) {
 	p.add(fmt.Sprintf("%.3f %.3f %.3f RG\n%.2f w\n%.2f %.2f m\n%.2f %.2f l\nS", c[0], c[1], c[2], width, x1, y1, x2, y2))
 }
 
+// bezierCircleK is the standard cubic-bezier control-point offset (as a
+// fraction of the radius) used to approximate a circle with 4 arcs — the
+// commonly cited constant for a <1% radius error, good enough at any size
+// we draw here.
+const bezierCircleK = 0.5522847498
+
+// circlePath returns the path operators (no fill/stroke) tracing a full
+// circle of radius r centered at (cx, cy) using 4 cubic-bezier arcs,
+// starting and ending at the rightmost point.
+func circlePath(cx, cy, r float64) string {
+	k := r * bezierCircleK
+	return fmt.Sprintf(
+		"%.2f %.2f m\n%.2f %.2f %.2f %.2f %.2f %.2f c\n%.2f %.2f %.2f %.2f %.2f %.2f c\n%.2f %.2f %.2f %.2f %.2f %.2f c\n%.2f %.2f %.2f %.2f %.2f %.2f c\nh",
+		cx+r, cy,
+		cx+r, cy+k, cx+k, cy+r, cx, cy+r,
+		cx-k, cy+r, cx-r, cy+k, cx-r, cy,
+		cx-r, cy-k, cx-k, cy-r, cx, cy-r,
+		cx+k, cy-r, cx+r, cy-k, cx+r, cy,
+	)
+}
+
+// pdfCircle draws a filled circle — used for the cover page's progress
+// badge (see buildCover).
+func pdfCircle(p *pdfPage, cx, cy, r float64, c [3]float64) {
+	p.add(fmt.Sprintf("%.3f %.3f %.3f rg\n%s\nf", c[0], c[1], c[2], circlePath(cx, cy, r)))
+}
+
+// pdfRing draws a filled annulus (a circle with a same-centered circular
+// hole) via the even-odd fill rule — two circle subpaths wound the same
+// direction fill as a ring rather than two overlapping solid disks. Used
+// for the thin accent border around the cover page's progress badge.
+func pdfRing(p *pdfPage, cx, cy, rOuter, rInner float64, c [3]float64) {
+	p.add(fmt.Sprintf("%.3f %.3f %.3f rg\n%s\n%s\nf*", c[0], c[1], c[2], circlePath(cx, cy, rOuter), circlePath(cx, cy, rInner)))
+}
+
+// pdfWaveBandTop fills the region from the top of the page down to a
+// single smooth curve running from (0, leftBottomY) to (pageWidth,
+// rightBottomY) — the decorative "wave" band across the top of the cover
+// page. Both ends of the curve have a horizontal tangent (the standard
+// trick for a smooth single-arc bezier through two points), which is what
+// keeps it reading as one gentle wave rather than an S-curve.
+func pdfWaveBandTop(p *pdfPage, topY, leftBottomY, rightBottomY float64, c [3]float64) {
+	ctrl1X, ctrl2X := pdfPageWidth*0.65, pdfPageWidth*0.35
+	p.add(fmt.Sprintf(
+		"%.3f %.3f %.3f rg\n0 %.2f m\n%.2f %.2f l\n%.2f %.2f l\n%.2f %.2f %.2f %.2f 0 %.2f c\nh\nf",
+		c[0], c[1], c[2],
+		topY,
+		pdfPageWidth, topY,
+		pdfPageWidth, rightBottomY,
+		ctrl1X, rightBottomY, ctrl2X, leftBottomY, leftBottomY,
+	))
+}
+
+// pdfWaveBandBottom is pdfWaveBandTop's mirror image for the bottom of the
+// page: fills from the page's bottom edge up to a curve running from
+// (0, leftTopY) to (pageWidth, rightTopY).
+func pdfWaveBandBottom(p *pdfPage, leftTopY, rightTopY float64, c [3]float64) {
+	ctrl1X, ctrl2X := pdfPageWidth*0.35, pdfPageWidth*0.65
+	p.add(fmt.Sprintf(
+		"%.3f %.3f %.3f rg\n0 0 m\n0 %.2f l\n%.2f %.2f %.2f %.2f %.2f %.2f c\n%.2f 0 l\nh\nf",
+		c[0], c[1], c[2],
+		leftTopY,
+		ctrl1X, leftTopY, ctrl2X, rightTopY, pdfPageWidth, rightTopY,
+		pdfPageWidth,
+	))
+}
+
+// tint lightens a brand color toward white by amt (0 = unchanged, 1 =
+// white) — used to draw a lighter second layer just behind the cover
+// page's wave bands for a bit of depth, without hardcoding a second brand
+// color.
+func tint(c [3]float64, amt float64) [3]float64 {
+	return [3]float64{
+		c[0] + (1-c[0])*amt,
+		c[1] + (1-c[1])*amt,
+		c[2] + (1-c[2])*amt,
+	}
+}
+
 func pdfText(p *pdfPage, font string, size float64, x, y float64, c [3]float64, text string) {
 	p.add(fmt.Sprintf("BT\n/%s %.1f Tf\n%.3f %.3f %.3f rg\n%.2f %.2f Td\n(%s) Tj\nET",
 		font, size, c[0], c[1], c[2], x, y, escapePDFText(text)))
@@ -311,6 +396,15 @@ func pdfTextRight(p *pdfPage, font string, size float64, rightX, y float64, c [3
 	text = asciiFold(text)
 	width := float64(len(text)) * size * 0.5
 	pdfText(p, font, size, rightX-width, y, c, text)
+}
+
+// pdfTextCenter horizontally centers text around cx — used for the cover
+// page's circular completion badge (see buildCover), where text sits
+// inside a fixed-width circle rather than against a page margin.
+func pdfTextCenter(p *pdfPage, font string, size float64, cx, y float64, c [3]float64, text string) {
+	text = asciiFold(text)
+	width := float64(len(text)) * size * 0.5
+	pdfText(p, font, size, cx-width/2, y, c, text)
 }
 
 func pdfImageDraw(p *pdfPage, name string, x, y, w, h float64) {
@@ -400,60 +494,129 @@ func (d *pdfDoc) ensureSpace(h float64) {
 	}
 }
 
+// buildCover draws the report's cover page: a two-tone wave band across the
+// top (echoing the brand's swoosh motif), the organisation's name/logo and
+// the platform credit within it, a circular badge showing the plan's real
+// completion stats (in place of decorative stock photography — there's no
+// image asset for that, and this is more useful anyway), the report title
+// and letterhead details, and a matching wave band at the bottom.
+//
+// Layout note: every element below the wave band and badge is placed with
+// a running y cursor (the same pattern the rest of this file uses), and
+// the title is capped at 2 lines / letterhead values are truncated to a
+// single line (see truncateToWidth) — so however long an org name, plan
+// title, or contact string turns out to be, this can only ever push
+// content *down*, never sideways into the badge or off the page. The
+// worst case (2-line title, every letterhead field populated) still ends
+// comfortably above the confidentiality notice — see the width/line-count
+// budget in each section below if adjusting these numbers.
 func (d *pdfDoc) buildCover() {
 	p := &pdfPage{}
 	d.cover = p
 
-	// Top brand band.
-	pdfRect(p, 0, pdfPageHeight-170, pdfPageWidth, 170, brandPrimary)
-	pdfRect(p, 0, pdfPageHeight-174, pdfPageWidth, 4, brandAccent)
+	// ── Top wave band (two-tone: a lighter sliver peeking out beneath the
+	// main navy curve for a bit of depth) — taller on the left where the
+	// org identity/title sit, shorter on the right where the badge breaks
+	// through it. ──
+	topY := pdfPageHeight
+	leftBottomY := pdfPageHeight - 255
+	rightBottomY := pdfPageHeight - 150
+	const tintDrop = 14
+	pdfWaveBandTop(p, topY, leftBottomY-tintDrop, rightBottomY-tintDrop, tint(brandPrimary, 0.38))
+	pdfWaveBandTop(p, topY, leftBottomY, rightBottomY, brandPrimary)
 
-	if d.logoID != 0 {
-		lw, lh := d.logo.ptSize(56, 150)
-		pdfImageDraw(p, "Logo", pdfMarginL, pdfPageHeight-40-lh, lw, lh)
+	// ── Circular completion badge — placed first (numerically) so its
+	// bounds are known before the org wordmark/title are truncated/wrapped
+	// around it. ──
+	badgeCx := pdfPageWidth - pdfMarginR - 78
+	badgeCy := rightBottomY - 40
+	const badgeOuterR, badgeInnerR, badgeFaceR = 92.0, 84.0, 80.0
+	pdfRing(p, badgeCx, badgeCy, badgeOuterR, badgeInnerR, brandAccent)
+	pdfCircle(p, badgeCx, badgeCy, badgeFaceR, brandPrimary)
+	if d.meta.Progress.TotalActivities > 0 {
+		pdfTextCenter(p, "F2", 30, badgeCx, badgeCy+6, white, fmt.Sprintf("%.0f%%", d.meta.Progress.OverallPercent))
+		pdfTextCenter(p, "F1", 8, badgeCx, badgeCy-14, white, "ACTIVITIES")
+		pdfTextCenter(p, "F1", 8, badgeCx, badgeCy-25, white, "COMPLETE")
+	} else {
+		// A brand-new plan with nothing logged yet isn't "0% complete" in
+		// any meaningful sense — that reads as a failing plan rather than
+		// one that simply hasn't started. Say so plainly instead.
+		pdfTextCenter(p, "F2", 15, badgeCx, badgeCy+10, white, "NEW PLAN")
+		pdfTextCenter(p, "F1", 8, badgeCx, badgeCy-8, white, "NO ACTIVITIES")
+		pdfTextCenter(p, "F1", 8, badgeCx, badgeCy-19, white, "YET")
 	}
-	// Header text block, right-aligned to the same margin as everything
-	// else in the report and vertically centered within the 170pt band
-	// (rather than pinned near its top, which left a large dead gap below
-	// the text before the gold divider — that's what actually read as
-	// "misaligned", not the horizontal alignment).
-	pdfTextRight(p, "F2", 12, pdfPageWidth-pdfMarginR, pdfPageHeight-74, white, "SPE-Lite")
-	pdfTextRight(p, "F1", 8.5, pdfPageWidth-pdfMarginR, pdfPageHeight-88, white, "Strategic Planning & Execution Platform")
-	pdfTextRight(p, "F1", 8, pdfPageWidth-pdfMarginR, pdfPageHeight-102, white, "by DGRV Eswatini")
 
-	y := pdfPageHeight - 236.0
-	pdfText(p, "F2", 21, pdfMarginL, y, inkDark, d.meta.ReportTitle)
-	y -= 24
-	pdfText(p, "F1", 12, pdfMarginL, y, inkMed, d.meta.ReportTypeLabel)
-	y -= 42
+	// ── Org identity (logo if available, else just the name) top-left
+	// within the band, and the platform credit top-right. The org name is
+	// truncated against a fixed reservation for the platform credit block
+	// — not against the badge, which sits much lower and isn't actually
+	// adjacent to this text. ──
+	const platformCreditReserve = 150
+	orgNameMaxW := (pdfPageWidth - pdfMarginR - platformCreditReserve) - pdfMarginL
+	orgNameY := pdfPageHeight - 46.0
+	if d.logoID != 0 {
+		lw, lh := d.logo.ptSize(30, 130)
+		pdfImageDraw(p, "Logo", pdfMarginL, pdfPageHeight-30-lh, lw, lh)
+		orgNameY = pdfPageHeight - 30 - lh - 16
+	}
+	pdfText(p, "F2", 13, pdfMarginL, orgNameY, white, truncateToWidth(d.meta.OrgName, orgNameMaxW, 13))
 
+	pdfTextRight(p, "F2", 10.5, pdfPageWidth-pdfMarginR, pdfPageHeight-40, white, "SPE-Lite")
+	pdfTextRight(p, "F1", 7.5, pdfPageWidth-pdfMarginR, pdfPageHeight-52, white, "by DGRV Eswatini")
+
+	// ── Report type eyebrow + title, capped at 2 lines. Both start well
+	// below the badge's bottom edge (badgeCy - badgeOuterR), so wrapping to
+	// more lines only moves further away from it, never closer. ──
+	y := leftBottomY - 60
+	pdfText(p, "F1", 10.5, pdfMarginL, y, brandAccent, strings.ToUpper(d.meta.ReportTypeLabel))
+	y -= 30
+	titleLines := wrapText(asciiFold(d.meta.ReportTitle), charsForWidth(pdfContentW, 25))
+	if len(titleLines) > 2 {
+		titleLines = titleLines[:2]
+		titleLines[1] = strings.TrimRight(titleLines[1], " ") + " .."
+	}
+	for _, ln := range titleLines {
+		pdfText(p, "F2", 25, pdfMarginL, y, inkDark, ln)
+		y -= 30
+	}
+	y -= 16
+
+	// ── "Prepared By" masthead (accent bar + preparer name) ──
+	pdfRect(p, pdfMarginL, y-16, 3, 36, brandAccent)
+	pdfText(p, "F1", 9, pdfMarginL+14, y+6, inkMed, "Prepared By")
+	pdfText(p, "F2", 13, pdfMarginL+14, y-11, inkDark, truncateToWidth(d.meta.GeneratedBy, pdfContentW-14, 13))
+	y -= 56
+
+	// ── Letterhead details — each value truncated to one line, so this
+	// block has a fixed maximum height (7 rows) regardless of content. ──
 	labelVal := func(label, val string) {
 		if val == "" {
 			return
 		}
 		pdfText(p, "F2", 9.5, pdfMarginL, y, inkMed, label)
-		pdfText(p, "F1", 9.5, pdfMarginL+130, y, inkDark, val)
-		y -= 18
+		pdfText(p, "F1", 9.5, pdfMarginL+118, y, inkDark, truncateToWidth(val, pdfContentW-118, 9.5))
+		y -= 17
 	}
-	labelVal("Plan", d.meta.PlanTitle)
 	labelVal("Organisation", d.meta.OrgName)
 	labelVal("Industry", d.meta.OrgIndustry)
 	labelVal("Location", d.meta.OrgLocation)
 	labelVal("Contact", d.meta.OrgContact)
 	labelVal("Framework", d.meta.PlanFramework)
 	labelVal("Plan Status", strings.ToUpper(d.meta.PlanStatus))
-	labelVal("Prepared By", d.meta.GeneratedBy)
 	labelVal("Generated On", d.meta.GeneratedAt.Format("02 January 2006, 15:04"))
 
-	y -= 16
-	pdfLine(p, pdfMarginL, y, pdfPageWidth-pdfMarginR, y, borderGray, 0.75)
-	y -= 20
-	pdfText(p, "F1", 8.5, pdfMarginL, y, inkLight, "CONFIDENTIAL - this document contains proprietary strategic planning")
-	y -= 12
-	pdfText(p, "F1", 8.5, pdfMarginL, y, inkLight, "information prepared solely for the addressed organisation.")
+	// ── Bottom wave band (two-tone, mirrored) ──
+	pdfWaveBandBottom(p, 64, 118, tint(brandPrimary, 0.55))
+	pdfWaveBandBottom(p, 50, 100, brandPrimary)
 
-	pdfLine(p, pdfMarginL, 60, pdfPageWidth-pdfMarginR, 60, borderGray, 0.5)
-	pdfText(p, "F1", 8, pdfMarginL, 46, inkLight, "Generated by SPE-Lite - a strategic planning platform by DGRV Eswatini")
+	// ── Confidentiality notice — always in the white area above the wave;
+	// see the function doc comment for why this can't collide with it. ──
+	const footY = 150.0
+	pdfLine(p, pdfMarginL, footY, pdfPageWidth-pdfMarginR, footY, borderGray, 0.75)
+	pdfText(p, "F1", 8.5, pdfMarginL, footY-20, inkLight, "CONFIDENTIAL - this document contains proprietary strategic planning")
+	pdfText(p, "F1", 8.5, pdfMarginL, footY-32, inkLight, "information prepared solely for the addressed organisation.")
+
+	pdfTextCenter(p, "F1", 8, pdfPageWidth/2, 24, white, "Generated by SPE-Lite - a strategic planning platform by DGRV Eswatini")
 }
 
 func (d *pdfDoc) heading(text string) {
@@ -520,23 +683,68 @@ func (d *pdfDoc) table(t *contentTable) {
 	if total == 0 {
 		total = float64(n)
 	}
-	const minW = 55.0
+	// minW is the narrowest a column is allowed to get before short
+	// content like "In Progress" starts forcing every word onto its own
+	// wrapped line. For pathologically wide tables (many columns) even
+	// every column at 55pt wouldn't fit the page, so it's capped down to
+	// an equal share of the content width in that case, rather than
+	// letting the table overflow the page margin.
+	minW := 55.0
+	if minW*float64(n) > pdfContentW {
+		minW = pdfContentW / float64(n)
+	}
+
 	colW := make([]float64, n)
+	flexible := make([]bool, n)
 	for i := range colW {
-		cw := weights[i] / total * pdfContentW
-		if cw < minW {
-			cw = minW
+		colW[i] = weights[i] / total * pdfContentW
+		if colW[i] < minW {
+			colW[i] = minW
 		}
-		colW[i] = cw
+		flexible[i] = true
 	}
-	sum := 0.0
-	for _, cw := range colW {
-		sum += cw
-	}
-	if sum > pdfContentW {
-		scale := pdfContentW / sum
+
+	// If flooring narrow columns pushed the total over the page width,
+	// give the excess back only from columns that have room above the
+	// floor — proportional to how far above it each one is — rather than
+	// uniformly rescaling every column. A uniform rescale here was the
+	// original bug: it would shrink already-floored columns back below
+	// minW right after they'd been raised to it, so a table with several
+	// narrow columns next to one wide one could end up squeezing the
+	// narrow ones down to single characters per line. Bounded to n passes
+	// since each pass permanently floors at least one more column.
+	for pass := 0; pass < n; pass++ {
+		sum := 0.0
+		for _, cw := range colW {
+			sum += cw
+		}
+		excess := sum - pdfContentW
+		if excess <= 0.01 {
+			break
+		}
+		slack := 0.0
 		for i := range colW {
-			colW[i] *= scale
+			if flexible[i] && colW[i] > minW {
+				slack += colW[i] - minW
+			}
+		}
+		if slack <= 0 {
+			break // every column is already at the floor
+		}
+		anyFloored := false
+		for i := range colW {
+			if !flexible[i] || colW[i] <= minW {
+				continue
+			}
+			colW[i] -= (colW[i] - minW) / slack * excess
+			if colW[i] <= minW {
+				colW[i] = minW
+				flexible[i] = false
+				anyFloored = true
+			}
+		}
+		if !anyFloored {
+			break // converged without any column needing another pass
 		}
 	}
 
@@ -552,6 +760,21 @@ func (d *pdfDoc) table(t *contentTable) {
 			}
 			chars := charsForWidth(colW[i]-2*pad, fontSize)
 			cellLines[i] = wrapText(text, chars)
+			// Cap how tall any single cell can force the row — without
+			// this, one field with an unusually long value (a pasted
+			// paragraph where a short indicator was expected, say) would
+			// stretch the whole row's height, which reads as broken far
+			// more than a clearly-truncated cell does.
+			const maxCellLines = 6
+			if len(cellLines[i]) > maxCellLines {
+				cellLines[i] = cellLines[i][:maxCellLines]
+				last := cellLines[i][maxCellLines-1]
+				last = strings.TrimRight(last, " ")
+				if len(last) > chars-2 {
+					last = last[:chars-2]
+				}
+				cellLines[i][maxCellLines-1] = last + ".."
+			}
 			if len(cellLines[i]) > maxLines {
 				maxLines = len(cellLines[i])
 			}
@@ -615,22 +838,32 @@ func chartBarColor(hint string) [3]float64 {
 	}
 }
 
-// truncateLabel keeps a bar label from overrunning its column, using the
-// same average-glyph-width heuristic as charsForWidth (there's no
-// font-metrics table in this hand-rolled renderer). Folds to ASCII first
-// so len() (used for both the width check and the wrapText/charsForWidth
-// math elsewhere) matches the rendered character count, and uses ASCII
-// ".." rather than an ellipsis glyph for the same reason.
-func truncateLabel(s string, widthPt float64) string {
+// truncateToWidth returns s (ASCII-folded) if it already fits within
+// widthPt at the given fontSize, using the same average-glyph-width
+// heuristic as charsForWidth (there's no font-metrics table in this
+// hand-rolled renderer) — otherwise a shortened copy ending in ".." (ASCII,
+// same reasoning as asciiFold: an ellipsis glyph would just come back out
+// as "?"). Used anywhere a single line of untrusted-length text (an org
+// name, a contact string, ...) has to fit in a fixed space without
+// wrapping — e.g. the cover page's letterhead details in buildCover.
+func truncateToWidth(s string, widthPt, fontSize float64) string {
 	s = asciiFold(s)
-	maxChars := int(widthPt / (8 * 0.5))
-	if maxChars < 3 {
-		maxChars = 3
-	}
+	maxChars := charsForWidth(widthPt, fontSize)
 	if len(s) <= maxChars {
 		return s
 	}
+	if maxChars <= 2 {
+		return s[:maxChars]
+	}
 	return s[:maxChars-2] + ".."
+}
+
+// truncateLabel keeps a bar label from overrunning its column. Chart bar
+// labels are always drawn at size 8 (see chart() below), which is what the
+// original hardcoded "8 * 0.5" heuristic here was calibrated for — this is
+// now just that fixed case of the general truncateToWidth above.
+func truncateLabel(s string, widthPt float64) string {
+	return truncateToWidth(s, widthPt, 8)
 }
 
 // chart draws a horizontal bar chart: one row per bar, a track background,
@@ -826,26 +1059,47 @@ func asciiFold(s string) string {
 	return b.String()
 }
 
+// wrapText breaks s into lines of at most width characters, breaking on
+// whitespace where possible. A single "word" longer than width on its own
+// (a long hyphenated activity title, a KPI indicator with no spaces, a
+// URL, ...) is hard-broken into width-sized chunks rather than left as one
+// over-length line — without this, that one word would render wider than
+// its column and visually spill into whatever's next to it, which is
+// exactly the kind of overflow this function exists to prevent.
 func wrapText(s string, width int) []string {
+	if width < 1 {
+		width = 1
+	}
 	words := strings.Fields(s)
 	if len(words) == 0 {
 		return []string{""}
 	}
 	var lines []string
 	var cur strings.Builder
-	for _, word := range words {
-		if cur.Len() > 0 && cur.Len()+1+len(word) > width {
+	flush := func() {
+		if cur.Len() > 0 {
 			lines = append(lines, cur.String())
 			cur.Reset()
+		}
+	}
+	for _, word := range words {
+		for len(word) > width {
+			// This single word alone doesn't fit on its own line — start
+			// a fresh line for it (flushing whatever's pending) and
+			// hard-break it chunk by chunk until what's left does fit.
+			flush()
+			lines = append(lines, word[:width])
+			word = word[width:]
+		}
+		if cur.Len() > 0 && cur.Len()+1+len(word) > width {
+			flush()
 		}
 		if cur.Len() > 0 {
 			cur.WriteByte(' ')
 		}
 		cur.WriteString(word)
 	}
-	if cur.Len() > 0 {
-		lines = append(lines, cur.String())
-	}
+	flush()
 	return lines
 }
 
