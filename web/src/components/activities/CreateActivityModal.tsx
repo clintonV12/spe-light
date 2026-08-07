@@ -91,9 +91,12 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
   const [pillarsLoading, setPillarsLoading] = useState(isLocal)
   const [pillarId, setPillarId] = useState<string>('')
   const [objectiveId, setObjectiveId] = useState<string>(defaultObjectiveId ?? '')
-  const [budget, setBudget] = useState('')
-  const [responsibility, setResponsibility] = useState('')
-  const [targetPeriod, setTargetPeriod] = useState<KPIPeriod | ''>('')
+  // Budget/Responsibility/Measurement Period used to be one set of fields
+  // for the whole activity, entered here below the KPI list. As of
+  // migration 013 they live on each KPI instead (two KPIs on the same
+  // activity can have different owners, costs, and reporting cadences), so
+  // they're now collected inline per-row in the KPI list below rather than
+  // as separate top-level state.
   const [kpis, setKpis] = useState<KPI[]>([emptyKPI()])
 
   // ── Shared state ─────────────────────────────────────────────────────
@@ -154,6 +157,13 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
     const num = value.trim() === '' ? undefined : Number(value)
     setKpis((prev) => prev.map((k, i) => (i === index ? { ...k, target_value: num } : k)))
   }
+  const updateKpiBudget = (index: number, value: string) => {
+    const num = value.trim() === '' ? undefined : Number(value)
+    setKpis((prev) => prev.map((k, i) => (i === index ? { ...k, budget: num } : k)))
+  }
+  const updateKpiPeriod = (index: number, value: KPIPeriod | '') => {
+    setKpis((prev) => prev.map((k, i) => (i === index ? { ...k, target_period: value || undefined } : k)))
+  }
   const addKpi = () => setKpis((prev) => [...prev, emptyKPI()])
   const removeKpi = (index: number) => setKpis((prev) => prev.filter((_, i) => i !== index))
 
@@ -190,16 +200,19 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
             indicator: k.indicator.trim(),
             target: k.target.trim(),
             target_value: k.target_value,
+            budget: k.budget,
+            responsibility: k.responsibility?.trim() || undefined,
+            target_period: k.target_period || undefined,
           }))
-          .filter((k) => k.indicator || k.target || k.target_value !== undefined)
+          .filter((k) =>
+            k.indicator || k.target || k.target_value !== undefined ||
+            k.budget !== undefined || k.responsibility || k.target_period,
+          )
         await activitiesApi.create(planId, {
           objective_id: objectiveId,
           type: LOCAL_ACTIVITY_TYPE,
           title: title.trim(),
           content: {},
-          budget: budget ? Number(budget) : undefined,
-          responsibility: responsibility.trim() || undefined,
-          target_period: targetPeriod || undefined,
           kpis: cleanedKpis,
         })
       } else {
@@ -302,10 +315,10 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
                   />
                 )}
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {kpis.map((k, i) => (
                     <div key={i} className="flex items-start gap-2">
-                      <div className="flex-1 space-y-1.5">
+                      <div className="flex-1 space-y-1.5 rounded-lg border border-ink-100 p-2.5">
                         <input
                           value={k.indicator}
                           onChange={(e) => updateKpi(i, 'indicator', e.target.value)}
@@ -325,6 +338,38 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
                           placeholder={t('createActivityModal.kpiTargetValue', { defaultValue: 'Target value (number, for tracking)' })}
                           className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm outline-none focus:border-accent"
                         />
+
+                        {/* Implementation details — Budget / Responsibility /
+                            Measurement Period for this specific KPI (moved off
+                            the activity in migration 013; each KPI can have a
+                            different owner, cost, and reporting cadence). */}
+                        <div className="pt-1.5 mt-1.5 border-t border-ink-100 space-y-1.5">
+                          <input
+                            type="number"
+                            value={k.budget ?? ''}
+                            onChange={(e) => updateKpiBudget(i, e.target.value)}
+                            placeholder={t('createActivityModal.kpiBudget', { defaultValue: 'Budget' })}
+                            className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm outline-none focus:border-accent"
+                          />
+                          <input
+                            value={k.responsibility ?? ''}
+                            onChange={(e) => updateKpi(i, 'responsibility', e.target.value)}
+                            placeholder={t('createActivityModal.kpiResponsibility', { defaultValue: 'Responsibility, e.g. Board / HR Committee' })}
+                            className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm outline-none focus:border-accent"
+                          />
+                          <select
+                            value={k.target_period ?? ''}
+                            onChange={(e) => updateKpiPeriod(i, e.target.value as KPIPeriod | '')}
+                            className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm text-ink-900 outline-none focus:border-accent"
+                          >
+                            <option value="">{t('createActivityModal.periodUnset', { defaultValue: 'No measurement period' })}</option>
+                            {KPI_PERIODS.map((p) => (
+                              <option key={p} value={p}>
+                                {t(`createActivityModal.period.${p}`, { defaultValue: p.charAt(0).toUpperCase() + p.slice(1) })}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                       {kpis.length > 1 && (
                         <button
@@ -338,42 +383,9 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
                     </div>
                   ))}
                 </div>
-              </div>
-
-              <Input
-                label={t('createActivityModal.budget', { defaultValue: 'Budget' })}
-                type="number"
-                placeholder="0.00"
-                value={budget}
-                onChange={(e) => setBudget(e.target.value)}
-              />
-
-              <Input
-                label={t('createActivityModal.responsibility', { defaultValue: 'Responsibility' })}
-                placeholder={t('createActivityModal.responsibilityPlaceholder', { defaultValue: 'e.g. Board / HR Committee' })}
-                value={responsibility}
-                onChange={(e) => setResponsibility(e.target.value)}
-              />
-
-              <div>
-                <label className="block text-sm font-medium text-ink-700 mb-1.5">
-                  {t('createActivityModal.measurementPeriod', { defaultValue: 'Measurement Period' })}
-                </label>
-                <select
-                  value={targetPeriod}
-                  onChange={(e) => setTargetPeriod(e.target.value as KPIPeriod | '')}
-                  className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm text-ink-900 outline-none focus:border-accent"
-                >
-                  <option value="">{t('createActivityModal.periodUnset', { defaultValue: 'No measurement period' })}</option>
-                  {KPI_PERIODS.map((p) => (
-                    <option key={p} value={p}>
-                      {t(`createActivityModal.period.${p}`, { defaultValue: p.charAt(0).toUpperCase() + p.slice(1) })}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-ink-400 mt-1">
+                <p className="text-xs text-ink-400 mt-1.5">
                   {t('createActivityModal.periodHint', {
-                    defaultValue: 'How often this activity is reported on — this is what the Tracking Module groups its KPIs by, and replaces a separate due date for local-plan activities.',
+                    defaultValue: 'Measurement Period is what the Tracking Module groups each KPI by — set it per-KPI since KPIs on the same activity can report on different cadences.',
                   })}
                 </p>
               </div>

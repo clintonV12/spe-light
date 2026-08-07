@@ -107,9 +107,13 @@ function achievementForRow(row: KpiRow): number | null {
   return computeAchievement(row.kpi.direction, row.kpi.target_value, row.kpi.actual_value)
 }
 
+// Grouped by KPI.target_period now, not Activity.target_period (migration
+// 013 moved Budget/Responsibility/TargetPeriod off the activity and onto
+// each KPI individually — two KPIs under the same activity can report on
+// different cadences, so the gauge has to bucket at the KPI level too).
 function periodCompletion(rows: KpiRow[], period: KPIPeriod): number | null {
   const values = rows
-    .filter((r) => r.activity.target_period === period)
+    .filter((r) => r.kpi.target_period === period)
     .map(achievementForRow)
     .filter((v): v is number => v !== null)
     // Capped here, not at the source — an individual KPI's own display
@@ -167,9 +171,11 @@ export const TrackingModule: React.FC<TrackingModuleProps> = ({ plan, canEdit })
     [trackedActivities],
   )
 
+  // Unscheduled is now a per-KPI count, not a per-activity one — a single
+  // activity can have some KPIs scheduled and others not.
   const unscheduledCount = useMemo(
-    () => trackedActivities.filter((a) => !a.target_period).length,
-    [trackedActivities],
+    () => rows.filter((r) => !r.kpi.target_period).length,
+    [rows],
   )
 
   const monthly = useMemo(() => periodCompletion(rows, 'monthly'), [rows])
@@ -187,15 +193,6 @@ export const TrackingModule: React.FC<TrackingModuleProps> = ({ plan, canEdit })
       setActivities((prev) => prev.map((a) => (a.id === activityId ? updated : a)))
     } catch {
       error('Failed to save KPI')
-    }
-  }
-
-  const savePeriod = async (activityId: string, period: KPIPeriod | '') => {
-    try {
-      const updated = await activitiesApi.update(activityId, { target_period: period || undefined })
-      setActivities((prev) => prev.map((a) => (a.id === activityId ? updated : a)))
-    } catch {
-      error('Failed to save reporting period')
     }
   }
 
@@ -228,8 +225,8 @@ export const TrackingModule: React.FC<TrackingModuleProps> = ({ plan, canEdit })
         {rows.length > 0 && unscheduledCount > 0 && (
           <div className="flex items-center gap-2 justify-center mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
             <AlertTriangle className="size-3.5 shrink-0" />
-            {unscheduledCount} {unscheduledCount === 1 ? 'activity has' : 'activities have'} KPIs but no reporting
-            period set — set one below so they count toward a gauge above.
+            {unscheduledCount} {unscheduledCount === 1 ? 'KPI has' : 'KPIs have'} no reporting period set —
+            set one below so {unscheduledCount === 1 ? 'it counts' : 'they count'} toward a gauge above.
           </div>
         )}
       </div>
@@ -252,7 +249,6 @@ export const TrackingModule: React.FC<TrackingModuleProps> = ({ plan, canEdit })
             breadcrumb={breadcrumbFor(activity)}
             canEdit={canEdit}
             onSaveKpis={(newKpis) => saveActivityKpis(activity.id, newKpis)}
-            onSavePeriod={(period) => savePeriod(activity.id, period)}
           />
         ))}
       </div>
@@ -265,8 +261,7 @@ const ActivityKpiCard: React.FC<{
   breadcrumb: string
   canEdit: boolean
   onSaveKpis: (kpis: KPI[]) => Promise<void>
-  onSavePeriod: (period: KPIPeriod | '') => Promise<void>
-}> = ({ activity, breadcrumb, canEdit, onSaveKpis, onSavePeriod }) => {
+}> = ({ activity, breadcrumb, canEdit, onSaveKpis }) => {
   const kpis = activity.kpis ?? []
 
   // Local per-cell draft values so typing doesn't fire a save on every
@@ -295,39 +290,19 @@ const ActivityKpiCard: React.FC<{
     void onSaveKpis(newKpis)
   }
 
-  const periodMeta = activity.target_period ? PERIOD_META[activity.target_period] : null
+  // Reporting period is now set per-KPI (see periodCompletion above) rather
+  // than once for the whole activity, so the select moves into each KPI row
+  // below instead of living in this card's header.
+  const savePeriod = (i: number, period: KPIPeriod | '') => {
+    const newKpis = kpis.map((k, idx) => (idx === i ? { ...k, target_period: period || undefined } : k))
+    void onSaveKpis(newKpis)
+  }
 
   return (
     <div className="rounded-2xl border border-ink-100 bg-white p-4">
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <div>
-          {breadcrumb && <p className="text-[11px] text-ink-400 mb-0.5">{breadcrumb}</p>}
-          <p className="text-sm font-semibold text-ink-900">{activity.title}</p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {periodMeta ? (
-            <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-1 border-2 ${periodMeta.color}`}>
-              {periodMeta.label}
-            </span>
-          ) : (
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-1">
-              No period
-            </span>
-          )}
-          {canEdit && (
-            <select
-              value={activity.target_period ?? ''}
-              onChange={(e) => void onSavePeriod(e.target.value as KPIPeriod | '')}
-              className="text-xs rounded-lg border border-ink-200 bg-white px-2 py-1 text-ink-700"
-              title="Reporting period"
-            >
-              <option value="">Set period…</option>
-              {KPI_PERIODS.map((p) => (
-                <option key={p} value={p}>{PERIOD_META[p].label}</option>
-              ))}
-            </select>
-          )}
-        </div>
+      <div className="mb-1">
+        {breadcrumb && <p className="text-[11px] text-ink-400 mb-0.5">{breadcrumb}</p>}
+        <p className="text-sm font-semibold text-ink-900">{activity.title}</p>
       </div>
 
       <div className="space-y-3 mt-3">
@@ -338,18 +313,54 @@ const ActivityKpiCard: React.FC<{
             drafts[i]?.actual.trim() === '' ? undefined : Number(drafts[i]?.actual),
           )
           const DirectionIcon = kpi.direction === 'decrease' ? TrendingDown : TrendingUp
-          // Locked once a target_value already exists on the activity's KPI
-          // (set in Strategic Pillars, at creation) — Tracking Module is then
-          // only for filling in Actual as progress comes in. If no target
-          // was set there, it stays editable here as a fallback.
+          // Locked once a target_value already exists on this KPI (set in
+          // Strategic Pillars, at creation) — Tracking Module is then only
+          // for filling in Actual as progress comes in. If no target was
+          // set there, it stays editable here as a fallback.
           const targetLocked = kpi.target_value !== undefined && kpi.target_value !== null
+          const periodMeta = kpi.target_period ? PERIOD_META[kpi.target_period] : null
           return (
             <div key={i} className="rounded-xl border border-ink-100 bg-ink-50/40 p-3">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <DirectionIcon className="size-3.5 text-ink-400 shrink-0" />
-                <p className="text-sm text-ink-800 font-medium">{kpi.indicator || 'Untitled KPI'}</p>
+              <div className="flex items-start justify-between gap-2 mb-1.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <DirectionIcon className="size-3.5 text-ink-400 shrink-0" />
+                  <p className="text-sm text-ink-800 font-medium truncate">{kpi.indicator || 'Untitled KPI'}</p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {periodMeta ? (
+                    <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-1 border-2 ${periodMeta.color}`}>
+                      {periodMeta.label}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-1">
+                      No period
+                    </span>
+                  )}
+                  {canEdit && (
+                    <select
+                      value={kpi.target_period ?? ''}
+                      onChange={(e) => savePeriod(i, e.target.value as KPIPeriod | '')}
+                      className="text-xs rounded-lg border border-ink-200 bg-white px-1.5 py-1 text-ink-700"
+                      title="Reporting period"
+                    >
+                      <option value="">Set period…</option>
+                      {KPI_PERIODS.map((p) => (
+                        <option key={p} value={p}>{PERIOD_META[p].label}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
               </div>
-              {kpi.target && <p className="text-xs text-ink-400 mb-2">Target: {kpi.target}</p>}
+
+              {kpi.target && <p className="text-xs text-ink-400 mb-1">Target: {kpi.target}</p>}
+              {(kpi.budget !== undefined || kpi.responsibility) && (
+                <p className="text-xs text-ink-400 mb-2">
+                  {kpi.budget !== undefined && <>Budget: {kpi.budget.toLocaleString()}</>}
+                  {kpi.budget !== undefined && kpi.responsibility && ' · '}
+                  {kpi.responsibility && <>Responsibility: {kpi.responsibility}</>}
+                </p>
+              )}
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="h-3.5 flex items-center gap-1 whitespace-nowrap text-[10px] uppercase tracking-wide text-ink-400">

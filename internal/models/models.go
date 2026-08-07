@@ -326,16 +326,27 @@ type StrategicObjective struct {
 // is normally filled in later, over time, from the Tracking Module as
 // progress comes in — that's the whole point of tracking.
 //
-// No id/period field here: an activity's KPIs all share that activity's
-// single TargetPeriod (see Activity.TargetPeriod below) rather than each
-// KPI carrying its own — a KPI is only ever reported against the cadence
-// its parent activity is due on.
+// Budget/Responsibility/TargetPeriod live here rather than on Activity (see
+// migration 013) — the ESWAMCU "Implementation Framework" table's BUDGET/
+// RESPONSIBILITY/TARGET PERIOD columns are answered per-KPI, not once for
+// the whole activity: two KPIs under the same activity can have different
+// owners, costs, and reporting cadences. TargetPeriod doubles as the
+// Tracking Module's reporting-period bucket for this specific KPI (see
+// tracking.go's periodCompletion-equivalent), narrowed to the fixed
+// monthly/quarterly/annual enum (enforced in plan_service.go) rather than
+// free text, so a gauge can actually be computed from it.
+//
+// No id field — a KPI is identified by its position within Activity.KPIs;
+// there's no need to reference one independently of its parent activity.
 type KPI struct {
-	Indicator   string       `json:"indicator"`
-	Target      string       `json:"target"`
-	TargetValue *float64     `json:"target_value,omitempty"`
-	ActualValue *float64     `json:"actual_value,omitempty"`
-	Direction   KPIDirection `json:"direction,omitempty"`
+	Indicator      string       `json:"indicator"`
+	Target         string       `json:"target"`
+	TargetValue    *float64     `json:"target_value,omitempty"`
+	ActualValue    *float64     `json:"actual_value,omitempty"`
+	Direction      KPIDirection `json:"direction,omitempty"`
+	Budget         *float64     `json:"budget,omitempty"`
+	Responsibility *string      `json:"responsibility,omitempty"`
+	TargetPeriod   *KPIPeriod   `json:"target_period,omitempty"`
 }
 
 // ── Activity ──────────────────────────────────────────────────────────────
@@ -346,19 +357,13 @@ type KPI struct {
 // one of Phase / ObjectiveID is ever set, enforced by
 // chk_activities_exactly_one_hierarchy in the DB.
 //
-// Budget, Responsibility, TargetPeriod, and KPIs are only ever populated
-// for local-plan activities (they map directly to the BUDGET,
-// RESPONSIBILITY, TARGET PERIOD, and KEY PERFORMANCE INDICATOR (KPI)
-// columns of the ESWAMCU "Implementation Framework" table); international
-// activities leave them nil/empty.
-//
-// TargetPeriod doubles as the Tracking Module's reporting-period bucket
-// for this activity's KPIs (see the KPI doc comment above) — it's
-// deliberately the same field the "Target Period" column already occupied
-// rather than a new one, just narrowed from free text to the fixed
-// monthly/quarterly/annual enum (enforced in plan_service.go and by
-// chk_activities_target_period in migration 012) so it means something a
-// gauge can be computed from.
+// KPIs is only ever populated for local-plan activities (it maps directly
+// to the KEY PERFORMANCE INDICATOR (KPI) column — along with the BUDGET,
+// RESPONSIBILITY, and TARGET PERIOD columns nested inside each entry, see
+// the KPI doc comment above — of the ESWAMCU "Implementation Framework"
+// table); international activities leave it nil/empty. Budget/
+// Responsibility/TargetPeriod used to be columns on Activity itself
+// (dropped in migration 013) before moving onto each KPI.
 //
 // Content is a flexible JSON blob; AIDraft holds the AI-generated version
 // before the user accepts or edits it.
@@ -377,11 +382,8 @@ type Activity struct {
 	AssignedTo  []uuid.UUID    `json:"assigned_to,omitempty" db:"assigned_to"`
 	DueDate     *time.Time     `json:"due_date,omitempty"    db:"due_date"`
 
-	// ── Local-plan-only fields ──────────────────────────────────────────
-	Budget         *float64   `json:"budget,omitempty"         db:"budget"`
-	Responsibility *string    `json:"responsibility,omitempty" db:"responsibility"`
-	TargetPeriod   *KPIPeriod `json:"target_period,omitempty"  db:"target_period"`
-	KPIs           []KPI      `json:"kpis,omitempty"           db:"kpis"`
+	// ── Local-plan-only field ────────────────────────────────────────────
+	KPIs []KPI `json:"kpis,omitempty" db:"kpis"`
 
 	CreatedAt time.Time  `json:"created_at"            db:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"            db:"updated_at"`

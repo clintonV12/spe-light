@@ -335,20 +335,29 @@ export const KPI_PERIODS: KPIPeriod[] = ['monthly', 'quarterly', 'annual']
 // achievement percentage. target_value can be set at creation;
 // actual_value is normally filled in later, over time, from the Tracking
 // Module as progress comes in.
+//
+// budget/responsibility/target_period live here rather than on Activity —
+// the ESWAMCU "Implementation Framework" table's BUDGET/RESPONSIBILITY/
+// TARGET PERIOD columns are answered per-KPI (each KPI can have its own
+// cost, owner, and reporting cadence), not once for the whole activity.
+// target_period doubles as the Tracking Module's reporting-period bucket
+// for this specific KPI — see TrackingModule.tsx's periodCompletion.
 export interface KPI {
-  indicator:     string
-  target:        string
-  target_value?: number
-  actual_value?: number
-  direction?:    KPIDirection
+  indicator:       string
+  target:          string
+  target_value?:   number
+  actual_value?:   number
+  direction?:      KPIDirection
+  budget?:         number
+  responsibility?: string
+  target_period?:  KPIPeriod
 }
 
 // ── Activity ──────────────────────────────────────────────────────────────────
 
 // Exactly one of phase / objective_id is set: phase for an 'international'
-// plan's activities, objective_id for a 'local' plan's. budget/
-// responsibility/target_period/kpis are only ever populated for local-plan
-// activities.
+// plan's activities, objective_id for a 'local' plan's. kpis is only ever
+// populated for local-plan activities.
 export interface Activity {
   id:            string
   plan_id:       string
@@ -364,15 +373,12 @@ export interface Activity {
   assigned_to?:  string[]
   due_date?:     string
 
-  // ── Local-plan-only fields ────────────────────────────────────────────
-  // target_period doubles as the Tracking Module's reporting-period bucket
-  // for this activity's KPIs — it's collected in the UI right alongside
-  // due_date (see CreateActivityModal) rather than as free text, so a
-  // gauge can actually be computed from it.
-  budget?:         number
-  responsibility?: string
-  target_period?:  KPIPeriod
-  kpis?:           KPI[]
+  // ── Local-plan-only field ─────────────────────────────────────────────
+  // Budget/responsibility/target period used to live here as one set of
+  // values for the whole activity — moved onto each KPI instead (see
+  // KPI above), since the ESWAMCU table answers those per-indicator, not
+  // once per activity. Kept here only as the array itself.
+  kpis?: KPI[]
 
   created_at:    string
   updated_at:    string

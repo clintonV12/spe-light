@@ -495,8 +495,10 @@ func (s *Service) DuplicatePlan(ctx context.Context, planID, orgID, callerID uui
 //
 // Exactly one of Phase / ObjectiveID must be supplied, matching whichever
 // hierarchy the target plan's PlanType uses: Phase for an "international"
-// plan, ObjectiveID for a "local" plan. Budget/Responsibility/TargetPeriod/
-// KPIs are only meaningful (and only accepted) for local-plan activities.
+// plan, ObjectiveID for a "local" plan. KPIs is only meaningful (and only
+// accepted) for local-plan activities — Budget/Responsibility/TargetPeriod
+// live inside each KPI (see models.KPI) rather than as separate fields
+// here; validateKPIs below is what enforces TargetPeriod's enum for them.
 type CreateActivityRequest struct {
 	Phase       *models.Phase  `json:"phase,omitempty"`
 	ObjectiveID *uuid.UUID     `json:"objective_id,omitempty"`
@@ -506,10 +508,7 @@ type CreateActivityRequest struct {
 	AssignedTo  []uuid.UUID    `json:"assigned_to,omitempty"`
 	DueDate     *FlexDate      `json:"due_date,omitempty"`
 
-	Budget         *float64          `json:"budget,omitempty"`
-	Responsibility *string           `json:"responsibility,omitempty"`
-	TargetPeriod   *models.KPIPeriod `json:"target_period,omitempty"`
-	KPIs           []models.KPI      `json:"kpis,omitempty"`
+	KPIs []models.KPI `json:"kpis,omitempty"`
 }
 
 // CreateActivity adds a new activity to a plan. The user_order is set to
@@ -520,6 +519,9 @@ func (s *Service) CreateActivity(ctx context.Context, planID, orgID, creatorID u
 	}
 	if req.Type == "" {
 		return nil, fmt.Errorf("type is required")
+	}
+	if err := validateKPIs(req.KPIs); err != nil {
+		return nil, err
 	}
 
 	// Verify the plan exists and belongs to this org, and fetch its
@@ -549,13 +551,6 @@ func (s *Service) CreateActivity(ctx context.Context, planID, orgID, creatorID u
 		}
 		if !objectiveExists {
 			return nil, fmt.Errorf("strategic objective not found")
-		}
-		// TargetPeriod is what the Tracking Module buckets this activity's
-		// KPIs by (see models.KPI's doc comment) — enforced here, alongside
-		// the due date it's entered next to in the UI, rather than left as
-		// free text a gauge can't be computed from.
-		if req.TargetPeriod != nil && !req.TargetPeriod.Valid() {
-			return nil, fmt.Errorf("target_period must be one of: monthly, quarterly, annual")
 		}
 	default: // international
 		if req.Phase == nil {
@@ -590,33 +585,29 @@ func (s *Service) CreateActivity(ctx context.Context, planID, orgID, creatorID u
 	}
 
 	a := &models.Activity{
-		ID:             uuid.New(),
-		PlanID:         planID,
-		OrgID:          orgID,
-		Phase:          req.Phase,
-		ObjectiveID:    req.ObjectiveID,
-		Type:           req.Type,
-		Title:          req.Title,
-		UserOrder:      maxOrder + 1,
-		Status:         models.ActivityNotStarted,
-		Content:        content,
-		AssignedTo:     assignedTo,
-		DueDate:        req.DueDate.ToTimePtr(),
-		Budget:         req.Budget,
-		Responsibility: req.Responsibility,
-		TargetPeriod:   req.TargetPeriod,
-		KPIs:           kpis,
+		ID:          uuid.New(),
+		PlanID:      planID,
+		OrgID:       orgID,
+		Phase:       req.Phase,
+		ObjectiveID: req.ObjectiveID,
+		Type:        req.Type,
+		Title:       req.Title,
+		UserOrder:   maxOrder + 1,
+		Status:      models.ActivityNotStarted,
+		Content:     content,
+		AssignedTo:  assignedTo,
+		DueDate:     req.DueDate.ToTimePtr(),
+		KPIs:        kpis,
 	}
 
 	err = s.db.QueryRow(ctx,
 		`INSERT INTO activities
 		 (id, plan_id, org_id, phase, objective_id, type, title, user_order, status, content,
-		  assigned_to, due_date, budget, responsibility, target_period, kpis)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		  assigned_to, due_date, kpis)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		 RETURNING created_at, updated_at`,
 		a.ID, a.PlanID, a.OrgID, a.Phase, a.ObjectiveID, a.Type, a.Title,
-		a.UserOrder, a.Status, a.Content, a.AssignedTo, a.DueDate,
-		a.Budget, a.Responsibility, a.TargetPeriod, a.KPIs,
+		a.UserOrder, a.Status, a.Content, a.AssignedTo, a.DueDate, a.KPIs,
 	).Scan(&a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create activity: %w", err)
@@ -624,6 +615,22 @@ func (s *Service) CreateActivity(ctx context.Context, planID, orgID, creatorID u
 
 	slog.Info("activity created", "activity_id", a.ID, "plan_id", planID, "plan_type", plan.PlanType)
 	return a, nil
+}
+
+// validateKPIs enforces TargetPeriod's monthly/quarterly/annual enum on
+// every KPI that sets one — the same constraint that used to live on
+// Activity.TargetPeriod (migration 012) before Budget/Responsibility/
+// TargetPeriod moved onto each KPI individually (migration 013). Checked
+// here, alongside where each KPI's other fields are collected in the UI,
+// rather than left as free text a Tracking Module gauge can't be computed
+// from.
+func validateKPIs(kpis []models.KPI) error {
+	for i, k := range kpis {
+		if k.TargetPeriod != nil && !k.TargetPeriod.Valid() {
+			return fmt.Errorf("kpis[%d].target_period must be one of: monthly, quarterly, annual", i)
+		}
+	}
+	return nil
 }
 
 // ListActivities returns all non-deleted activities for a plan.
@@ -644,7 +651,7 @@ func (s *Service) ListActivities(ctx context.Context, planID, orgID uuid.UUID, p
 
 	query := `SELECT id, plan_id, org_id, phase, objective_id, type, title, user_order, status,
 	                 content, ai_draft, assigned_to, due_date,
-	                 budget, responsibility, target_period, kpis, created_at, updated_at
+	                 kpis, created_at, updated_at
 	          FROM activities
 	          WHERE plan_id = $1 AND deleted_at IS NULL`
 	args := []any{planID}
@@ -675,7 +682,7 @@ func (s *Service) ListActivities(ctx context.Context, planID, orgID uuid.UUID, p
 		if err := rows.Scan(
 			&a.ID, &a.PlanID, &a.OrgID, &a.Phase, &a.ObjectiveID, &a.Type, &a.Title, &a.UserOrder,
 			&a.Status, &a.Content, &a.AIDraft, &a.AssignedTo, &a.DueDate,
-			&a.Budget, &a.Responsibility, &a.TargetPeriod, &a.KPIs,
+			&a.KPIs,
 			&a.CreatedAt, &a.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -694,13 +701,11 @@ type UpdateActivityRequest struct {
 	AssignedTo []uuid.UUID            `json:"assigned_to,omitempty"`
 	DueDate    *FlexDate              `json:"due_date,omitempty"`
 
-	// Local-plan-only fields — harmless no-ops if sent for an
+	// Local-plan-only field — harmless no-op if sent for an
 	// international-plan activity, but the frontend should only ever send
-	// these for local plans.
-	Budget         *float64          `json:"budget,omitempty"`
-	Responsibility *string           `json:"responsibility,omitempty"`
-	TargetPeriod   *models.KPIPeriod `json:"target_period,omitempty"`
-	KPIs           []models.KPI      `json:"kpis,omitempty"`
+	// this for local plans. Budget/Responsibility/TargetPeriod live inside
+	// each KPI (see models.KPI) rather than as separate fields here.
+	KPIs []models.KPI `json:"kpis,omitempty"`
 }
 
 // UpdateActivity applies a partial update to an activity.
@@ -709,11 +714,11 @@ type UpdateActivityRequest struct {
 // (handler) before invoking this method.
 func (s *Service) UpdateActivity(ctx context.Context, activityID, orgID uuid.UUID, req UpdateActivityRequest) (*models.Activity, error) {
 	if req.Title == nil && req.Status == nil && req.Content == nil && req.AssignedTo == nil && req.DueDate == nil &&
-		req.Budget == nil && req.Responsibility == nil && req.TargetPeriod == nil && req.KPIs == nil {
+		req.KPIs == nil {
 		return nil, fmt.Errorf("nothing to update")
 	}
-	if req.TargetPeriod != nil && !req.TargetPeriod.Valid() {
-		return nil, fmt.Errorf("target_period must be one of: monthly, quarterly, annual")
+	if err := validateKPIs(req.KPIs); err != nil {
+		return nil, err
 	}
 
 	// Verify the activity belongs to this org.
@@ -764,27 +769,6 @@ func (s *Service) UpdateActivity(ctx context.Context, activityID, orgID uuid.UUI
 			`UPDATE activities SET due_date = $1, updated_at = NOW() WHERE id = $2`,
 			req.DueDate.Time, activityID); err != nil {
 			return nil, fmt.Errorf("update due_date: %w", err)
-		}
-	}
-	if req.Budget != nil {
-		if _, err := s.db.Exec(ctx,
-			`UPDATE activities SET budget = $1, updated_at = NOW() WHERE id = $2`,
-			*req.Budget, activityID); err != nil {
-			return nil, fmt.Errorf("update budget: %w", err)
-		}
-	}
-	if req.Responsibility != nil {
-		if _, err := s.db.Exec(ctx,
-			`UPDATE activities SET responsibility = $1, updated_at = NOW() WHERE id = $2`,
-			*req.Responsibility, activityID); err != nil {
-			return nil, fmt.Errorf("update responsibility: %w", err)
-		}
-	}
-	if req.TargetPeriod != nil {
-		if _, err := s.db.Exec(ctx,
-			`UPDATE activities SET target_period = $1, updated_at = NOW() WHERE id = $2`,
-			*req.TargetPeriod, activityID); err != nil {
-			return nil, fmt.Errorf("update target_period: %w", err)
 		}
 	}
 	if req.KPIs != nil {
@@ -853,12 +837,12 @@ func (s *Service) getActivity(ctx context.Context, activityID, orgID uuid.UUID) 
 	err := s.db.QueryRow(ctx,
 		`SELECT id, plan_id, org_id, phase, objective_id, type, title, user_order, status,
 		        content, ai_draft, assigned_to, due_date,
-		        budget, responsibility, target_period, kpis, created_at, updated_at
+		        kpis, created_at, updated_at
 		 FROM activities WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
 		activityID, orgID,
 	).Scan(&a.ID, &a.PlanID, &a.OrgID, &a.Phase, &a.ObjectiveID, &a.Type, &a.Title, &a.UserOrder,
 		&a.Status, &a.Content, &a.AIDraft, &a.AssignedTo, &a.DueDate,
-		&a.Budget, &a.Responsibility, &a.TargetPeriod, &a.KPIs,
+		&a.KPIs,
 		&a.CreatedAt, &a.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("activity not found")

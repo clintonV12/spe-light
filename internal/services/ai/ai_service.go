@@ -767,15 +767,25 @@ func draftSchemaFor(activityType string) (schema string, instructions string) {
 	// populated and grounds the draft) and CreateActivityModal.tsx (no
 	// activity yet, activity_id omitted — drafted from keywords/plan
 	// context alone). Matches the frontend's KPI shape in types/index.ts
-	// (indicator/target/target_value/direction) exactly so
-	// LocalActivityEditor's/CreateActivityModal's acceptAiKpis can drop
-	// each row straight into Activity.kpis with no reshaping. Unlike
-	// kpi_framework/okr_balanced_scorecard above, these KPIs already track
-	// the local-plan Strategic Objective the activity itself belongs to
-	// (activities.objective_id) — there's no separate objective-tagging
-	// step here.
+	// exactly so LocalActivityEditor's/CreateActivityModal's
+	// acceptAiKpis (via the shared parseKpiDraft in AiChapterAssist.tsx)
+	// can drop each row straight into Activity.kpis with no reshaping.
+	// Unlike kpi_framework/okr_balanced_scorecard above, these KPIs
+	// already track the local-plan Strategic Objective the activity
+	// itself belongs to (activities.objective_id) — there's no separate
+	// objective-tagging step here.
+	//
+	// budget/responsibility/target_period (migration 013 — these used to
+	// live on the activity, now on each KPI) are asked for but explicitly
+	// optional: unlike target_value, which is a plan figure the model can
+	// reasonably estimate from the indicator itself, a real budget number
+	// or a named owner isn't something the model actually knows — telling
+	// it to guess one anyway would just fabricate a number a planner
+	// could mistake for a real estimate. Better to leave the field
+	// editable-but-empty than to seed it with a plausible-looking fake.
 	case "local_activity_kpis":
-		return `{"kpis": [{"indicator": "...", "target": "...", "target_value": 0, "direction": "increase"}]}`,
+		return `{"kpis": [{"indicator": "...", "target": "...", "target_value": 0, "direction": "increase", ` +
+				`"budget": 0, "responsibility": "...", "target_period": "monthly"}]}`,
 			"Draft 2-4 Key Performance Indicators for this specific activity. \"indicator\" is a short name " +
 				"for what's being measured (e.g. \"Membership growth rate\"). \"target\" is a short free-text " +
 				"description of the goal (e.g. \"20% increase by Year 1\"). \"target_value\" is the same goal " +
@@ -783,7 +793,13 @@ func draftSchemaFor(activityType string) (schema string, instructions string) {
 				"(e.g. 20, not \"20%\") — use your best numeric estimate of the target even if the activity " +
 				"title/keywords don't state one explicitly. \"direction\" must be exactly \"increase\" if a " +
 				"higher actual value is better (e.g. revenue, membership) or \"decrease\" if a lower actual " +
-				"value is better (e.g. defect rate, dropout rate)."
+				"value is better (e.g. defect rate, dropout rate). \"budget\", \"responsibility\", and " +
+				"\"target_period\" are optional — omit the key entirely (do not guess a number, name, or team " +
+				"you have no basis for) unless the activity title, keywords, or org context actually implies " +
+				"one. If you do include them: \"budget\" is a plain number with no currency symbol or commas; " +
+				"\"responsibility\" is a short role or department (e.g. \"Finance Committee\"), never a " +
+				"person's name; \"target_period\" must be exactly one of \"monthly\", \"quarterly\", or " +
+				"\"annual\" (lowercase)."
 
 	default:
 		sections, ok := genericSectionKeys[activityType]

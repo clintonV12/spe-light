@@ -96,7 +96,7 @@ import type {
   AuthTokens, LoginPayload,
   Plan, PlanProgress, PlanType,
   Activity, ActivityLink,
-  StrategicPillar, StrategicObjective, KPI, KPIPeriod,
+  StrategicPillar, StrategicObjective, KPI,
   AiDraftRequest, AiDraftResponse, AiSummaryRequest, AiSummaryResponse,
   AiSuggestLinksRequest, AiSuggestLinksResponse,
   Invitation, Organisation, OrgProfileUpdate,
@@ -264,8 +264,10 @@ export const activitiesApi = {
    * POST /api/v1/plans/{planID}/activities — requires planner or org_admin.
    * Exactly one of phase / objective_id must be sent, matching the target
    * plan's plan_type: phase for 'international', objective_id for 'local'.
-   * budget/responsibility/target_period/kpis are only meaningful (and only
-   * accepted by the backend) for local-plan activities.
+   * kpis is only meaningful (and only accepted by the backend) for
+   * local-plan activities — budget/responsibility/target_period live on
+   * each KPI now (see types/index.ts's KPI), not as separate top-level
+   * fields here.
    */
   create: (planId: string, payload: {
     phase?:          string
@@ -276,9 +278,6 @@ export const activitiesApi = {
     content?:        Record<string, unknown>
     assigned_to?:    string[]
     due_date?:       string
-    budget?:         number
-    responsibility?: string
-    target_period?:  KPIPeriod
     kpis?:           KPI[]
   }) => apiClient.post<Activity>(`/plans/${planId}/activities`, payload).then((r) => r.data),
 
@@ -287,8 +286,7 @@ export const activitiesApi = {
    * Contributors may only update activities assigned to them (enforced server-side).
    */
   update: (activityId: string, payload: Partial<Pick<Activity,
-    'title' | 'status' | 'content' | 'assigned_to' | 'due_date' | 'user_order'
-    | 'budget' | 'responsibility' | 'target_period' | 'kpis'
+    'title' | 'status' | 'content' | 'assigned_to' | 'due_date' | 'user_order' | 'kpis'
   >>) => apiClient.put<Activity>(`/activities/${activityId}`, payload).then((r) => r.data),
 
   /**

@@ -668,6 +668,12 @@ func kpiColorHint(pct float64) string {
 // uses, so one overachieving KPI can't skew a period's bar past what a
 // fully-met set of KPIs would show.
 //
+// Period is read from each KPI's own TargetPeriod (migration 013 moved
+// Budget/Responsibility/TargetPeriod off Activity and onto models.KPI —
+// two KPIs on the same activity can report on different cadences, so the
+// grouping has to happen at the KPI level, same as TrackingModule.tsx's
+// periodCompletion).
+//
 // This works identically for both plan types: KPIs live on Activity.KPIs
 // regardless of PlanType (see models.KPI) — local plans just currently have
 // UI (CreateActivityModal / LocalActivityEditor / TrackingModule) to fill
@@ -703,8 +709,8 @@ func (s *Service) buildScorecardSections(ctx context.Context, plan *models.Plan,
 				actual = fmt.Sprintf("%.2f", *k.ActualValue)
 			}
 			period := naText
-			if a.TargetPeriod != nil {
-				period = titleCase(string(*a.TargetPeriod))
+			if k.TargetPeriod != nil {
+				period = titleCase(string(*k.TargetPeriod))
 			}
 			indicator := k.Indicator
 			if indicator == "" {
@@ -712,13 +718,13 @@ func (s *Service) buildScorecardSections(ctx context.Context, plan *models.Plan,
 			}
 			t.Rows = append(t.Rows, []string{a.Title, indicator, target, actual, achievement, period})
 
-			if ok && a.TargetPeriod != nil {
+			if ok && k.TargetPeriod != nil {
 				capped := pct
 				if capped > 100 {
 					capped = 100
 				}
-				periodSums[*a.TargetPeriod] += capped
-				periodCounts[*a.TargetPeriod]++
+				periodSums[*k.TargetPeriod] += capped
+				periodCounts[*k.TargetPeriod]++
 			}
 		}
 	}
@@ -1028,19 +1034,35 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 				if err != nil {
 					return nil, err
 				}
-				t := &contentTable{Headers: []string{"Activity", "Status", "Target Period", "Responsible", "Budget"}}
+				// One row per (activity, KPI) rather than one row per
+				// activity — Target Period/Responsible/Budget moved off
+				// Activity and onto each KPI in migration 013, and a single
+				// activity can carry several KPIs with different values
+				// for all three. An activity with no KPIs still gets one
+				// row (KPI column shows naText) so it isn't silently
+				// dropped from the report.
+				t := &contentTable{Headers: []string{"Activity", "Status", "KPI", "Target Period", "Responsible", "Budget"}}
 				for _, a := range activities {
-					period, responsible, budget := naText, naText, naText
-					if a.TargetPeriod != nil && *a.TargetPeriod != "" {
-						period = string(*a.TargetPeriod)
+					if len(a.KPIs) == 0 {
+						t.Rows = append(t.Rows, []string{a.Title, string(a.Status), naText, naText, naText, naText})
+						continue
 					}
-					if a.Responsibility != nil && *a.Responsibility != "" {
-						responsible = *a.Responsibility
+					for _, k := range a.KPIs {
+						indicator, period, responsible, budget := naText, naText, naText, naText
+						if k.Indicator != "" {
+							indicator = k.Indicator
+						}
+						if k.TargetPeriod != nil && *k.TargetPeriod != "" {
+							period = string(*k.TargetPeriod)
+						}
+						if k.Responsibility != nil && *k.Responsibility != "" {
+							responsible = *k.Responsibility
+						}
+						if k.Budget != nil {
+							budget = fmt.Sprintf("%.2f", *k.Budget)
+						}
+						t.Rows = append(t.Rows, []string{a.Title, string(a.Status), indicator, period, responsible, budget})
 					}
-					if a.Budget != nil {
-						budget = fmt.Sprintf("%.2f", *a.Budget)
-					}
-					t.Rows = append(t.Rows, []string{a.Title, string(a.Status), period, responsible, budget})
 				}
 				heading := obj.Title
 				if title, ok := pillarTitle[obj.PillarID]; ok {

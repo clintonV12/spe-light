@@ -106,26 +106,46 @@ export function parseKpiDraft(draft: Record<string, unknown>): KPI[] {
   const suggested: KPI[] = []
   for (const raw of list) {
     if (typeof raw !== 'object' || raw === null) continue
-    const row = raw as { indicator?: unknown; target?: unknown; target_value?: unknown; direction?: unknown }
+    const row = raw as {
+      indicator?: unknown; target?: unknown; target_value?: unknown; direction?: unknown
+      budget?: unknown; responsibility?: unknown; target_period?: unknown
+    }
     const indicator = typeof row.indicator === 'string' ? row.indicator.trim() : ''
     const target = typeof row.target === 'string' ? row.target.trim() : ''
     if (!indicator && !target) continue
     // Numeric, tolerating a model that ignores the "plain number" instruction
     // and sends "20" or "20%" as a string.
-    let targetValue: number | undefined
-    if (typeof row.target_value === 'number') {
-      targetValue = row.target_value
-    } else if (typeof row.target_value === 'string') {
-      const parsed = Number(row.target_value.replace(/[^0-9.-]/g, ''))
-      targetValue = Number.isNaN(parsed) ? undefined : parsed
-    }
+    const targetValue = parseNumeric(row.target_value)
     const direction = row.direction === 'decrease' ? 'decrease' : row.direction === 'increase' ? 'increase' : undefined
-    suggested.push({ indicator, target, target_value: targetValue, direction })
+    // budget/responsibility/target_period (migration 013 — moved from the
+    // activity onto each KPI) are all optional per ai_service.go's prompt —
+    // the model is told to omit rather than guess, so absence here is the
+    // common case, not a parsing failure.
+    const budget = parseNumeric(row.budget)
+    const responsibility = typeof row.responsibility === 'string' && row.responsibility.trim() ? row.responsibility.trim() : undefined
+    const targetPeriod = row.target_period === 'monthly' || row.target_period === 'quarterly' || row.target_period === 'annual'
+      ? row.target_period
+      : undefined
+    suggested.push({
+      indicator, target, target_value: targetValue, direction,
+      budget, responsibility, target_period: targetPeriod,
+    })
   }
   if (suggested.length === 0) {
     throw new Error('AI response did not contain any usable KPIs')
   }
   return suggested
+}
+
+// Tolerates a model that ignores the "plain number" instruction and sends
+// e.g. "20" or "20%" as a string instead of a bare JSON number.
+function parseNumeric(v: unknown): number | undefined {
+  if (typeof v === 'number') return v
+  if (typeof v === 'string') {
+    const parsed = Number(v.replace(/[^0-9.-]/g, ''))
+    return Number.isNaN(parsed) ? undefined : parsed
+  }
+  return undefined
 }
 
 export const AiAssistTrigger: React.FC<{ onClick: () => void; label?: string }> = ({ onClick, label = 'Ask Lwazi' }) => {
