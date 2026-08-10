@@ -16,6 +16,10 @@ const ProgressPage       = lazy(() => import('./pages/ProgressPage'))
 const ReportsPage        = lazy(() => import('./pages/ReportsPage'))
 const AdminPage          = lazy(() => import('./pages/AdminPage'))
 const PlatformAdminPage  = lazy(() => import('./pages/PlatformAdminPage'))
+// In-app documentation (API reference, and any future user guides) — see
+// src/docs/ and DOC_REGISTRY in DocsPage.tsx. Public route (see below) —
+// not just "no role gate," genuinely reachable without signing in at all.
+const DocsPage            = lazy(() => import('./pages/DocsPage'))
 // Self-service account page — same component serves org-tier and
 // platform-tier users alike (GET/PATCH /api/v1/me carries no role gate),
 // so it lives at the top level next to Dashboard rather than under either
@@ -51,6 +55,16 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/invitations/accept" element={<AcceptInvitePage />} />
+        {/* Docs are public on purpose — someone evaluating the platform, or
+            an admin troubleshooting from outside a logged-in session,
+            shouldn't have to sign in just to read the API reference. Lives
+            outside ProtectedRoute/AppShell entirely (so it renders with no
+            sidebar for a logged-out visitor); DocsPage renders its own
+            lightweight header instead, with a "Back to dashboard" link when
+            an authenticated user's session happens to still be active in
+            this browser (see useAuthStore usage in DocsPage.tsx) or a
+            "Sign in" link when it isn't. */}
+        <Route path="/docs" element={<Suspense fallback={<PageLoader />}><DocsPage /></Suspense>} />
 
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShell />}>

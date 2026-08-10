@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Eye, EyeOff, Check, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react'
+import { Eye, EyeOff, Check, CheckCircle2, AlertCircle, ArrowRight, BookOpen } from 'lucide-react'
 import { invitationsApi } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
 import AuthBrandPanel from '../components/auth/AuthBrandPanel'
@@ -112,9 +112,20 @@ export default function AcceptInvitePage() {
         <div className="w-full max-w-sm">
           <AuthMobileHeader />
 
-          {/* Desktop language switcher (mobile one lives in the header above) */}
-          <div className="hidden lg:flex justify-end mb-4">
-            <LanguageSwitcher />
+          {/* Docs link — always visible (mobile included), on both the
+              form and success steps; see LoginPage.tsx for why this row
+              isn't simply "hidden lg:flex" like the old
+              LanguageSwitcher-only version was. */}
+          <div className="flex items-center justify-between mb-4">
+            <Link
+              to="/docs"
+              className="flex items-center gap-1.5 text-xs font-medium text-ink-500 hover:text-ink-700 transition-colors"
+            >
+              <BookOpen className="size-3.5" /> {t('auth.docsLink', 'Docs')}
+            </Link>
+            <div className="hidden lg:block">
+              <LanguageSwitcher />
+            </div>
           </div>
 
           {step === 'success' ? (

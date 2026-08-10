@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import {
   LayoutDashboard, FileText, BarChart2, FileOutput,
   Settings, ChevronLeft, ChevronRight, WifiOff, RefreshCw,
-  Menu, Search, Keyboard, ShieldCheck, LogOut, UserCircle,
+  Menu, Search, Keyboard, ShieldCheck, LogOut, UserCircle, BookOpen,
 } from 'lucide-react'
 import { useUIStore } from '../../store/ui'
 import { useOfflineStore } from '../../store/offline'
@@ -96,7 +96,9 @@ export const AppShell: React.FC = () => {
   // ── Role-based navigation ────────────────────────────────────────────────
   // Platform-tier users (super_admin, platform_support) have no org and no
   // access to Plans/Progress/Reports/org-Admin per the SRS permission
-  // matrix — they get a single link to their own console instead.
+  // matrix — they get a single link to their own console instead. Docs is
+  // the one item both lists share, since it's permission-agnostic reading
+  // material rather than org-scoped work.
   const isPlatformTier = role === 'super_admin' || role === 'platform_support'
 
   const orgNavItems = [
@@ -107,9 +109,14 @@ export const AppShell: React.FC = () => {
     ...(role && ROLE_HIERARCHY[role] >= ROLE_HIERARCHY.org_admin
       ? [{ to: '/admin', icon: Settings, label: t('nav.admin') }]
       : []),
+    // Docs are useful to every org-tier role regardless of what else they
+    // can see above — deliberately placed last so it doesn't compete with
+    // the actual work items for top-of-list attention.
+    { to: '/docs',      icon: BookOpen,         label: t('nav.docs', 'Docs') },
   ]
   const platformNavItems = [
     { to: '/platform-admin', icon: ShieldCheck, label: t('nav.platformConsole') },
+    { to: '/docs',            icon: BookOpen,    label: t('nav.docs', 'Docs') },
   ]
   const navItems = isPlatformTier ? platformNavItems : orgNavItems
 

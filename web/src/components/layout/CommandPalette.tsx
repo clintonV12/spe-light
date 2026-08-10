@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, FileText, LayoutDashboard, BarChart2, FileOutput, Settings,
-  CornerDownLeft, ArrowUp, ArrowDown, X,
+  CornerDownLeft, ArrowUp, ArrowDown, X, BookOpen,
 } from 'lucide-react'
 import { useGlobalSearch } from '../../hooks/useGlobalSearch'
 import type { SearchResult } from '../../hooks/useGlobalSearch'
@@ -17,6 +17,11 @@ const PAGE_ICON: Record<string, React.ReactNode> = {
   '/progress':  <BarChart2 className="size-4" />,
   '/reports':   <FileOutput className="size-4" />,
   '/admin':     <Settings className="size-4" />,
+  // Icon mapping only — /docs itself isn't in useGlobalSearch's static page
+  // list yet (that hook wasn't available when this was wired up). Add
+  // { path: '/docs', title: 'Docs', ... } to whatever builds that list and
+  // it'll pick up this icon automatically; until then this entry is inert.
+  '/docs':      <BookOpen className="size-4" />,
 }
 
 const STATUS_BADGE: Record<string, string> = {

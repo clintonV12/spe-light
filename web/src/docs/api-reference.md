@@ -1,4 +1,4 @@
-# StratPlan (SPE-Lite) — Comprehensive API Reference
+# StratPlan — Comprehensive API Reference
 
 ## Table of Contents
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react'
+import { Eye, EyeOff, ArrowRight, AlertCircle, BookOpen } from 'lucide-react'
 import { authApi } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
 import AuthBrandPanel from '../components/auth/AuthBrandPanel'
@@ -72,9 +72,21 @@ export default function LoginPage() {
         <div className="w-full max-w-sm">
           <AuthMobileHeader />
 
-          {/* Desktop language switcher (mobile one lives in the header above) */}
-          <div className="hidden lg:flex justify-end mb-4">
-            <LanguageSwitcher />
+          {/* Docs link — always visible (mobile included), unlike the
+              LanguageSwitcher row below which is desktop-only because its
+              mobile equivalent already lives inside AuthMobileHeader. This
+              is the only way a logged-out visitor can reach /docs at all —
+              it's a public route but nothing links to it otherwise. */}
+          <div className="flex items-center justify-between mb-4">
+            <Link
+              to="/docs"
+              className="flex items-center gap-1.5 text-xs font-medium text-ink-500 hover:text-ink-700 transition-colors"
+            >
+              <BookOpen className="size-3.5" /> {t('auth.docsLink', 'Docs')}
+            </Link>
+            <div className="hidden lg:block">
+              <LanguageSwitcher />
+            </div>
           </div>
 
           <div className="mb-8">
