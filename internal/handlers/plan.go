@@ -147,7 +147,12 @@ func (h *Plan) DuplicatePlan(w http.ResponseWriter, r *http.Request) {
 
 // ── Activity handlers ─────────────────────────────────────────────────────
 
-// GET /api/v1/plans/{planID}/activities?phase=P1&status=in_progress
+// GET /api/v1/plans/{planID}/activities?objective_id=...&category=advanced_research&status=in_progress
+//
+// Pass objective_id to scope to one objective's activities. Pass
+// category=advanced_research (the only accepted value) to fetch the plan's
+// Advanced Research activities instead — those have no objective_id.
+// Passing neither returns every activity in the plan.
 func (h *Plan) ListActivities(w http.ResponseWriter, r *http.Request) {
 	claims := mustOrgClaims(w, r)
 	if claims == nil {
@@ -158,19 +163,6 @@ func (h *Plan) ListActivities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var phase *models.Phase
-	if p := r.URL.Query().Get("phase"); p != "" {
-		ph := models.Phase(p)
-		if ph != models.PhaseP1 && ph != models.PhaseP2 && ph != models.PhaseP3 {
-			response.ErrorJSON(w, "phase must be P1, P2, or P3", http.StatusBadRequest)
-			return
-		}
-		phase = &ph
-	}
-
-	// Optional objective filter — for local plans, the equivalent of the
-	// phase filter above (an international activity has a phase; a local
-	// activity has an objective_id instead).
 	var objectiveID *uuid.UUID
 	if o := r.URL.Query().Get("objective_id"); o != "" {
 		id, err := uuid.Parse(o)
@@ -181,7 +173,16 @@ func (h *Plan) ListActivities(w http.ResponseWriter, r *http.Request) {
 		objectiveID = &id
 	}
 
-	// Optional status filter — new in this revision, passed through to the service.
+	var category *models.ActivityCategory
+	if c := r.URL.Query().Get("category"); c != "" {
+		ac := models.ActivityCategory(c)
+		if ac != models.ActivityCategoryAdvancedResearch {
+			response.ErrorJSON(w, "category must be 'advanced_research'", http.StatusBadRequest)
+			return
+		}
+		category = &ac
+	}
+
 	var status *models.ActivityStatus
 	if s := r.URL.Query().Get("status"); s != "" {
 		as := models.ActivityStatus(s)
@@ -195,7 +196,7 @@ func (h *Plan) ListActivities(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	activities, err := h.svc.ListActivities(r.Context(), planID, *claims.OrgID, phase, objectiveID, status)
+	activities, err := h.svc.ListActivities(r.Context(), planID, *claims.OrgID, objectiveID, category, status)
 	if err != nil {
 		response.ErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return

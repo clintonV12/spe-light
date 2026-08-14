@@ -4,11 +4,10 @@ import { Button, Input } from '../ui'
 import { aiApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
 import { LwaziFace } from './LwaziAvatar'
-import type { Phase, ActivityType } from '../../types'
+import type { ActivityType } from '../../types'
 
 interface AiDraftPanelProps {
   planId: string
-  phase: Phase
   activityType: ActivityType
   onAccept: (draft: Record<string, unknown>) => void
   isOffline?: boolean
@@ -16,7 +15,6 @@ interface AiDraftPanelProps {
 
 export const AiDraftPanel: React.FC<AiDraftPanelProps> = ({
   planId,
-  phase,
   activityType,
   onAccept,
   isOffline,
@@ -38,7 +36,6 @@ export const AiDraftPanel: React.FC<AiDraftPanelProps> = ({
         plan_id: planId,
         activity_type: activityType,
         keywords: kw,
-        phase,
       })
       setDraft(result.draft)
       setModel(result.model)

@@ -114,24 +114,33 @@ type DateRange struct {
 
 // SectionConfig mirrors the frontend's ReportSectionConfig exactly — field
 // names must match its JSON keys.
+//
+// Since migration 014_collapse_plan_types, every plan uses the pillar/
+// objective structure, so there's no more per-phase breakdown to configure
+// (ObjectiveActivities replaced the old PhaseActivities+Phases pair — it
+// takes no argument because it always covers every pillar/objective in the
+// plan, the way the local-plan branch already did before the collapse).
+// AdvancedResearch is new: a plan's standalone Advanced Research activities
+// (see models.ActivityCategory) get their own optional section since they
+// don't belong to any pillar/objective.
 type SectionConfig struct {
-	ExecutiveSummary    bool           `json:"executive_summary"`
-	VisionMission       bool           `json:"vision_mission"`
-	SituationalAnalysis bool           `json:"situational_analysis"`
-	PhaseActivities     bool           `json:"phase_activities"`
-	Phases              []models.Phase `json:"phases"`
-	Scorecard           bool           `json:"scorecard"`
-	OrgStructure        bool           `json:"org_structure"`
-	ProgressStatus      bool           `json:"progress_status"`
-	MonitoringEval      bool           `json:"monitoring_evaluation"`
-	Milestones          bool           `json:"milestones"`
-	DependencyLinks     bool           `json:"dependency_links"`
-	AISummary           bool           `json:"ai_summary"`
+	ExecutiveSummary    bool `json:"executive_summary"`
+	VisionMission       bool `json:"vision_mission"`
+	SituationalAnalysis bool `json:"situational_analysis"`
+	ObjectiveActivities bool `json:"objective_activities"`
+	AdvancedResearch    bool `json:"advanced_research"`
+	Scorecard           bool `json:"scorecard"`
+	OrgStructure        bool `json:"org_structure"`
+	ProgressStatus      bool `json:"progress_status"`
+	MonitoringEval      bool `json:"monitoring_evaluation"`
+	Milestones          bool `json:"milestones"`
+	DependencyLinks     bool `json:"dependency_links"`
+	AISummary           bool `json:"ai_summary"`
 }
 
 func (s SectionConfig) hasContent() bool {
 	return s.ExecutiveSummary || s.VisionMission || s.SituationalAnalysis ||
-		(s.PhaseActivities && len(s.Phases) > 0) ||
+		s.ObjectiveActivities || s.AdvancedResearch ||
 		s.Scorecard || s.OrgStructure ||
 		s.ProgressStatus || s.MonitoringEval ||
 		s.Milestones || s.DependencyLinks || s.AISummary
@@ -141,12 +150,11 @@ func (s SectionConfig) hasContent() bool {
 // SectionConfig, so the content-building code only has to know about
 // sections, not report types.
 func defaultSections(t models.ReportType) SectionConfig {
-	allPhases := []models.Phase{models.PhaseP1, models.PhaseP2, models.PhaseP3}
 	switch t {
 	case models.ReportFullPlan:
 		return SectionConfig{
 			ExecutiveSummary: true, VisionMission: true, SituationalAnalysis: true,
-			PhaseActivities: true, Phases: allPhases,
+			ObjectiveActivities: true, AdvancedResearch: true,
 			Scorecard: true, OrgStructure: true,
 			ProgressStatus: true, MonitoringEval: true,
 			Milestones: true, DependencyLinks: true, AISummary: true,
@@ -154,11 +162,15 @@ func defaultSections(t models.ReportType) SectionConfig {
 	case models.ReportExecutiveSummary:
 		return SectionConfig{ExecutiveSummary: true, VisionMission: true, Scorecard: true, ProgressStatus: true}
 	case models.ReportPerPhase:
-		return SectionConfig{PhaseActivities: true, Phases: allPhases}
+		// Report type name kept as-is (see models.ReportType / the reports
+		// table's CHECK constraint, both untouched by 014) even though
+		// "phase" no longer means anything — this now just means "activity
+		// breakdown", same as ReportActivityDetail minus milestones.
+		return SectionConfig{ObjectiveActivities: true, AdvancedResearch: true}
 	case models.ReportProgressStatus:
 		return SectionConfig{ProgressStatus: true, Scorecard: true, Milestones: true}
 	case models.ReportActivityDetail:
-		return SectionConfig{PhaseActivities: true, Phases: allPhases, Milestones: true}
+		return SectionConfig{ObjectiveActivities: true, AdvancedResearch: true, Milestones: true}
 	default:
 		return SectionConfig{}
 	}
@@ -410,7 +422,6 @@ func (s *Service) buildMeta(ctx context.Context, plan *models.Plan, orgID, userI
 		ReportTypeLabel: reportTypeLabel(string(reportType)),
 		PlanTitle:       plan.Title,
 		PlanStatus:      string(plan.Status),
-		PlanFramework:   planFrameworkLabel(plan.PlanType),
 		OrgName:         "Your Organisation",
 		GeneratedBy:     "System",
 		GeneratedAt:     time.Now(),
@@ -449,16 +460,6 @@ func (s *Service) buildMeta(ctx context.Context, plan *models.Plan, orgID, userI
 		}
 	}
 	return meta
-}
-
-// planFrameworkLabel gives a human-readable name for the plan's activity
-// hierarchy, shown on the cover page so it's immediately clear which of the
-// two supported plan types (see models.PlanType) a given report is for.
-func planFrameworkLabel(pt models.PlanType) string {
-	if pt == models.PlanTypeLocal {
-		return "Local (Eswatini Standard)"
-	}
-	return "International"
 }
 
 // ── Content assembly ──────────────────────────────────────────────────────
@@ -514,76 +515,38 @@ func titleCase(s string) string {
 }
 
 // buildVisionMissionSection covers the "Shared Destiny" chapter common to
-// enterprise strategic plans — Vision, Mission, and Core Values. Local
-// plans store these directly (Plan.Vision/Plan.Mission plus the
-// core_values table — see models_local_sections.go); international plans
-// have no equivalent fields, so this falls back to a 'vision_mission'
-// activity's content if one exists. Returns nil (section omitted) if
-// neither source has anything — a plan that hasn't filled this in yet
+// enterprise strategic plans — Vision, Mission, and Core Values, stored
+// directly on the plan (Plan.Vision/Plan.Mission plus the core_values table
+// — see models_local_sections.go). Returns nil (section omitted) if none of
+// it has been filled in yet — a plan that hasn't gotten to this chapter
 // shouldn't get an empty heading in its report.
 func (s *Service) buildVisionMissionSection(ctx context.Context, plan *models.Plan, orgID uuid.UUID) *contentSection {
-	if plan.PlanType == models.PlanTypeLocal {
-		var paras []string
-		if plan.Vision != nil && *plan.Vision != "" {
-			paras = append(paras, "Vision: "+*plan.Vision)
-		}
-		if plan.Mission != nil && *plan.Mission != "" {
-			paras = append(paras, "Mission: "+*plan.Mission)
-		}
-		if values, err := s.planSvc.ListCoreValues(ctx, plan.ID, orgID); err == nil && len(values) > 0 {
-			names := make([]string, len(values))
-			for i, v := range values {
-				names[i] = v.Name
-			}
-			paras = append(paras, "Core Values: "+strings.Join(names, ", "))
-		}
-		if len(paras) == 0 {
-			return nil
-		}
-		return &contentSection{Heading: "Vision, Mission & Core Values", Paragraphs: paras}
+	var paras []string
+	if plan.Vision != nil && *plan.Vision != "" {
+		paras = append(paras, "Vision: "+*plan.Vision)
 	}
-
-	activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, nil, nil, nil)
-	if err != nil {
+	if plan.Mission != nil && *plan.Mission != "" {
+		paras = append(paras, "Mission: "+*plan.Mission)
+	}
+	if values, err := s.planSvc.ListCoreValues(ctx, plan.ID, orgID); err == nil && len(values) > 0 {
+		names := make([]string, len(values))
+		for i, v := range values {
+			names[i] = v.Name
+		}
+		paras = append(paras, "Core Values: "+strings.Join(names, ", "))
+	}
+	if len(paras) == 0 {
 		return nil
 	}
-	for _, a := range activities {
-		if a.Type == "vision_mission" {
-			return buildGenericContentSection("Vision, Mission & Core Values", a.Content)
-		}
-	}
-	return nil
+	return &contentSection{Heading: "Vision, Mission & Core Values", Paragraphs: paras}
 }
 
-// buildSituationalAnalysisSections covers Stakeholder/SWOT/PESTEL analysis.
-// Local plans have dedicated tables for each (see models_local_sections.go)
-// and get one properly-columned table per sub-section; international plans
-// fall back to whatever 'swot'/'pestle'/'stakeholder_map' activities exist,
-// rendered generically since this package doesn't own those editors' JSON
-// shapes. Returns an empty slice (not nil-vs-empty sensitive — callers just
-// append) if nothing is available for either path.
+// buildSituationalAnalysisSections covers Stakeholder/SWOT/PESTEL analysis,
+// each backed by its own dedicated table (see models_local_sections.go),
+// producing one properly-columned table per sub-section. Returns an empty
+// slice (not nil-vs-empty sensitive — callers just append) if a plan hasn't
+// filled any of this chapter in yet.
 func (s *Service) buildSituationalAnalysisSections(ctx context.Context, plan *models.Plan, orgID uuid.UUID) []contentSection {
-	if plan.PlanType != models.PlanTypeLocal {
-		var out []contentSection
-		activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, nil, nil, nil)
-		if err != nil {
-			return nil
-		}
-		headings := map[string]string{
-			"swot": "SWOT Analysis", "pestle": "PESTEL Analysis", "stakeholder_map": "Stakeholder Analysis",
-		}
-		for _, a := range activities {
-			heading, ok := headings[a.Type]
-			if !ok {
-				continue
-			}
-			if sec := buildGenericContentSection(heading, a.Content); sec != nil {
-				out = append(out, *sec)
-			}
-		}
-		return out
-	}
-
 	var out []contentSection
 
 	if stakeholders, err := s.planSvc.ListStakeholders(ctx, plan.ID, orgID); err == nil && len(stakeholders) > 0 {
@@ -675,11 +638,12 @@ func kpiColorHint(pct float64) string {
 // grouping has to happen at the KPI level, same as TrackingModule.tsx's
 // periodCompletion).
 //
-// This works identically for both plan types: KPIs live on Activity.KPIs
-// regardless of PlanType (see models.KPI) — local plans just currently have
-// UI (CreateActivityModal / LocalActivityEditor / TrackingModule) to fill
-// them in, so in practice this section is richer there today, but nothing
-// about it is local-plan-specific.
+// KPIs live on Activity.KPIs (see models.KPI) for any objective-attached
+// activity — Advanced Research activities don't carry KPIs (see
+// CreateActivity's validation in plan_service.go), so this section is
+// scoped to ordinary pillar/objective activities in practice, though
+// nothing here specifically filters Advanced Research activities out — an
+// activity with no KPIs just never contributes a row.
 func (s *Service) buildScorecardSections(ctx context.Context, plan *models.Plan, orgID uuid.UUID) []contentSection {
 	activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, nil, nil, nil)
 	if err != nil {
@@ -761,17 +725,13 @@ func (s *Service) buildScorecardSections(ctx context.Context, plan *models.Plan,
 	return sections
 }
 
-// buildOrgStructureSection renders a local plan's org chart (see
+// buildOrgStructureSection renders a plan's org chart (see
 // org_structure_roles in models_local_sections.go) as a flat Role/Reports-To
 // table — enough to reconstruct the hierarchy without needing actual box-
 // and-line diagram rendering, which the hand-rolled renderers here aren't
-// set up for. International plans have no organisational-structure concept
-// in this platform, so this returns nil for them rather than an empty
-// section.
+// set up for. Returns nil (not an empty section) if the plan hasn't filled
+// this chapter in yet.
 func (s *Service) buildOrgStructureSection(ctx context.Context, plan *models.Plan, orgID uuid.UUID) *contentSection {
-	if plan.PlanType != models.PlanTypeLocal {
-		return nil
-	}
 	roles, err := s.planSvc.ListOrgStructureRoles(ctx, plan.ID, orgID)
 	if err != nil || len(roles) == 0 {
 		return nil
@@ -793,14 +753,10 @@ func (s *Service) buildOrgStructureSection(ctx context.Context, plan *models.Pla
 	return &contentSection{Heading: "Organisational Structure", Table: t}
 }
 
-// buildMESection renders a local plan's Monitoring & Evaluation chapter
-// (see me_items in models_local_sections.go) grouped by category.
-// International plans use the Progress & Status section (below) as their
-// M&E equivalent instead, so this returns nil for them.
+// buildMESection renders a plan's Monitoring & Evaluation chapter (see
+// me_items in models_local_sections.go) grouped by category. Returns nil
+// (not an empty section) if the plan hasn't filled this chapter in yet.
 func (s *Service) buildMESection(ctx context.Context, plan *models.Plan, orgID uuid.UUID) *contentSection {
-	if plan.PlanType != models.PlanTypeLocal {
-		return nil
-	}
 	items, err := s.planSvc.ListMEItems(ctx, plan.ID, orgID, nil)
 	if err != nil || len(items) == 0 {
 		return nil
@@ -824,10 +780,10 @@ func (s *Service) buildMESection(ctx context.Context, plan *models.Plan, orgID u
 
 // buildGenericContentSection turns an arbitrary activity content blob into
 // a readable section without this package needing to know that activity
-// type's exact shape ahead of time — international activities use per-type
-// editors (VisionMissionEditor, SwotEditor, TableEditor, GenericEditor...)
-// with different JSON shapes, and duplicating that knowledge here would
-// mean updating this file every time a frontend editor's content shape
+// type's exact shape ahead of time — the 7 Advanced Research activity types
+// (see models.AdvancedResearchType) each use their own frontend editor with
+// a different JSON content shape, and duplicating that knowledge here would
+// mean updating this file every time one of those editors' content shape
 // changes. String fields become "Label: value" paragraphs; an array of
 // objects (e.g. TableEditor's {"rows": [...]}) becomes a table, columned
 // off the first row's keys. Returns nil if the content has nothing
@@ -994,118 +950,118 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 	}
 
 	if sec.ProgressStatus {
-		if plan.PlanType == models.PlanTypeLocal {
-			t := &contentTable{Headers: []string{"Strategic Pillar", "Total", "Complete", "In Progress", "Overdue", "% Complete"}}
-			for _, p := range progress.Pillars {
-				t.Rows = append(t.Rows, []string{
-					p.Title, fmt.Sprint(p.Total), fmt.Sprint(p.Complete),
-					fmt.Sprint(p.InProgress), fmt.Sprint(p.Overdue), fmt.Sprintf("%.0f%%", p.Percent),
-				})
-			}
+		t := &contentTable{Headers: []string{"Strategic Pillar", "Total", "Complete", "In Progress", "Overdue", "% Complete"}}
+		for _, p := range progress.Pillars {
 			t.Rows = append(t.Rows, []string{
-				"Overall", fmt.Sprint(progress.Overall.Total), fmt.Sprint(progress.Overall.Complete),
-				fmt.Sprint(progress.Overall.InProgress), fmt.Sprint(progress.Overall.Overdue),
-				fmt.Sprintf("%.0f%%", progress.Overall.Percent),
+				p.Title, fmt.Sprint(p.Total), fmt.Sprint(p.Complete),
+				fmt.Sprint(p.InProgress), fmt.Sprint(p.Overdue), fmt.Sprintf("%.0f%%", p.Percent),
 			})
-			rc.Sections = append(rc.Sections, contentSection{Heading: "Progress & Status", Table: t})
-		} else {
-			t := &contentTable{Headers: []string{"Phase", "Total", "Complete", "In Progress", "Overdue", "% Complete"}}
-			for _, p := range progress.Phases {
-				t.Rows = append(t.Rows, []string{
-					string(p.Phase), fmt.Sprint(p.Total), fmt.Sprint(p.Complete),
-					fmt.Sprint(p.InProgress), fmt.Sprint(p.Overdue), fmt.Sprintf("%.0f%%", p.Percent),
-				})
-			}
-			t.Rows = append(t.Rows, []string{
-				"Overall", fmt.Sprint(progress.Overall.Total), fmt.Sprint(progress.Overall.Complete),
-				fmt.Sprint(progress.Overall.InProgress), fmt.Sprint(progress.Overall.Overdue),
-				fmt.Sprintf("%.0f%%", progress.Overall.Percent),
+		}
+		t.Rows = append(t.Rows, []string{
+			"Overall", fmt.Sprint(progress.Overall.Total), fmt.Sprint(progress.Overall.Complete),
+			fmt.Sprint(progress.Overall.InProgress), fmt.Sprint(progress.Overall.Overdue),
+			fmt.Sprintf("%.0f%%", progress.Overall.Percent),
+		})
+		rc.Sections = append(rc.Sections, contentSection{Heading: "Progress & Status", Table: t})
+
+		// Advanced Research activities aren't under any pillar, so — same
+		// as GetProgress's own AdvancedResearch bucket — they get their own
+		// row here rather than being silently folded into (or omitted from)
+		// the pillar table above.
+		if progress.AdvancedResearch != nil {
+			ar := progress.AdvancedResearch
+			at := &contentTable{Headers: []string{"Total", "Complete", "In Progress", "Overdue", "% Complete"}}
+			at.Rows = append(at.Rows, []string{
+				fmt.Sprint(ar.Total), fmt.Sprint(ar.Complete),
+				fmt.Sprint(ar.InProgress), fmt.Sprint(ar.Overdue), fmt.Sprintf("%.0f%%", ar.Percent),
 			})
-			rc.Sections = append(rc.Sections, contentSection{Heading: "Progress & Status", Table: t})
+			rc.Sections = append(rc.Sections, contentSection{Heading: "Advanced Research Progress", Table: at})
 		}
 	}
 
-	if sec.PhaseActivities {
-		if plan.PlanType == models.PlanTypeLocal {
-			// sec.Phases doesn't apply here — a local plan's activities
-			// belong to a StrategicObjective (via Activity.ObjectiveID),
-			// not a phase. One table per objective instead, headed by its
-			// pillar so the report structure mirrors the Pillar > Objective
-			// > Activity hierarchy the local-plan UI itself uses.
-			pillars, err := s.planSvc.ListPillars(ctx, plan.ID, orgID)
-			if err != nil {
-				return nil, coverStats{}, err
-			}
-			pillarTitle := make(map[uuid.UUID]string, len(pillars))
-			for _, p := range pillars {
-				pillarTitle[p.ID] = p.Title
-			}
+	if sec.ObjectiveActivities {
+		// One table per objective, headed by its pillar so the report
+		// structure mirrors the Pillar > Objective > Activity hierarchy the
+		// plan UI itself uses.
+		pillars, err := s.planSvc.ListPillars(ctx, plan.ID, orgID)
+		if err != nil {
+			return nil, coverStats{}, err
+		}
+		pillarTitle := make(map[uuid.UUID]string, len(pillars))
+		for _, p := range pillars {
+			pillarTitle[p.ID] = p.Title
+		}
 
-			objectives, err := s.planSvc.ListObjectives(ctx, plan.ID, orgID)
+		objectives, err := s.planSvc.ListObjectives(ctx, plan.ID, orgID)
+		if err != nil {
+			return nil, coverStats{}, err
+		}
+		for _, obj := range objectives {
+			objID := obj.ID
+			activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, &objID, nil, nil)
 			if err != nil {
 				return nil, coverStats{}, err
 			}
-			for _, obj := range objectives {
-				objID := obj.ID
-				activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, nil, &objID, nil)
-				if err != nil {
-					return nil, coverStats{}, err
+			// One row per (activity, KPI) rather than one row per
+			// activity — Target Period/Responsible/Budget moved off
+			// Activity and onto each KPI in migration 013, and a single
+			// activity can carry several KPIs with different values
+			// for all three. An activity with no KPIs still gets one
+			// row (KPI column shows naText) so it isn't silently
+			// dropped from the report.
+			t := &contentTable{Headers: []string{"Activity", "Status", "KPI", "Target Period", "Responsible", "Budget"}}
+			for _, a := range activities {
+				if len(a.KPIs) == 0 {
+					t.Rows = append(t.Rows, []string{a.Title, string(a.Status), naText, naText, naText, naText})
+					continue
 				}
-				// One row per (activity, KPI) rather than one row per
-				// activity — Target Period/Responsible/Budget moved off
-				// Activity and onto each KPI in migration 013, and a single
-				// activity can carry several KPIs with different values
-				// for all three. An activity with no KPIs still gets one
-				// row (KPI column shows naText) so it isn't silently
-				// dropped from the report.
-				t := &contentTable{Headers: []string{"Activity", "Status", "KPI", "Target Period", "Responsible", "Budget"}}
-				for _, a := range activities {
-					if len(a.KPIs) == 0 {
-						t.Rows = append(t.Rows, []string{a.Title, string(a.Status), naText, naText, naText, naText})
-						continue
+				for _, k := range a.KPIs {
+					indicator, period, responsible, budget := naText, naText, naText, naText
+					if k.Indicator != "" {
+						indicator = k.Indicator
 					}
-					for _, k := range a.KPIs {
-						indicator, period, responsible, budget := naText, naText, naText, naText
-						if k.Indicator != "" {
-							indicator = k.Indicator
-						}
-						if k.TargetPeriod != nil && *k.TargetPeriod != "" {
-							period = string(*k.TargetPeriod)
-						}
-						if k.Responsibility != nil && *k.Responsibility != "" {
-							responsible = *k.Responsibility
-						}
-						if k.Budget != nil {
-							budget = fmt.Sprintf("%.2f", *k.Budget)
-						}
-						t.Rows = append(t.Rows, []string{a.Title, string(a.Status), indicator, period, responsible, budget})
+					if k.TargetPeriod != nil && *k.TargetPeriod != "" {
+						period = string(*k.TargetPeriod)
 					}
+					if k.Responsibility != nil && *k.Responsibility != "" {
+						responsible = *k.Responsibility
+					}
+					if k.Budget != nil {
+						budget = fmt.Sprintf("%.2f", *k.Budget)
+					}
+					t.Rows = append(t.Rows, []string{a.Title, string(a.Status), indicator, period, responsible, budget})
 				}
-				heading := obj.Title
-				if title, ok := pillarTitle[obj.PillarID]; ok {
-					heading = fmt.Sprintf("%s \u2014 %s", title, obj.Title)
-				}
-				rc.Sections = append(rc.Sections, contentSection{Heading: heading, Table: t})
 			}
-		} else {
-			for _, phase := range sec.Phases {
-				ph := phase
-				activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, &ph, nil, nil)
-				if err != nil {
-					return nil, coverStats{}, err
+			heading := obj.Title
+			if title, ok := pillarTitle[obj.PillarID]; ok {
+				heading = fmt.Sprintf("%s \u2014 %s", title, obj.Title)
+			}
+			rc.Sections = append(rc.Sections, contentSection{Heading: heading, Table: t})
+		}
+	}
+
+	if sec.AdvancedResearch {
+		arCategory := models.ActivityCategoryAdvancedResearch
+		activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, nil, &arCategory, nil)
+		if err != nil {
+			return nil, coverStats{}, err
+		}
+		if len(activities) > 0 {
+			t := &contentTable{Headers: []string{"Type", "Title", "Status"}}
+			for _, a := range activities {
+				t.Rows = append(t.Rows, []string{titleCase(strings.ReplaceAll(a.Type, "_", " ")), a.Title, string(a.Status)})
+			}
+			rc.Sections = append(rc.Sections, contentSection{Heading: "Advanced Research", Table: t})
+
+			// Each activity's own content is a free-form blob whose shape
+			// depends on which of the 7 Advanced Research types it is (see
+			// models.AdvancedResearchType) — buildGenericContentSection
+			// renders whatever's there without this package needing to
+			// know each editor's exact shape.
+			for _, a := range activities {
+				if detail := buildGenericContentSection(a.Title, a.Content); detail != nil {
+					rc.Sections = append(rc.Sections, *detail)
 				}
-				t := &contentTable{Headers: []string{"Title", "Type", "Status", "Due Date"}}
-				for _, a := range activities {
-					due := naText
-					if a.DueDate != nil {
-						due = a.DueDate.Format("2006-01-02")
-					}
-					t.Rows = append(t.Rows, []string{a.Title, a.Type, string(a.Status), due})
-				}
-				rc.Sections = append(rc.Sections, contentSection{
-					Heading: fmt.Sprintf("Phase %s Activities", phase),
-					Table:   t,
-				})
 			}
 		}
 	}

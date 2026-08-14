@@ -1,17 +1,9 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
-import { AlertCircle, Clock } from 'lucide-react'
+import { AlertCircle, Clock, FlaskConical } from 'lucide-react'
 import { Badge } from '../ui'
-import type { Activity, Phase } from '../../types'
-
-// Reuses the existing plan.phases.* labels (Analysis/Strategy/Operations)
-// so P1/P2/P3 naming stays consistent with the rest of the app.
-const PHASE_LABEL_KEY: Record<Phase, string> = {
-  P1: 'plan.phases.P1',
-  P2: 'plan.phases.P2',
-  P3: 'plan.phases.P3',
-}
+import type { Activity } from '../../types'
 
 // activity.status.* keys use 'under_review' rather than 'review' — this
 // maps the Activity['status'] union onto the existing translation keys.
@@ -56,9 +48,9 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity, onClick, c
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          {activity.phase && (
-            <Badge variant={activity.phase.toLowerCase() as 'p1' | 'p2' | 'p3'}>
-              {activity.phase} · {t(PHASE_LABEL_KEY[activity.phase])}
+          {activity.category === 'advanced_research' && (
+            <Badge variant="neutral">
+              <FlaskConical className="size-3" /> {t('activityCard.advancedResearch', { defaultValue: 'Advanced Research' })}
             </Badge>
           )}
           <Badge variant={statusToVariant[activity.status]}>

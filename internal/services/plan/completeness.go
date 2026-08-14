@@ -9,12 +9,18 @@
 //
 // Scoring model (transparent, deterministic, no ML):
 //
-//	Phase coverage (60% of total score):
-//	  Each of the 3 phases contributes 20 points if it has ≥ 1 activity.
+//	Pillar coverage (60% of total score):
+//	  (pillars with ≥ 1 activity / total pillars) × 60, rounded to 1dp.
+//	  Zero pillars → 0 (no division by zero). Replaces the old fixed
+//	  "3 phases × 20 points" scheme (migration 014_collapse_plan_types
+//	  removed the P1/P2/P3 phase concept — pillars are user-defined and
+//	  variable in number, so coverage is now a ratio rather than a fixed
+//	  per-phase point value).
 //
 //	Activity completion (30% of total score):
 //	  (complete activities / total activities) × 30, rounded to 1dp.
-//	  Zero activities → 0 (no division by zero).
+//	  Zero activities → 0 (no division by zero). Counts every activity in
+//	  the plan, pillar-attached and Advanced Research alike.
 //
 //	Link density (10% of total score):
 //	  A plan is "well-linked" if at least (total_activities / 2) link pairs
@@ -37,10 +43,11 @@ import (
 
 // CompletenessDetail breaks down the completeness score into its components.
 type CompletenessDetail struct {
-	PhaseCoverage   float64 `json:"phase_coverage"`   // 0–60: points from having activities in all 3 phases
-	ActivityCompl   float64 `json:"activity_compl"`   // 0–30: points from % of activities marked complete
-	LinkDensity     float64 `json:"link_density"`     // 0–10: points from link-graph density
-	PhasesWithWork  int     `json:"phases_with_work"` // 0–3: how many phases have ≥1 activity
+	PillarCoverage  float64 `json:"pillar_coverage"` // 0–60: points from the fraction of pillars with ≥1 activity
+	ActivityCompl   float64 `json:"activity_compl"`  // 0–30: points from % of activities marked complete
+	LinkDensity     float64 `json:"link_density"`    // 0–10: points from link-graph density
+	TotalPillars    int     `json:"total_pillars"`
+	PillarsWithWork int     `json:"pillars_with_work"` // how many pillars have ≥1 activity
 	TotalActivities int     `json:"total_activities"`
 	CompleteCount   int     `json:"complete_count"`
 	LinkCount       int     `json:"link_count"`
@@ -51,26 +58,37 @@ type CompletenessDetail struct {
 func (s *Service) ComputeCompleteness(ctx context.Context, planID, orgID uuid.UUID) (float64, CompletenessDetail, error) {
 	var detail CompletenessDetail
 
-	// Phase coverage: how many of P1/P2/P3 have at least one non-deleted activity?
+	// Pillar coverage: how many pillars have at least one non-deleted
+	// activity under one of their objectives? LEFT JOIN so pillars with
+	// zero activities are still counted toward TotalPillars.
 	rows, err := s.db.Query(ctx,
-		`SELECT DISTINCT phase FROM activities
-		 WHERE plan_id = $1 AND org_id = $2 AND deleted_at IS NULL`,
+		`SELECT sp.id, COUNT(a.id) AS activity_count
+		 FROM strategic_pillars sp
+		 LEFT JOIN strategic_objectives so ON so.pillar_id = sp.id
+		 LEFT JOIN activities a ON a.objective_id = so.id AND a.deleted_at IS NULL
+		 WHERE sp.plan_id = $1 AND sp.org_id = $2
+		 GROUP BY sp.id`,
 		planID, orgID,
 	)
 	if err != nil {
 		return 0, detail, err
 	}
 	for rows.Next() {
-		var phase string
-		if err := rows.Scan(&phase); err != nil {
+		var pillarID uuid.UUID
+		var activityCount int
+		if err := rows.Scan(&pillarID, &activityCount); err != nil {
 			rows.Close()
 			return 0, detail, err
 		}
-		detail.PhasesWithWork++
+		detail.TotalPillars++
+		if activityCount > 0 {
+			detail.PillarsWithWork++
+		}
 	}
 	rows.Close()
 
-	// Total activities and complete count.
+	// Total activities and complete count (pillar-attached and Advanced
+	// Research alike).
 	err = s.db.QueryRow(ctx,
 		`SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'complete')
 		 FROM activities
@@ -90,8 +108,12 @@ func (s *Service) ComputeCompleteness(ctx context.Context, planID, orgID uuid.UU
 		return 0, detail, err
 	}
 
-	// Phase coverage score (max 60).
-	detail.PhaseCoverage = round1dp(float64(detail.PhasesWithWork) * 20)
+	// Pillar coverage score (max 60).
+	if detail.TotalPillars > 0 {
+		detail.PillarCoverage = round1dp(
+			float64(detail.PillarsWithWork) / float64(detail.TotalPillars) * 60,
+		)
+	}
 
 	// Activity completion score (max 30).
 	if detail.TotalActivities > 0 {
@@ -109,7 +131,7 @@ func (s *Service) ComputeCompleteness(ctx context.Context, planID, orgID uuid.UU
 		detail.LinkDensity = round1dp(math.Min(raw, 10))
 	}
 
-	score := round1dp(detail.PhaseCoverage + detail.ActivityCompl + detail.LinkDensity)
+	score := round1dp(detail.PillarCoverage + detail.ActivityCompl + detail.LinkDensity)
 	return score, detail, nil
 }
 

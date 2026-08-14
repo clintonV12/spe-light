@@ -9,7 +9,7 @@ import { useOfflineStore } from '../store/offline'
 import { usePermission } from '../hooks'
 import { useAutoSave } from '../hooks/useAutoSave'
 import SaveIndicator from '../components/ui/SaveIndicator'
-import AiDraftPanel from '../components/ai/AiDraftPanel'
+import AiDraftPanel from '../components/activities/AiDraftPanel'
 import LinkedActivitiesPanel from '../components/activities/LinkedActivitiesPanel'
 import LocalActivityEditor from '../components/activities/LocalActivityEditor'
 import SwotEditor from '../components/activities/editors/SwotEditor'
@@ -29,19 +29,13 @@ import TheoryOfChangeEditor from '../components/activities/editors/TheoryOfChang
 import RoadmapEditor from '../components/activities/editors/RoadmapEditor'
 import TableEditor from '../components/activities/editors/TableEditor'
 import type { TableColumn, ChartConfig, TableRow } from '../components/activities/editors/TableEditor'
-import type { Activity, ActivityStatus, ActivityType, Phase, ActivityLink, StrategicObjective } from '../types'
+import type { Activity, ActivityStatus, ActivityType, ActivityLink, StrategicObjective } from '../types'
 
 const STATUS_COLORS: Record<ActivityStatus, string> = {
   not_started: 'bg-ink-100 text-ink-600',
   in_progress: 'bg-p2-light text-p2-dark',
   review:      'bg-p1-light text-p1-dark',
   complete:    'bg-green-100 text-green-700',
-}
-
-const PHASE_COLOR: Record<Phase, string> = {
-  P1: 'text-p1-dark bg-p1-light',
-  P2: 'text-p2-dark bg-p2-light',
-  P3: 'text-p3-dark bg-p3-light',
 }
 
 // ─── Table-shaped activity types ───────────────────────────────────────────────
@@ -301,6 +295,16 @@ function ActivityEditor({ activity, onChange, readOnly, objectives }: {
   )
 }
 
+// Where "back"/delete should return to: the Strategic Pillars tab for an
+// ordinary objective-nested activity, the Advanced Research tab for a
+// standalone one, or LocalPlanChapters' default tab if we don't know yet
+// (activity not loaded).
+function backDestination(planId: string, activity: Activity | null): string {
+  if (activity?.objective_id) return `/plans/${planId}?tab=pillars`
+  if (activity?.category === 'advanced_research') return `/plans/${planId}?tab=advanced`
+  return `/plans/${planId}`
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ActivityEditorPage() {
@@ -331,9 +335,8 @@ export default function ActivityEditorPage() {
   const [planActivities, setPlanActivities] = useState<Activity[]>([])
   const [planLinks, setPlanLinks] = useState<ActivityLink[]>([])
   const [linksLoading, setLinksLoading] = useState(true)
-  // Formal Strategic Objectives (local plans only — empty for international
-  // plans, since that model doesn't apply there). See objectiveOptions below
-  // for the international fallback derived from sibling activities instead.
+  // Formal Strategic Objectives for this plan — used as KPI-editor link
+  // targets (objectiveOptions below).
   const [formalObjectives, setFormalObjectives] = useState<StrategicObjective[]>([])
 
   // ── Delete ───────────────────────────────────────────────────────────────
@@ -388,9 +391,7 @@ export default function ActivityEditorPage() {
 
   useEffect(() => { loadLinks() }, [loadLinks])
 
-  // Formal Strategic Objectives for this plan. Harmlessly returns an empty
-  // list for international plans (that model only exists for local plans) —
-  // objectiveOptions below falls back to sibling activities in that case.
+  // Formal Strategic Objectives for this plan.
   useEffect(() => {
     if (!planId) return
     pillarsApi.listObjectives(planId)
@@ -398,19 +399,11 @@ export default function ActivityEditorPage() {
       .catch(() => setFormalObjectives([]))
   }, [planId])
 
-  // The list of objectives KPIs on this plan can link to. Prefers the
-  // formal StrategicObjective model (local plans); when that's empty
-  // (international plans, or a local plan with no objectives defined yet),
-  // falls back to sibling activities of type 'strategic_objectives' in the
-  // same plan — each one stands in as a linkable "objective" by its title.
-  const objectiveOptions: ObjectiveOption[] = useMemo(() => {
-    if (formalObjectives.length > 0) {
-      return formalObjectives.map((o) => ({ id: o.id, label: o.title }))
-    }
-    return planActivities
-      .filter((a) => a.type === 'strategic_objectives' && a.id !== activity?.id)
-      .map((a) => ({ id: a.id, label: a.title }))
-  }, [formalObjectives, planActivities, activity?.id])
+  // The list of objectives KPIs on this plan can link to.
+  const objectiveOptions: ObjectiveOption[] = useMemo(
+    () => formalObjectives.map((o) => ({ id: o.id, label: o.title })),
+    [formalObjectives],
+  )
 
   // ── Auto-save ───────────────────────────────────────────────────────────────
 
@@ -481,9 +474,9 @@ export default function ActivityEditorPage() {
     setDeleting(true)
     try {
       await activitiesApi.delete(activityId)
-      // Same rule as the back button: local-plan activities return to the
-      // Strategic Pillars tab rather than LocalPlanChapters' default tab.
-      navigate(activity?.objective_id ? `/plans/${planId}?tab=pillars` : `/plans/${planId}`)
+      // Same rule as the back button: return to the tab this activity
+      // actually lives on rather than LocalPlanChapters' default tab.
+      navigate(backDestination(planId, activity))
     } catch {
       setDeleting(false)
     }
@@ -524,21 +517,24 @@ export default function ActivityEditorPage() {
 
   if (!activity) return null
 
-  // Mirrors the backend's "exactly one of phase / objective_id" invariant
-  // (chk_activities_exactly_one_hierarchy) — a local-plan activity always
-  // has objective_id set and phase null, never the other way round.
-  const isLocal = !!activity.objective_id
+  // Mirrors the backend's "exactly one of objective_id / category" invariant
+  // — an objective-nested activity always has objective_id set and no
+  // category; a standalone Advanced Research activity has category:
+  // 'advanced_research' and no objective_id.
+  const isObjectiveNested = !!activity.objective_id
+  const isAdvancedResearch = activity.category === 'advanced_research'
 
   const overdue = activity.due_date && status !== 'complete'
     && new Date(activity.due_date) < new Date()
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
-      {/* Back — local-plan activities live under the Strategic Pillars
-          chapter (LocalPlanBoard), so return there directly rather than
+      {/* Back — objective-nested activities live under the Strategic
+          Pillars chapter (LocalPlanBoard) and Advanced Research activities
+          under their own tab, so return there directly rather than
           dropping back to LocalPlanChapters' default 'focus' tab. */}
       <button
-        onClick={() => navigate(isLocal ? `/plans/${planId}?tab=pillars` : `/plans/${planId}`)}
+        onClick={() => navigate(backDestination(planId!, activity))}
         className="flex items-center gap-1.5 text-sm text-ink-400 hover:text-ink-700 transition-colors"
       >
         <ArrowLeft className="size-4" /> {t('activityEditor.backToPlan')}
@@ -548,12 +544,12 @@ export default function ActivityEditorPage() {
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
-            {activity.phase && (
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-bold ${PHASE_COLOR[activity.phase]}`}>
-                {activity.phase}
+            {isAdvancedResearch && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-bold text-accent bg-accent-50">
+                {t('advancedResearch.badge', { defaultValue: 'Advanced Research' })}
               </span>
             )}
-            {!isLocal && (
+            {isAdvancedResearch && (
               <span className="text-xs text-ink-400 capitalize">
                 {activity.type.replace(/_/g, ' ')}
               </span>
@@ -607,7 +603,7 @@ export default function ActivityEditorPage() {
           )}
 
           {/* AI toggle */}
-          {can.runAI && !isLocal && (
+          {can.runAI && isAdvancedResearch && (
             <button
               onClick={() => setShowAi((v) => !v)}
               className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
@@ -640,10 +636,9 @@ export default function ActivityEditorPage() {
       )}
 
       {/* AI panel */}
-      {showAi && planId && !isLocal && (
+      {showAi && planId && isAdvancedResearch && (
         <AiDraftPanel
           planId={planId}
-          phase={activity.phase}
           // activity.type is `string` on the backend model (it's not a DB-level
           // enum) — but in practice it's always one of the fixed ActivityType
           // picker values from CreateActivityModal, which is what AiDraftPanel
@@ -656,7 +651,7 @@ export default function ActivityEditorPage() {
 
       {/* AI draft pending approval — fields below are filled in and editable,
           but nothing is saved until Approve is clicked (or Discard reverts). */}
-      {pendingApproval && !isLocal && (
+      {pendingApproval && isAdvancedResearch && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-accent/10 border border-accent/30 px-4 py-3">
           <div className="flex items-center gap-2 text-sm text-ink-700">
             <Sparkles className="size-4 text-accent shrink-0" />
@@ -685,7 +680,7 @@ export default function ActivityEditorPage() {
       {/* Two-column: editor + linked activities */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6 items-start">
         <div className="bg-white rounded-2xl border border-ink-100 p-6">
-          {isLocal ? (
+          {isObjectiveNested ? (
             <LocalActivityEditor
               activity={activity}
               canEdit={canEdit}

@@ -49,7 +49,7 @@ func (s *Service) CreateStakeholder(ctx context.Context, planID, orgID uuid.UUID
 	if !validStakeholderLevel(req.Influence) || !validStakeholderLevel(req.Interest) {
 		return nil, fmt.Errorf("influence and interest must be 'high' or 'low'")
 	}
-	if err := s.requireLocalPlan(ctx, planID, orgID); err != nil {
+	if err := s.requirePlan(ctx, planID, orgID); err != nil {
 		return nil, err
 	}
 
@@ -194,7 +194,7 @@ func (s *Service) CreateSWOTItem(ctx context.Context, planID, orgID uuid.UUID, r
 	if !validSWOTCategory(req.Category) {
 		return nil, fmt.Errorf("category must be one of: strength, weakness, opportunity, threat")
 	}
-	if err := s.requireLocalPlan(ctx, planID, orgID); err != nil {
+	if err := s.requirePlan(ctx, planID, orgID); err != nil {
 		return nil, err
 	}
 
@@ -311,7 +311,7 @@ func (s *Service) CreatePESTELItem(ctx context.Context, planID, orgID uuid.UUID,
 	if req.Implication == nil && req.Positive == nil && req.Negative == nil {
 		return nil, fmt.Errorf("at least one of implication, positive, or negative is required")
 	}
-	if err := s.requireLocalPlan(ctx, planID, orgID); err != nil {
+	if err := s.requirePlan(ctx, planID, orgID); err != nil {
 		return nil, err
 	}
 

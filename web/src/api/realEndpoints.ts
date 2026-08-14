@@ -94,7 +94,7 @@
 import apiClient from './client'
 import type {
   AuthTokens, LoginPayload,
-  Plan, PlanProgress, PlanType,
+  Plan, PlanProgress,
   Activity, ActivityLink,
   StrategicPillar, StrategicObjective, KPI,
   AiDraftRequest, AiDraftResponse, AiSummaryRequest, AiSummaryResponse,
@@ -194,15 +194,10 @@ export const plansApi = {
   get: (id: string) =>
     apiClient.get<Plan>(`/plans/${id}`).then((r) => r.data),
 
-  /**
-   * POST /api/v1/plans — requires planner or org_admin.
-   * plan_type is optional and defaults server-side to 'international' —
-   * omit it entirely to get the pre-existing (fixed P1/P2/P3) behaviour.
-   */
+  /** POST /api/v1/plans — requires planner or org_admin. No plan-type choice any more. */
   create: (payload: {
     title:        string
     description?: string
-    plan_type?:   PlanType
     start_date?:  string
     end_date?:    string
   }) => apiClient.post<Plan>('/plans', payload).then((r) => r.data),
@@ -242,10 +237,10 @@ export const plansApi = {
 export const activitiesApi = {
   /**
    * GET /api/v1/plans/{planID}/activities
-   * Optional filters: phase=P1|P2|P3 (international plans),
-   * objective_id=<uuid> (local plans), status=not_started|in_progress|…
+   * Optional filters: objective_id=<uuid>, category=advanced_research
+   * (Advanced Research tab), status=not_started|in_progress|…
    */
-  list: (planId: string, params?: { phase?: string; objective_id?: string; status?: string }) =>
+  list: (planId: string, params?: { category?: string; objective_id?: string; status?: string }) =>
     apiClient.get<Activity[]>(`/plans/${planId}/activities`, { params }).then((r) => r.data),
 
   /**
@@ -262,16 +257,20 @@ export const activitiesApi = {
 
   /**
    * POST /api/v1/plans/{planID}/activities — requires planner or org_admin.
-   * Exactly one of phase / objective_id must be sent, matching the target
-   * plan's plan_type: phase for 'international', objective_id for 'local'.
+   * Exactly one of objective_id / category must be sent:
+   *   - objective_id — nests the activity under a Strategic Objective.
+   *   - category: 'advanced_research' — a standalone Advanced Research
+   *     activity attached directly to the plan. When sending this,
+   *     objective_id and kpis must both be omitted, and type must be one
+   *     of ADVANCED_RESEARCH_TYPES (see CreateActivityModal.tsx).
    * kpis is only meaningful (and only accepted by the backend) for
-   * local-plan activities — budget/responsibility/target_period live on
-   * each KPI now (see types/index.ts's KPI), not as separate top-level
+   * objective-nested activities — budget/responsibility/target_period live
+   * on each KPI now (see types/index.ts's KPI), not as separate top-level
    * fields here.
    */
   create: (planId: string, payload: {
-    phase?:          string
     objective_id?:   string
+    category?:       string
     type:            string
     title:           string
     status?:         string

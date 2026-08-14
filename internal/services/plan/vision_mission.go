@@ -34,7 +34,7 @@ func (s *Service) UpdateStrategicFocus(ctx context.Context, planID, orgID uuid.U
 	if req.Vision == nil && req.Mission == nil {
 		return nil, fmt.Errorf("nothing to update")
 	}
-	if err := s.requireLocalPlan(ctx, planID, orgID); err != nil {
+	if err := s.requirePlan(ctx, planID, orgID); err != nil {
 		return nil, err
 	}
 
@@ -69,7 +69,7 @@ func (s *Service) CreateCoreValue(ctx context.Context, planID, orgID uuid.UUID, 
 	if req.Name == "" {
 		return nil, fmt.Errorf("name is required")
 	}
-	if err := s.requireLocalPlan(ctx, planID, orgID); err != nil {
+	if err := s.requirePlan(ctx, planID, orgID); err != nil {
 		return nil, err
 	}
 

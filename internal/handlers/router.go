@@ -206,7 +206,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 			r.Get("/", planH.ListPlans)
 			r.Get("/{planID}", planH.GetPlan)
 			r.Get("/{planID}/progress", planH.GetProgress)
-			r.Get("/{planID}/activities", planH.ListActivities)
+			r.Get("/{planID}/activities", planH.ListActivities) // ?objective_id=&category=advanced_research&status=
 			r.Get("/{planID}/links", planH.ListPlanLinks)
 			r.Get("/{planID}/auto-links", planH.ListAutoLinks)
 
@@ -231,7 +231,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin,
 			)).Delete("/{planID}/viewers/{userID}", planH.RevokePlanViewer)
-			// ── Strategic pillars / objectives (local plans) ────────
+			// ── Strategic pillars / objectives ──────────────────────
 			r.Get("/{planID}/pillars", planH.ListPillars)
 			r.Get("/{planID}/objectives", planH.ListObjectives)
 			r.With(middleware.RequireRole(
@@ -247,7 +247,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 			)).Post("/{planID}/reports", reportsH.Generate)
 			r.Get("/{planID}/reports", reportsH.History)
 
-			// ── Local-plan chapter 2: Strategic Focus
+			// ── Chapter 2: Strategic Focus ───────────────────────────
 			r.Get("/{planID}/core-values", planH.ListCoreValues)
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
@@ -256,7 +256,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/{planID}/core-values", planH.CreateCoreValue)
 
-			// ── Local-plan chapter 3: Situational Analysis ──────────────
+			// ── Chapter 3: Situational Analysis ──────────────────────
 			r.Get("/{planID}/stakeholders", planH.ListStakeholders)
 			r.Get("/{planID}/swot-items", planH.ListSWOTItems)
 			r.Get("/{planID}/pestel-items", planH.ListPESTELItems)
@@ -270,13 +270,13 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/{planID}/pestel-items", planH.CreatePESTELItem)
 
-			// ── Local-plan chapter 6: Organisational Structure ──────────
+			// ── Chapter 6: Organisational Structure ──────────────────
 			r.Get("/{planID}/org-structure-roles", planH.ListOrgStructureRoles)
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
 			)).Post("/{planID}/org-structure-roles", planH.CreateOrgStructureRole)
 
-			// ── Local-plan chapter 7: Monitoring & Evaluation ───────────
+			// ── Chapter 7: Monitoring & Evaluation ───────────────────
 			r.Get("/{planID}/me-items", planH.ListMEItems)
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,
@@ -302,7 +302,7 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 			)).Delete("/links/{linkID}", planH.DeleteActivityLink)
 		})
 
-		// ── Strategic pillars / objectives (local plans) ────────────
+		// ── Strategic pillars / objectives ───────────────────────────
 		r.Route("/api/v1/pillars/{pillarID}", func(r chi.Router) {
 			r.With(middleware.RequireRole(
 				models.RoleOrgAdmin, models.RolePlanner,

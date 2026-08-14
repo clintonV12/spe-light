@@ -34,7 +34,7 @@ func (s *Service) CreateOrgStructureRole(ctx context.Context, planID, orgID uuid
 	if req.Title == "" {
 		return nil, fmt.Errorf("title is required")
 	}
-	if err := s.requireLocalPlan(ctx, planID, orgID); err != nil {
+	if err := s.requirePlan(ctx, planID, orgID); err != nil {
 		return nil, err
 	}
 

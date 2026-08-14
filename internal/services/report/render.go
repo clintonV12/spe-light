@@ -2,18 +2,15 @@
 // PDF/DOCX/XLSX bytes for the SPE-Lite platform (by DGRV Eswatini).
 //
 // Every export carries a consistent letterhead: a cover page with the
-// organisation's name, industry, location, contact details and the
-// plan's framework (International or Local/Eswatini-standard — see
-// report_service.go's buildMeta), the plan it was generated from, who
-// generated it and when, plus a running header/footer, page numbering and
-// a confidentiality notice on every subsequent page. Tables are drawn with
-// real borders, shaded header rows and banded body rows rather than
-// pipe-delimited text. Content itself (report_service.go's buildContent)
-// always opens with a structured "Organisational Information" table before
-// any requested sections, and branches its Progress/Activities sections on
-// the plan's PlanType so both plan types render sensibly — see buildContent
-// for the international (phase-based) vs local (pillar/objective-based)
-// split.
+// organisation's name, industry, location, contact details, the plan it was
+// generated from, who generated it and when, plus a running header/footer,
+// page numbering and a confidentiality notice on every subsequent page.
+// Tables are drawn with real borders, shaded header rows and banded body
+// rows rather than pipe-delimited text. Content itself (report_service.go's
+// buildContent) always opens with a structured "Organisational Information"
+// table before any requested sections, then the plan's Pillar > Objective >
+// Activity breakdown and, if the plan has any, a separate Advanced Research
+// section — see buildContent.
 //
 // As before, everything is built by hand with only the standard library
 // (archive/zip, image/jpeg, bytes, fmt, strings) — no third-party PDF/OOXML
@@ -54,7 +51,6 @@ type reportMeta struct {
 	ReportTypeLabel string // human label for the report type, e.g. "Full Plan Report"
 	PlanTitle       string
 	PlanStatus      string
-	PlanFramework   string // "International" or "Local (Eswatini Standard)" — see report_service.go's buildMeta
 	OrgName         string
 	OrgIndustry     string
 	// OrgLocation and OrgContact are pre-joined display strings (e.g.
@@ -601,7 +597,6 @@ func (d *pdfDoc) buildCover() {
 	labelVal("Industry", d.meta.OrgIndustry)
 	labelVal("Location", d.meta.OrgLocation)
 	labelVal("Contact", d.meta.OrgContact)
-	labelVal("Framework", d.meta.PlanFramework)
 	labelVal("Plan Status", strings.ToUpper(d.meta.PlanStatus))
 	labelVal("Generated On", d.meta.GeneratedAt.Format("02 January 2006, 15:04"))
 
@@ -1366,7 +1361,6 @@ func renderDOCX(meta reportMeta, rc *reportContent, logo *pdfLogo) ([]byte, erro
 	cover.WriteString(docxMetaLine("Industry", meta.OrgIndustry))
 	cover.WriteString(docxMetaLine("Location", meta.OrgLocation))
 	cover.WriteString(docxMetaLine("Contact", meta.OrgContact))
-	cover.WriteString(docxMetaLine("Framework", meta.PlanFramework))
 	cover.WriteString(docxMetaLine("Plan Status", strings.ToUpper(meta.PlanStatus)))
 	cover.WriteString(docxMetaLine("Prepared By", meta.GeneratedBy))
 	cover.WriteString(docxMetaLine("Generated On", meta.GeneratedAt.Format("02 January 2006, 15:04")))
@@ -1514,7 +1508,6 @@ func renderXLSX(meta reportMeta, rc *reportContent) ([]byte, error) {
 	if meta.OrgContact != "" {
 		addRow([]string{"Contact: " + meta.OrgContact}, 0)
 	}
-	addRow([]string{"Framework: " + meta.PlanFramework}, 0)
 	addRow([]string{"Plan: " + meta.PlanTitle + "   |   Status: " + strings.ToUpper(meta.PlanStatus)}, 0)
 	addRow([]string{"Prepared by " + meta.GeneratedBy + " on " + meta.GeneratedAt.Format("02 Jan 2006 15:04")}, 4)
 	addRow([]string{"SPE-Lite by DGRV Eswatini \u2014 Confidential"}, 4)

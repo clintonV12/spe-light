@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import {
   Compass, Users, Layers, Network, Gauge, Plus, Trash2,
-  Target, ShieldCheck, CalendarClock, FlagTriangleRight,
+  Target, ShieldCheck, CalendarClock, FlagTriangleRight, FlaskConical,
 } from 'lucide-react'
 import { Button, Input } from '../ui'
 import {
@@ -15,6 +15,7 @@ import type {
 } from '../../types'
 import LocalPlanBoard from './LocalPlanBoard'
 import TrackingModule from './TrackingModule'
+import AdvancedResearchPanel from './AdvancedResearchPanel'
 import { useAiDraft, AiAssistTrigger, AiAssistPanel } from './AiChapterAssist'
 
 interface LocalPlanChaptersProps {
@@ -33,7 +34,7 @@ interface LocalPlanChaptersProps {
   initialChapter?: ChapterKey
 }
 
-export type ChapterKey = 'focus' | 'analysis' | 'pillars' | 'org' | 'me' | 'tracking'
+export type ChapterKey = 'focus' | 'analysis' | 'pillars' | 'org' | 'me' | 'tracking' | 'advanced'
 
 const CHAPTERS: { key: ChapterKey; label: string; icon: React.ElementType }[] = [
   { key: 'focus',    label: 'Vision, Mission & Values', icon: Compass },
@@ -42,6 +43,9 @@ const CHAPTERS: { key: ChapterKey; label: string; icon: React.ElementType }[] = 
   { key: 'org',      label: 'Organisational Structure', icon: Network },
   { key: 'me',       label: 'Monitoring & Evaluation',  icon: Gauge   },
   { key: 'tracking', label: 'Tracking',                 icon: Target  },
+  // Optional — deliberately last, and visually set apart in the tab bar
+  // below, so it doesn't read as a required step in the chapter sequence.
+  { key: 'advanced', label: 'Advanced Research',         icon: FlaskConical },
 ]
 
 export const LocalPlanChapters: React.FC<LocalPlanChaptersProps> = ({
@@ -62,11 +66,18 @@ export const LocalPlanChapters: React.FC<LocalPlanChaptersProps> = ({
             className={`flex items-center gap-2 whitespace-nowrap px-3 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 transition-colors ${
               active === key
                 ? 'border-accent text-accent'
-                : 'border-transparent text-ink-500 hover:text-ink-700'
+                : key === 'advanced'
+                  ? 'border-transparent text-ink-400 hover:text-ink-600'
+                  : 'border-transparent text-ink-500 hover:text-ink-700'
             }`}
           >
             <Icon className="size-4" />
             {label}
+            {key === 'advanced' && (
+              <span className="text-[10px] font-normal uppercase tracking-wide text-ink-300">
+                Optional
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -85,6 +96,15 @@ export const LocalPlanChapters: React.FC<LocalPlanChaptersProps> = ({
       {active === 'org' && <OrgStructureSection plan={plan} canEdit={canEdit} />}
       {active === 'me'  && <MESection plan={plan} canEdit={canEdit} />}
       {active === 'tracking' && <TrackingModule plan={plan} canEdit={canEdit} />}
+      {active === 'advanced' && (
+        <AdvancedResearchPanel
+          plan={plan}
+          activities={activities}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          onChanged={onChanged}
+        />
+      )}
     </div>
   )
 }

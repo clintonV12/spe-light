@@ -49,26 +49,15 @@ const (
 	PlanArchived  PlanStatus = "archived"
 )
 
-// PlanType selects which activity hierarchy a plan uses. International
-// (the default, and the only type that existed before this) uses the fixed
-// P1/P2/P3 phase model below. Local follows the ESWAMCU Strategic Plan
-// standard: user-defined Strategic Pillars, each containing Strategic
-// Objectives (KPAs), each containing activities with a budget,
-// responsibility, target period, and one or more KPIs.
-type PlanType string
-
-const (
-	PlanTypeInternational PlanType = "international"
-	PlanTypeLocal         PlanType = "local"
-)
-
-type Phase string
-
-const (
-	PhaseP1 Phase = "P1"
-	PhaseP2 Phase = "P2"
-	PhaseP3 Phase = "P3"
-)
+// Plans no longer have a PlanType — every plan follows the ESWAMCU
+// Strategic Plan standard: user-defined Strategic Pillars, each containing
+// Strategic Objectives (KPAs), each containing activities with a budget,
+// responsibility, target period, and one or more KPIs. (Until migration
+// 014_collapse_plan_types, there was also an "international" plan type
+// using a fixed P1/P2/P3 phase model instead of pillars/objectives — that
+// concept has been removed. Anything international plans could express
+// that a local plan couldn't is now covered by ActivityCategory /
+// AdvancedResearchType below instead of a second plan-wide hierarchy.)
 
 type ActivityStatus string
 
@@ -268,16 +257,13 @@ type Plan struct {
 	Title       string     `json:"title"                  db:"title"`
 	Description *string    `json:"description,omitempty"  db:"description"`
 	Status      PlanStatus `json:"status"                 db:"status"`
-	PlanType    PlanType   `json:"plan_type"               db:"plan_type"`
 	OwnerID     uuid.UUID  `json:"owner_id"               db:"owner_id"`
 	StartDate   *time.Time `json:"start_date,omitempty"   db:"start_date"`
 	EndDate     *time.Time `json:"end_date,omitempty"     db:"end_date"`
 
-	// ── Local-plan chapter 2: Strategic Focus (singleton text) ──────────
-	// Only meaningful for plan_type = 'local'; nil/unused on international
-	// plans. Core Values (chapter 2's third element) is a list, so it's a
-	// separate table (CoreValue in models_local_sections.go) rather than a
-	// column here.
+	// ── Chapter 2: Strategic Focus (singleton text) ──────────────────────
+	// Core Values (chapter 2's third element) is a list, so it's a separate
+	// table (CoreValue in models_local_sections.go) rather than a column here.
 	Vision  *string `json:"vision,omitempty"  db:"vision"`
 	Mission *string `json:"mission,omitempty" db:"mission"`
 
@@ -286,12 +272,10 @@ type Plan struct {
 	DeletedAt *time.Time `json:"deleted_at,omitempty"   db:"deleted_at"`
 }
 
-// ── Strategic pillars / objectives (local plan_type only) ───────────────
+// ── Strategic pillars / objectives ───────────────────────────────────────
 
-// StrategicPillar is a top-level, user-defined grouping for a "local"
-// (Eswatini-standard) plan — the equivalent of a Phase in an international
-// plan, except pillars are named per-plan by the planner rather than fixed
-// to P1/P2/P3.
+// StrategicPillar is a top-level, user-defined grouping for a plan,
+// named per-plan by the planner (the ESWAMCU Strategic Plan standard).
 type StrategicPillar struct {
 	ID        uuid.UUID `json:"id"         db:"id"`
 	PlanID    uuid.UUID `json:"plan_id"    db:"plan_id"`
@@ -351,38 +335,47 @@ type KPI struct {
 
 // ── Activity ──────────────────────────────────────────────────────────────
 
-// Activity is a discrete unit of work within a plan. For an international
-// plan it belongs to a fixed Phase (P1/P2/P3). For a local plan it instead
-// belongs to a StrategicObjective (ObjectiveID) and phase is nil — exactly
-// one of Phase / ObjectiveID is ever set, enforced by
+// ActivityCategory distinguishes a normal, objective-attached activity
+// (Category is nil) from a standalone "Advanced Research" activity that
+// attaches directly to the plan instead of an objective (see
+// AdvancedResearchType in models_advanced_research.go).
+type ActivityCategory string
+
+const (
+	ActivityCategoryAdvancedResearch ActivityCategory = "advanced_research"
+)
+
+// Activity is a discrete unit of work within a plan. It belongs either to a
+// StrategicObjective (ObjectiveID set, Category nil — the normal case) or,
+// if Category is ActivityCategoryAdvancedResearch, directly to the plan
+// (ObjectiveID nil). Exactly one of those two states holds, enforced by
 // chk_activities_exactly_one_hierarchy in the DB.
 //
-// KPIs is only ever populated for local-plan activities (it maps directly
-// to the KEY PERFORMANCE INDICATOR (KPI) column — along with the BUDGET,
-// RESPONSIBILITY, and TARGET PERIOD columns nested inside each entry, see
-// the KPI doc comment above — of the ESWAMCU "Implementation Framework"
-// table); international activities leave it nil/empty. Budget/
-// Responsibility/TargetPeriod used to be columns on Activity itself
-// (dropped in migration 013) before moving onto each KPI.
+// KPIs maps directly to the KEY PERFORMANCE INDICATOR (KPI) column — along
+// with the BUDGET, RESPONSIBILITY, and TARGET PERIOD columns nested inside
+// each entry, see the KPI doc comment above — of the ESWAMCU "Implementation
+// Framework" table. It's only meaningful for objective-attached activities;
+// Advanced Research activities leave it nil/empty. Budget/Responsibility/
+// TargetPeriod used to be columns on Activity itself (dropped in migration
+// 013) before moving onto each KPI.
 //
 // Content is a flexible JSON blob; AIDraft holds the AI-generated version
 // before the user accepts or edits it.
 type Activity struct {
-	ID          uuid.UUID      `json:"id"                    db:"id"`
-	PlanID      uuid.UUID      `json:"plan_id"               db:"plan_id"`
-	OrgID       uuid.UUID      `json:"org_id"                db:"org_id"`
-	Phase       *Phase         `json:"phase,omitempty"       db:"phase"`
-	ObjectiveID *uuid.UUID     `json:"objective_id,omitempty" db:"objective_id"`
-	Type        string         `json:"type"                  db:"type"`
-	Title       string         `json:"title"                 db:"title"`
-	UserOrder   int            `json:"user_order"            db:"user_order"`
-	Status      ActivityStatus `json:"status"                db:"status"`
-	Content     map[string]any `json:"content"               db:"content"`
-	AIDraft     map[string]any `json:"ai_draft,omitempty"    db:"ai_draft"`
-	AssignedTo  []uuid.UUID    `json:"assigned_to,omitempty" db:"assigned_to"`
-	DueDate     *time.Time     `json:"due_date,omitempty"    db:"due_date"`
+	ID          uuid.UUID         `json:"id"                    db:"id"`
+	PlanID      uuid.UUID         `json:"plan_id"               db:"plan_id"`
+	OrgID       uuid.UUID         `json:"org_id"                db:"org_id"`
+	ObjectiveID *uuid.UUID        `json:"objective_id,omitempty" db:"objective_id"`
+	Category    *ActivityCategory `json:"category,omitempty"    db:"category"`
+	Type        string            `json:"type"                  db:"type"`
+	Title       string            `json:"title"                 db:"title"`
+	UserOrder   int               `json:"user_order"            db:"user_order"`
+	Status      ActivityStatus    `json:"status"                db:"status"`
+	Content     map[string]any    `json:"content"               db:"content"`
+	AIDraft     map[string]any    `json:"ai_draft,omitempty"    db:"ai_draft"`
+	AssignedTo  []uuid.UUID       `json:"assigned_to,omitempty" db:"assigned_to"`
+	DueDate     *time.Time        `json:"due_date,omitempty"    db:"due_date"`
 
-	// ── Local-plan-only field ────────────────────────────────────────────
 	KPIs []KPI `json:"kpis,omitempty" db:"kpis"`
 
 	CreatedAt time.Time  `json:"created_at"            db:"created_at"`

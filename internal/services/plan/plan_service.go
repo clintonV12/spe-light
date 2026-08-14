@@ -1,8 +1,13 @@
 // Package plansvc implements all plan and activity business logic for Sprint 2.
 //
-// Plans are the top-level container for strategic work in StratPlan. Each plan
-// belongs to a single organisation and is divided into three phases (P1, P2, P3).
-// Activities are the discrete units of work within a plan/phase.
+// Plans are the top-level container for strategic work in StratPlan. Each
+// plan belongs to a single organisation and follows the ESWAMCU Strategic
+// Plan structure: Strategic Pillars, each containing Strategic Objectives
+// (KPAs), each containing activities. A plan may additionally have
+// "Advanced Research" activities that attach directly to the plan instead
+// of an objective (see models.ActivityCategory) — an optional tab for the
+// handful of artifacts (Business Model Canvas, Risk Register, etc.) that
+// don't fit anywhere in the pillar/objective/chapter structure.
 //
 // Access model:
 //   - org_admin and planner can create/edit plans and activities.
@@ -10,9 +15,9 @@
 //   - viewer (org-wide or plan-scoped) has read-only access.
 //   - All operations are scoped to org_id to enforce multi-tenancy.
 //
-// Phase labels are independent of creation order — an activity can be labelled
-// P2 even if it is created before a P1 activity. user_order records insertion
-// sequence and is used as the default display order within a phase.
+// user_order records insertion sequence and is used as the default display
+// order within an objective (or, for Advanced Research activities, within
+// the plan).
 package plansvc
 
 import (
@@ -44,15 +49,11 @@ func New(db *pgxpool.Pool, cfg *config.Config) *Service {
 // ── Plan CRUD ─────────────────────────────────────────────────────────────
 
 // CreatePlanRequest holds the fields required to create a new plan.
-// PlanType is optional and defaults to "international" (the plan structure
-// that existed before local plans were introduced), preserving existing
-// client behaviour for any caller that doesn't send it.
 type CreatePlanRequest struct {
-	Title       string           `json:"title"`
-	Description *string          `json:"description,omitempty"`
-	PlanType    *models.PlanType `json:"plan_type,omitempty"`
-	StartDate   *FlexDate        `json:"start_date,omitempty"`
-	EndDate     *FlexDate        `json:"end_date,omitempty"`
+	Title       string    `json:"title"`
+	Description *string   `json:"description,omitempty"`
+	StartDate   *FlexDate `json:"start_date,omitempty"`
+	EndDate     *FlexDate `json:"end_date,omitempty"`
 }
 
 // CreatePlan creates a new plan in draft status for the given org and owner.
@@ -61,38 +62,29 @@ func (s *Service) CreatePlan(ctx context.Context, orgID, ownerID uuid.UUID, req 
 		return nil, fmt.Errorf("title is required")
 	}
 
-	planType := models.PlanTypeInternational
-	if req.PlanType != nil {
-		if *req.PlanType != models.PlanTypeInternational && *req.PlanType != models.PlanTypeLocal {
-			return nil, fmt.Errorf("plan_type must be 'international' or 'local'")
-		}
-		planType = *req.PlanType
-	}
-
 	plan := &models.Plan{
 		ID:          uuid.New(),
 		OrgID:       orgID,
 		Title:       req.Title,
 		Description: req.Description,
 		Status:      models.PlanDraft,
-		PlanType:    planType,
 		OwnerID:     ownerID,
 		StartDate:   req.StartDate.ToTimePtr(),
 		EndDate:     req.EndDate.ToTimePtr(),
 	}
 
 	err := s.db.QueryRow(ctx,
-		`INSERT INTO plans (id, org_id, title, description, status, plan_type, owner_id, start_date, end_date)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`INSERT INTO plans (id, org_id, title, description, status, owner_id, start_date, end_date)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 RETURNING created_at, updated_at`,
 		plan.ID, plan.OrgID, plan.Title, plan.Description,
-		plan.Status, plan.PlanType, plan.OwnerID, plan.StartDate, plan.EndDate,
+		plan.Status, plan.OwnerID, plan.StartDate, plan.EndDate,
 	).Scan(&plan.CreatedAt, &plan.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create plan: %w", err)
 	}
 
-	slog.Info("plan created", "plan_id", plan.ID, "org_id", orgID, "owner_id", ownerID, "plan_type", plan.PlanType)
+	slog.Info("plan created", "plan_id", plan.ID, "org_id", orgID, "owner_id", ownerID)
 	return plan, nil
 }
 
@@ -101,10 +93,10 @@ func (s *Service) CreatePlan(ctx context.Context, orgID, ownerID uuid.UUID, req 
 func (s *Service) GetPlan(ctx context.Context, planID, orgID uuid.UUID) (*models.Plan, error) {
 	var p models.Plan
 	err := s.db.QueryRow(ctx,
-		`SELECT id, org_id, title, description, status, plan_type, owner_id, start_date, end_date, vision, mission, created_at, updated_at
+		`SELECT id, org_id, title, description, status, owner_id, start_date, end_date, vision, mission, created_at, updated_at
 		 FROM plans WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
 		planID, orgID,
-	).Scan(&p.ID, &p.OrgID, &p.Title, &p.Description, &p.Status, &p.PlanType,
+	).Scan(&p.ID, &p.OrgID, &p.Title, &p.Description, &p.Status,
 		&p.OwnerID, &p.StartDate, &p.EndDate, &p.Vision, &p.Mission, &p.CreatedAt, &p.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("plan not found")
@@ -127,7 +119,7 @@ func (s *Service) ListPlans(ctx context.Context, orgID uuid.UUID, callerID uuid.
 		// The simpler policy for v1: org-wide viewers see all; plan-scoped viewers
 		// (those with any plan_viewers row) see only their granted plans.
 		query = `
-			SELECT p.id, p.org_id, p.title, p.description, p.status, p.plan_type, p.owner_id,
+			SELECT p.id, p.org_id, p.title, p.description, p.status, p.owner_id,
 			       p.start_date, p.end_date, p.created_at, p.updated_at
 			FROM plans p
 			WHERE p.org_id = $1 AND p.deleted_at IS NULL
@@ -142,7 +134,7 @@ func (s *Service) ListPlans(ctx context.Context, orgID uuid.UUID, callerID uuid.
 		args = []any{orgID, callerID}
 	} else {
 		query = `
-			SELECT id, org_id, title, description, status, plan_type, owner_id,
+			SELECT id, org_id, title, description, status, owner_id,
 			       start_date, end_date, created_at, updated_at
 			FROM plans
 			WHERE org_id = $1 AND deleted_at IS NULL
@@ -159,7 +151,7 @@ func (s *Service) ListPlans(ctx context.Context, orgID uuid.UUID, callerID uuid.
 	var plans []models.Plan
 	for rows.Next() {
 		var p models.Plan
-		if err := rows.Scan(&p.ID, &p.OrgID, &p.Title, &p.Description, &p.Status, &p.PlanType,
+		if err := rows.Scan(&p.ID, &p.OrgID, &p.Title, &p.Description, &p.Status,
 			&p.OwnerID, &p.StartDate, &p.EndDate, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -312,113 +304,110 @@ func (s *Service) DuplicatePlan(ctx context.Context, planID, orgID, callerID uui
 		Title:       src.Title + " (copy)",
 		Description: src.Description,
 		Status:      models.PlanDraft,
-		PlanType:    src.PlanType,
 		OwnerID:     callerID,
 		StartDate:   src.StartDate,
 		EndDate:     src.EndDate,
 	}
 	err = tx.QueryRow(ctx,
-		`INSERT INTO plans (id, org_id, title, description, status, plan_type, owner_id, start_date, end_date)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`INSERT INTO plans (id, org_id, title, description, status, owner_id, start_date, end_date)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 RETURNING created_at, updated_at`,
 		newPlan.ID, newPlan.OrgID, newPlan.Title, newPlan.Description,
-		newPlan.Status, newPlan.PlanType, newPlan.OwnerID, newPlan.StartDate, newPlan.EndDate,
+		newPlan.Status, newPlan.OwnerID, newPlan.StartDate, newPlan.EndDate,
 	).Scan(&newPlan.CreatedAt, &newPlan.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create duplicate plan: %w", err)
 	}
 
-	// For local plans, pillars and objectives must be copied first — their
-	// new IDs are what the copied activities' objective_id will point at.
-	// pillarIDMap/objectiveIDMap translate source IDs to the freshly minted
-	// destination IDs.
+	// Pillars and objectives must be copied first — their new IDs are what
+	// the copied activities' objective_id will point at. pillarIDMap/
+	// objectiveIDMap translate source IDs to the freshly minted destination
+	// IDs.
 	pillarIDMap := map[uuid.UUID]uuid.UUID{}
 	objectiveIDMap := map[uuid.UUID]uuid.UUID{}
 
-	if newPlan.PlanType == models.PlanTypeLocal {
-		pRows, err := tx.Query(ctx,
-			`SELECT id, title, user_order FROM strategic_pillars
-			 WHERE plan_id = $1 AND org_id = $2 ORDER BY user_order`,
-			planID, orgID,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("load source pillars: %w", err)
-		}
-		type srcPillar struct {
-			id        uuid.UUID
-			title     string
-			userOrder int
-		}
-		var pillars []srcPillar
-		for pRows.Next() {
-			var p srcPillar
-			if err := pRows.Scan(&p.id, &p.title, &p.userOrder); err != nil {
-				pRows.Close()
-				return nil, err
-			}
-			pillars = append(pillars, p)
-		}
-		pRows.Close()
-		if err := pRows.Err(); err != nil {
+	pRows, err := tx.Query(ctx,
+		`SELECT id, title, user_order FROM strategic_pillars
+		 WHERE plan_id = $1 AND org_id = $2 ORDER BY user_order`,
+		planID, orgID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load source pillars: %w", err)
+	}
+	type srcPillar struct {
+		id        uuid.UUID
+		title     string
+		userOrder int
+	}
+	var pillars []srcPillar
+	for pRows.Next() {
+		var p srcPillar
+		if err := pRows.Scan(&p.id, &p.title, &p.userOrder); err != nil {
+			pRows.Close()
 			return nil, err
 		}
-		for _, p := range pillars {
-			newID := uuid.New()
-			pillarIDMap[p.id] = newID
-			if _, err := tx.Exec(ctx,
-				`INSERT INTO strategic_pillars (id, plan_id, org_id, title, user_order)
-				 VALUES ($1, $2, $3, $4, $5)`,
-				newID, newPlan.ID, orgID, p.title, p.userOrder,
-			); err != nil {
-				return nil, fmt.Errorf("copy pillar: %w", err)
-			}
+		pillars = append(pillars, p)
+	}
+	pRows.Close()
+	if err := pRows.Err(); err != nil {
+		return nil, err
+	}
+	for _, p := range pillars {
+		newID := uuid.New()
+		pillarIDMap[p.id] = newID
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO strategic_pillars (id, plan_id, org_id, title, user_order)
+			 VALUES ($1, $2, $3, $4, $5)`,
+			newID, newPlan.ID, orgID, p.title, p.userOrder,
+		); err != nil {
+			return nil, fmt.Errorf("copy pillar: %w", err)
 		}
+	}
 
-		oRows, err := tx.Query(ctx,
-			`SELECT id, pillar_id, title, user_order FROM strategic_objectives
-			 WHERE plan_id = $1 AND org_id = $2 ORDER BY user_order`,
-			planID, orgID,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("load source objectives: %w", err)
-		}
-		type srcObjective struct {
-			id        uuid.UUID
-			pillarID  uuid.UUID
-			title     string
-			userOrder int
-		}
-		var objectives []srcObjective
-		for oRows.Next() {
-			var o srcObjective
-			if err := oRows.Scan(&o.id, &o.pillarID, &o.title, &o.userOrder); err != nil {
-				oRows.Close()
-				return nil, err
-			}
-			objectives = append(objectives, o)
-		}
-		oRows.Close()
-		if err := oRows.Err(); err != nil {
+	oRows, err := tx.Query(ctx,
+		`SELECT id, pillar_id, title, user_order FROM strategic_objectives
+		 WHERE plan_id = $1 AND org_id = $2 ORDER BY user_order`,
+		planID, orgID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load source objectives: %w", err)
+	}
+	type srcObjective struct {
+		id        uuid.UUID
+		pillarID  uuid.UUID
+		title     string
+		userOrder int
+	}
+	var objectives []srcObjective
+	for oRows.Next() {
+		var o srcObjective
+		if err := oRows.Scan(&o.id, &o.pillarID, &o.title, &o.userOrder); err != nil {
+			oRows.Close()
 			return nil, err
 		}
-		for _, o := range objectives {
-			newID := uuid.New()
-			objectiveIDMap[o.id] = newID
-			if _, err := tx.Exec(ctx,
-				`INSERT INTO strategic_objectives (id, plan_id, pillar_id, org_id, title, user_order)
-				 VALUES ($1, $2, $3, $4, $5, $6)`,
-				newID, newPlan.ID, pillarIDMap[o.pillarID], orgID, o.title, o.userOrder,
-			); err != nil {
-				return nil, fmt.Errorf("copy objective: %w", err)
-			}
+		objectives = append(objectives, o)
+	}
+	oRows.Close()
+	if err := oRows.Err(); err != nil {
+		return nil, err
+	}
+	for _, o := range objectives {
+		newID := uuid.New()
+		objectiveIDMap[o.id] = newID
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO strategic_objectives (id, plan_id, pillar_id, org_id, title, user_order)
+			 VALUES ($1, $2, $3, $4, $5, $6)`,
+			newID, newPlan.ID, pillarIDMap[o.pillarID], orgID, o.title, o.userOrder,
+		); err != nil {
+			return nil, fmt.Errorf("copy objective: %w", err)
 		}
 	}
 
 	rows, err := tx.Query(ctx,
-		`SELECT phase, objective_id, type, title, user_order, status, content,
-		        assigned_to, due_date, budget, responsibility, target_period, kpis
+		`SELECT objective_id, category, type, title, user_order, status, content,
+		        assigned_to, due_date, kpis
 		 FROM activities WHERE plan_id = $1 AND org_id = $2 AND deleted_at IS NULL
-		 ORDER BY phase, objective_id, user_order`,
+		 ORDER BY objective_id, category, user_order`,
 		planID, orgID,
 	)
 	if err != nil {
@@ -426,26 +415,22 @@ func (s *Service) DuplicatePlan(ctx context.Context, planID, orgID, callerID uui
 	}
 
 	type srcActivity struct {
-		phase          *models.Phase
-		objectiveID    *uuid.UUID
-		typ            string
-		title          string
-		userOrder      int
-		status         models.ActivityStatus
-		content        map[string]any
-		assignedTo     []uuid.UUID
-		dueDate        *time.Time
-		budget         *float64
-		responsibility *string
-		targetPeriod   *string
-		kpis           []models.KPI
+		objectiveID *uuid.UUID
+		category    *models.ActivityCategory
+		typ         string
+		title       string
+		userOrder   int
+		status      models.ActivityStatus
+		content     map[string]any
+		assignedTo  []uuid.UUID
+		dueDate     *time.Time
+		kpis        []models.KPI
 	}
 	var toCopy []srcActivity
 	for rows.Next() {
 		var a srcActivity
-		if err := rows.Scan(&a.phase, &a.objectiveID, &a.typ, &a.title, &a.userOrder, &a.status,
-			&a.content, &a.assignedTo, &a.dueDate, &a.budget, &a.responsibility,
-			&a.targetPeriod, &a.kpis); err != nil {
+		if err := rows.Scan(&a.objectiveID, &a.category, &a.typ, &a.title, &a.userOrder, &a.status,
+			&a.content, &a.assignedTo, &a.dueDate, &a.kpis); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -457,6 +442,9 @@ func (s *Service) DuplicatePlan(ctx context.Context, planID, orgID, callerID uui
 	}
 
 	for _, a := range toCopy {
+		// Advanced Research activities (category set, objective_id nil)
+		// carry over as-is. Objective-attached activities need their
+		// objective_id remapped to the copied objective.
 		var newObjectiveID *uuid.UUID
 		if a.objectiveID != nil {
 			mapped := objectiveIDMap[*a.objectiveID]
@@ -464,12 +452,11 @@ func (s *Service) DuplicatePlan(ctx context.Context, planID, orgID, callerID uui
 		}
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO activities
-			 (id, plan_id, org_id, phase, objective_id, type, title, user_order, status, content,
-			  assigned_to, due_date, budget, responsibility, target_period, kpis)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
-			uuid.New(), newPlan.ID, orgID, a.phase, newObjectiveID, a.typ, a.title,
-			a.userOrder, a.status, a.content, a.assignedTo, a.dueDate,
-			a.budget, a.responsibility, a.targetPeriod, a.kpis,
+			 (id, plan_id, org_id, objective_id, category, type, title, user_order, status, content,
+			  assigned_to, due_date, kpis)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+			uuid.New(), newPlan.ID, orgID, newObjectiveID, a.category, a.typ, a.title,
+			a.userOrder, a.status, a.content, a.assignedTo, a.dueDate, a.kpis,
 		); err != nil {
 			return nil, fmt.Errorf("copy activity: %w", err)
 		}
@@ -493,20 +480,24 @@ func (s *Service) DuplicatePlan(ctx context.Context, planID, orgID, callerID uui
 
 // CreateActivityRequest holds the fields for creating a new activity.
 //
-// Exactly one of Phase / ObjectiveID must be supplied, matching whichever
-// hierarchy the target plan's PlanType uses: Phase for an "international"
-// plan, ObjectiveID for a "local" plan. KPIs is only meaningful (and only
-// accepted) for local-plan activities — Budget/Responsibility/TargetPeriod
-// live inside each KPI (see models.KPI) rather than as separate fields
-// here; validateKPIs below is what enforces TargetPeriod's enum for them.
+// Exactly one of ObjectiveID / Category must be supplied:
+//   - ObjectiveID set, Category nil: a normal activity nested under a
+//     Strategic Objective (chapters 4/5).
+//   - Category set to "advanced_research", ObjectiveID nil: a standalone
+//     Advanced Research activity attached directly to the plan. Type must
+//     then be one of models.ValidAdvancedResearchTypes.
+//
+// Budget/Responsibility/TargetPeriod live inside each KPI (see models.KPI)
+// rather than as separate fields here; validateKPIs below is what enforces
+// TargetPeriod's enum for them.
 type CreateActivityRequest struct {
-	Phase       *models.Phase  `json:"phase,omitempty"`
-	ObjectiveID *uuid.UUID     `json:"objective_id,omitempty"`
-	Type        string         `json:"type"`
-	Title       string         `json:"title"`
-	Content     map[string]any `json:"content,omitempty"`
-	AssignedTo  []uuid.UUID    `json:"assigned_to,omitempty"`
-	DueDate     *FlexDate      `json:"due_date,omitempty"`
+	ObjectiveID *uuid.UUID               `json:"objective_id,omitempty"`
+	Category    *models.ActivityCategory `json:"category,omitempty"`
+	Type        string                   `json:"type"`
+	Title       string                   `json:"title"`
+	Content     map[string]any           `json:"content,omitempty"`
+	AssignedTo  []uuid.UUID              `json:"assigned_to,omitempty"`
+	DueDate     *FlexDate                `json:"due_date,omitempty"`
 
 	KPIs []models.KPI `json:"kpis,omitempty"`
 }
@@ -524,21 +515,27 @@ func (s *Service) CreateActivity(ctx context.Context, planID, orgID, creatorID u
 		return nil, err
 	}
 
-	// Verify the plan exists and belongs to this org, and fetch its
-	// plan_type so we know which hierarchy field (Phase vs ObjectiveID)
-	// this activity is required to use.
-	plan, err := s.GetPlan(ctx, planID, orgID)
-	if err != nil {
+	// Verify the plan exists and belongs to this org.
+	if _, err := s.GetPlan(ctx, planID, orgID); err != nil {
 		return nil, err
 	}
 
-	switch plan.PlanType {
-	case models.PlanTypeLocal:
-		if req.ObjectiveID == nil {
-			return nil, fmt.Errorf("objective_id is required for activities in a local plan")
+	if req.Category != nil {
+		if *req.Category != models.ActivityCategoryAdvancedResearch {
+			return nil, fmt.Errorf("category must be 'advanced_research' if set")
 		}
-		if req.Phase != nil {
-			return nil, fmt.Errorf("phase must not be set for activities in a local plan")
+		if req.ObjectiveID != nil {
+			return nil, fmt.Errorf("objective_id must not be set for an advanced research activity")
+		}
+		if !models.AdvancedResearchType(req.Type).Valid() {
+			return nil, fmt.Errorf("type must be one of the advanced research types: business_model_canvas, competitive_analysis, risk_register, okr_balanced_scorecard, operational_roadmap, resource_plan, budget_allocation")
+		}
+		if len(req.KPIs) > 0 {
+			return nil, fmt.Errorf("kpis are not supported on advanced research activities")
+		}
+	} else {
+		if req.ObjectiveID == nil {
+			return nil, fmt.Errorf("objective_id is required (or set category to 'advanced_research')")
 		}
 		// Verify the objective exists, belongs to this org, and belongs to
 		// this plan (a stray objective_id from another plan must not link in).
@@ -551,16 +548,6 @@ func (s *Service) CreateActivity(ctx context.Context, planID, orgID, creatorID u
 		}
 		if !objectiveExists {
 			return nil, fmt.Errorf("strategic objective not found")
-		}
-	default: // international
-		if req.Phase == nil {
-			return nil, fmt.Errorf("phase is required for activities in an international plan")
-		}
-		if *req.Phase != models.PhaseP1 && *req.Phase != models.PhaseP2 && *req.Phase != models.PhaseP3 {
-			return nil, fmt.Errorf("phase must be P1, P2, or P3")
-		}
-		if req.ObjectiveID != nil {
-			return nil, fmt.Errorf("objective_id must not be set for activities in an international plan")
 		}
 	}
 
@@ -588,8 +575,8 @@ func (s *Service) CreateActivity(ctx context.Context, planID, orgID, creatorID u
 		ID:          uuid.New(),
 		PlanID:      planID,
 		OrgID:       orgID,
-		Phase:       req.Phase,
 		ObjectiveID: req.ObjectiveID,
+		Category:    req.Category,
 		Type:        req.Type,
 		Title:       req.Title,
 		UserOrder:   maxOrder + 1,
@@ -600,20 +587,20 @@ func (s *Service) CreateActivity(ctx context.Context, planID, orgID, creatorID u
 		KPIs:        kpis,
 	}
 
-	err = s.db.QueryRow(ctx,
+	err := s.db.QueryRow(ctx,
 		`INSERT INTO activities
-		 (id, plan_id, org_id, phase, objective_id, type, title, user_order, status, content,
+		 (id, plan_id, org_id, objective_id, category, type, title, user_order, status, content,
 		  assigned_to, due_date, kpis)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		 RETURNING created_at, updated_at`,
-		a.ID, a.PlanID, a.OrgID, a.Phase, a.ObjectiveID, a.Type, a.Title,
+		a.ID, a.PlanID, a.OrgID, a.ObjectiveID, a.Category, a.Type, a.Title,
 		a.UserOrder, a.Status, a.Content, a.AssignedTo, a.DueDate, a.KPIs,
 	).Scan(&a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create activity: %w", err)
 	}
 
-	slog.Info("activity created", "activity_id", a.ID, "plan_id", planID, "plan_type", plan.PlanType)
+	slog.Info("activity created", "activity_id", a.ID, "plan_id", planID, "category", a.Category)
 	return a, nil
 }
 
@@ -633,10 +620,16 @@ func validateKPIs(kpis []models.KPI) error {
 	return nil
 }
 
-// ListActivities returns all non-deleted activities for a plan.
-// Optionally filter by phase, objectiveID, and/or status. Results are
-// sorted by phase/objective then user_order.
-func (s *Service) ListActivities(ctx context.Context, planID, orgID uuid.UUID, phase *models.Phase, objectiveID *uuid.UUID, status *models.ActivityStatus) ([]models.Activity, error) {
+// ListActivities returns all non-deleted activities for a plan. Optionally
+// filter by objectiveID, category, and/or status. Results are sorted by
+// objective then user_order, with Advanced Research activities (which have
+// no objective_id) sorted first.
+//
+// To list only Advanced Research activities, pass
+// category = &models.ActivityCategoryAdvancedResearch. To list only
+// objective-attached activities (e.g. within one objective), pass
+// objectiveID and leave category nil.
+func (s *Service) ListActivities(ctx context.Context, planID, orgID uuid.UUID, objectiveID *uuid.UUID, category *models.ActivityCategory, status *models.ActivityStatus) ([]models.Activity, error) {
 	// Verify plan access first.
 	var planExists bool
 	if err := s.db.QueryRow(ctx,
@@ -649,26 +642,26 @@ func (s *Service) ListActivities(ctx context.Context, planID, orgID uuid.UUID, p
 		return nil, fmt.Errorf("plan not found")
 	}
 
-	query := `SELECT id, plan_id, org_id, phase, objective_id, type, title, user_order, status,
+	query := `SELECT id, plan_id, org_id, objective_id, category, type, title, user_order, status,
 	                 content, ai_draft, assigned_to, due_date,
 	                 kpis, created_at, updated_at
 	          FROM activities
 	          WHERE plan_id = $1 AND deleted_at IS NULL`
 	args := []any{planID}
 
-	if phase != nil {
-		args = append(args, *phase)
-		query += fmt.Sprintf(" AND phase = $%d", len(args))
-	}
 	if objectiveID != nil {
 		args = append(args, *objectiveID)
 		query += fmt.Sprintf(" AND objective_id = $%d", len(args))
+	}
+	if category != nil {
+		args = append(args, *category)
+		query += fmt.Sprintf(" AND category = $%d", len(args))
 	}
 	if status != nil {
 		args = append(args, *status)
 		query += fmt.Sprintf(" AND status = $%d", len(args))
 	}
-	query += " ORDER BY phase, objective_id, user_order"
+	query += " ORDER BY objective_id NULLS FIRST, user_order"
 
 	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
@@ -680,7 +673,7 @@ func (s *Service) ListActivities(ctx context.Context, planID, orgID uuid.UUID, p
 	for rows.Next() {
 		var a models.Activity
 		if err := rows.Scan(
-			&a.ID, &a.PlanID, &a.OrgID, &a.Phase, &a.ObjectiveID, &a.Type, &a.Title, &a.UserOrder,
+			&a.ID, &a.PlanID, &a.OrgID, &a.ObjectiveID, &a.Category, &a.Type, &a.Title, &a.UserOrder,
 			&a.Status, &a.Content, &a.AIDraft, &a.AssignedTo, &a.DueDate,
 			&a.KPIs,
 			&a.CreatedAt, &a.UpdatedAt,
@@ -835,12 +828,12 @@ func (s *Service) DeleteActivity(ctx context.Context, activityID, orgID, actorID
 func (s *Service) getActivity(ctx context.Context, activityID, orgID uuid.UUID) (*models.Activity, error) {
 	var a models.Activity
 	err := s.db.QueryRow(ctx,
-		`SELECT id, plan_id, org_id, phase, objective_id, type, title, user_order, status,
+		`SELECT id, plan_id, org_id, objective_id, category, type, title, user_order, status,
 		        content, ai_draft, assigned_to, due_date,
 		        kpis, created_at, updated_at
 		 FROM activities WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
 		activityID, orgID,
-	).Scan(&a.ID, &a.PlanID, &a.OrgID, &a.Phase, &a.ObjectiveID, &a.Type, &a.Title, &a.UserOrder,
+	).Scan(&a.ID, &a.PlanID, &a.OrgID, &a.ObjectiveID, &a.Category, &a.Type, &a.Title, &a.UserOrder,
 		&a.Status, &a.Content, &a.AIDraft, &a.AssignedTo, &a.DueDate,
 		&a.KPIs,
 		&a.CreatedAt, &a.UpdatedAt)
@@ -855,19 +848,17 @@ func (s *Service) getActivity(ctx context.Context, activityID, orgID uuid.UUID) 
 
 // ── Progress ──────────────────────────────────────────────────────────────
 
-// PhaseProgress holds completion metrics for a single phase.
-type PhaseProgress struct {
-	Phase      models.Phase `json:"phase"`
-	Total      int          `json:"total"`
-	Complete   int          `json:"complete"`
-	InProgress int          `json:"in_progress"`
-	Overdue    int          `json:"overdue"`
-	Percent    float64      `json:"percent_complete"`
+// SummaryProgress holds aggregate completion metrics (used for both the
+// plan-wide Overall total and the Advanced Research bucket).
+type SummaryProgress struct {
+	Total      int     `json:"total"`
+	Complete   int     `json:"complete"`
+	InProgress int     `json:"in_progress"`
+	Overdue    int     `json:"overdue"`
+	Percent    float64 `json:"percent_complete"`
 }
 
-// PillarProgress holds completion metrics for a single strategic pillar,
-// the local-plan equivalent of PhaseProgress. Only populated when the
-// plan's PlanType is "local" (Phases is used for "international" instead).
+// PillarProgress holds completion metrics for a single strategic pillar.
 type PillarProgress struct {
 	PillarID   uuid.UUID `json:"pillar_id"`
 	Title      string    `json:"title"`
@@ -879,15 +870,20 @@ type PillarProgress struct {
 }
 
 // PlanProgress is the full progress payload returned by GET /plans/:id/progress.
-// Exactly one of Phases / Pillars is populated, matching the plan's PlanType.
 type PlanProgress struct {
-	PlanID     uuid.UUID         `json:"plan_id"`
-	Status     models.PlanStatus `json:"status"`
-	PlanType   models.PlanType   `json:"plan_type"`
-	Phases     []PhaseProgress   `json:"phases,omitempty"`
-	Pillars    []PillarProgress  `json:"pillars,omitempty"`
-	Overall    PhaseProgress     `json:"overall"`
-	Milestones MilestoneStats    `json:"milestones"`
+	PlanID uuid.UUID         `json:"plan_id"`
+	Status models.PlanStatus `json:"status"`
+	// Pillars breaks down progress for objective-attached activities, by
+	// pillar. Pillars with zero activities still appear, with all-zero counts.
+	Pillars []PillarProgress `json:"pillars"`
+	// AdvancedResearch summarises the plan's Advanced Research activities
+	// (nil if the plan has none), separately from Pillars since those
+	// activities don't belong to any pillar.
+	AdvancedResearch *SummaryProgress `json:"advanced_research,omitempty"`
+	// Overall covers every activity in the plan, pillar-attached and
+	// Advanced Research alike.
+	Overall    SummaryProgress `json:"overall"`
+	Milestones MilestoneStats  `json:"milestones"`
 }
 
 // MilestoneStats gives a quick view of milestone health.
@@ -898,10 +894,10 @@ type MilestoneStats struct {
 	Pending int `json:"pending"`
 }
 
-// GetProgress returns progress metrics for a plan. The breakdown returned
-// depends on the plan's PlanType: "international" plans get per-phase
-// (P1/P2/P3) breakdown in Phases; "local" plans get per-pillar breakdown in
-// Pillars instead. Overall and Milestones are populated for both.
+// GetProgress returns progress metrics for a plan: a per-pillar breakdown
+// for objective-attached activities, a separate summary for Advanced
+// Research activities (if any exist), a plan-wide Overall total covering
+// both, and milestone stats.
 func (s *Service) GetProgress(ctx context.Context, planID, orgID uuid.UUID) (*PlanProgress, error) {
 	plan, err := s.GetPlan(ctx, planID, orgID)
 	if err != nil {
@@ -915,141 +911,120 @@ func (s *Service) GetProgress(ctx context.Context, planID, orgID uuid.UUID) (*Pl
 		}
 		return float64(c.complete) / float64(c.total) * 100
 	}
+	tally := func(c *counts, status models.ActivityStatus, cnt, overdue int) {
+		c.total += cnt
+		c.overdue += overdue
+		switch status {
+		case models.ActivityComplete:
+			c.complete += cnt
+		case models.ActivityInProgress:
+			c.inProgress += cnt
+		}
+	}
 
 	overall := &counts{}
-	var phases []PhaseProgress
-	var pillars []PillarProgress
 
-	if plan.PlanType == models.PlanTypeLocal {
-		// Local plans group progress by pillar. An activity's pillar is
-		// found by joining through its objective, so pillars with zero
-		// activities still show up (LEFT JOIN from strategic_pillars).
-		rows, err := s.db.Query(ctx,
-			`SELECT sp.id, sp.title, a.status,
-			        COUNT(a.id) AS cnt,
-			        SUM(CASE WHEN a.due_date < CURRENT_DATE AND a.status != 'complete' THEN 1 ELSE 0 END) AS overdue
-			 FROM strategic_pillars sp
-			 LEFT JOIN strategic_objectives so ON so.pillar_id = sp.id
-			 LEFT JOIN activities a ON a.objective_id = so.id AND a.deleted_at IS NULL
-			 WHERE sp.plan_id = $1
-			 GROUP BY sp.id, sp.title, a.status
-			 ORDER BY sp.user_order`,
-			planID,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("query pillar stats: %w", err)
-		}
-		defer rows.Close()
+	// Pillar breakdown. An activity's pillar is found by joining through
+	// its objective, so pillars with zero activities still show up (LEFT
+	// JOIN from strategic_pillars).
+	rows, err := s.db.Query(ctx,
+		`SELECT sp.id, sp.title, a.status,
+		        COUNT(a.id) AS cnt,
+		        SUM(CASE WHEN a.due_date < CURRENT_DATE AND a.status != 'complete' THEN 1 ELSE 0 END) AS overdue
+		 FROM strategic_pillars sp
+		 LEFT JOIN strategic_objectives so ON so.pillar_id = sp.id
+		 LEFT JOIN activities a ON a.objective_id = so.id AND a.deleted_at IS NULL
+		 WHERE sp.plan_id = $1
+		 GROUP BY sp.id, sp.title, a.status
+		 ORDER BY sp.user_order`,
+		planID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query pillar stats: %w", err)
+	}
+	defer rows.Close()
 
-		pillarMap := map[uuid.UUID]*counts{}
-		pillarTitles := map[uuid.UUID]string{}
-		var pillarOrder []uuid.UUID
+	pillarMap := map[uuid.UUID]*counts{}
+	pillarTitles := map[uuid.UUID]string{}
+	var pillarOrder []uuid.UUID
 
-		for rows.Next() {
-			var pillarID uuid.UUID
-			var title string
-			var status *string
-			var cnt, overdue int
-			if err := rows.Scan(&pillarID, &title, &status, &cnt, &overdue); err != nil {
-				return nil, err
-			}
-			c, ok := pillarMap[pillarID]
-			if !ok {
-				c = &counts{}
-				pillarMap[pillarID] = c
-				pillarTitles[pillarID] = title
-				pillarOrder = append(pillarOrder, pillarID)
-			}
-			if status == nil {
-				continue // pillar has no activities at all — cnt is 0 from the LEFT JOIN
-			}
-			c.total += cnt
-			c.overdue += overdue
-			overall.total += cnt
-			overall.overdue += overdue
-			switch models.ActivityStatus(*status) {
-			case models.ActivityComplete:
-				c.complete += cnt
-				overall.complete += cnt
-			case models.ActivityInProgress:
-				c.inProgress += cnt
-				overall.inProgress += cnt
-			}
-		}
-		if err := rows.Err(); err != nil {
+	for rows.Next() {
+		var pillarID uuid.UUID
+		var title string
+		var status *string
+		var cnt, overdue int
+		if err := rows.Scan(&pillarID, &title, &status, &cnt, &overdue); err != nil {
 			return nil, err
 		}
-
-		pillars = make([]PillarProgress, 0, len(pillarOrder))
-		for _, pillarID := range pillarOrder {
-			c := pillarMap[pillarID]
-			pillars = append(pillars, PillarProgress{
-				PillarID:   pillarID,
-				Title:      pillarTitles[pillarID],
-				Total:      c.total,
-				Complete:   c.complete,
-				InProgress: c.inProgress,
-				Overdue:    c.overdue,
-				Percent:    pct(c),
-			})
+		c, ok := pillarMap[pillarID]
+		if !ok {
+			c = &counts{}
+			pillarMap[pillarID] = c
+			pillarTitles[pillarID] = title
+			pillarOrder = append(pillarOrder, pillarID)
 		}
-	} else {
-		// International plans group progress by phase (P1/P2/P3), fixed set.
-		rows, err := s.db.Query(ctx,
-			`SELECT phase, status, COUNT(*) AS cnt,
+		if status == nil {
+			continue // pillar has no activities at all — cnt is 0 from the LEFT JOIN
+		}
+		tally(c, models.ActivityStatus(*status), cnt, overdue)
+		tally(overall, models.ActivityStatus(*status), cnt, overdue)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	pillars := make([]PillarProgress, 0, len(pillarOrder))
+	for _, pillarID := range pillarOrder {
+		c := pillarMap[pillarID]
+		pillars = append(pillars, PillarProgress{
+			PillarID:   pillarID,
+			Title:      pillarTitles[pillarID],
+			Total:      c.total,
+			Complete:   c.complete,
+			InProgress: c.inProgress,
+			Overdue:    c.overdue,
+			Percent:    pct(c),
+		})
+	}
+
+	// Advanced Research summary — only populated if the plan has at least
+	// one such activity, so plans that never opened that tab don't show a
+	// misleading all-zero bucket.
+	var advResearch *SummaryProgress
+	{
+		arRows, err := s.db.Query(ctx,
+			`SELECT status, COUNT(*) AS cnt,
 			        SUM(CASE WHEN due_date < CURRENT_DATE AND status != 'complete' THEN 1 ELSE 0 END) AS overdue
 			 FROM activities
-			 WHERE plan_id = $1 AND deleted_at IS NULL
-			 GROUP BY phase, status`,
+			 WHERE plan_id = $1 AND deleted_at IS NULL AND category = 'advanced_research'
+			 GROUP BY status`,
 			planID,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("query activity stats: %w", err)
+			return nil, fmt.Errorf("query advanced research stats: %w", err)
 		}
-		defer rows.Close()
+		defer arRows.Close()
 
-		phaseMap := map[models.Phase]*counts{
-			models.PhaseP1: {},
-			models.PhaseP2: {},
-			models.PhaseP3: {},
-		}
-
-		for rows.Next() {
-			var phase models.Phase
+		c := &counts{}
+		var any bool
+		for arRows.Next() {
+			any = true
 			var status string
 			var cnt, overdue int
-			if err := rows.Scan(&phase, &status, &cnt, &overdue); err != nil {
+			if err := arRows.Scan(&status, &cnt, &overdue); err != nil {
 				return nil, err
 			}
-			c := phaseMap[phase]
-			c.total += cnt
-			c.overdue += overdue
-			overall.total += cnt
-			overall.overdue += overdue
-			switch models.ActivityStatus(status) {
-			case models.ActivityComplete:
-				c.complete += cnt
-				overall.complete += cnt
-			case models.ActivityInProgress:
-				c.inProgress += cnt
-				overall.inProgress += cnt
-			}
+			tally(c, models.ActivityStatus(status), cnt, overdue)
+			tally(overall, models.ActivityStatus(status), cnt, overdue)
 		}
-		if err := rows.Err(); err != nil {
+		if err := arRows.Err(); err != nil {
 			return nil, err
 		}
-
-		phases = make([]PhaseProgress, 0, 3)
-		for _, ph := range []models.Phase{models.PhaseP1, models.PhaseP2, models.PhaseP3} {
-			c := phaseMap[ph]
-			phases = append(phases, PhaseProgress{
-				Phase:      ph,
-				Total:      c.total,
-				Complete:   c.complete,
-				InProgress: c.inProgress,
-				Overdue:    c.overdue,
-				Percent:    pct(c),
-			})
+		if any {
+			advResearch = &SummaryProgress{
+				Total: c.total, Complete: c.complete, InProgress: c.inProgress,
+				Overdue: c.overdue, Percent: pct(c),
+			}
 		}
 	}
 
@@ -1066,12 +1041,11 @@ func (s *Service) GetProgress(ctx context.Context, planID, orgID uuid.UUID) (*Pl
 	).Scan(&mStats.Total, &mStats.Reached, &mStats.Missed, &mStats.Pending)
 
 	return &PlanProgress{
-		PlanID:   plan.ID,
-		Status:   plan.Status,
-		PlanType: plan.PlanType,
-		Phases:   phases,
-		Pillars:  pillars,
-		Overall: PhaseProgress{
+		PlanID:           plan.ID,
+		Status:           plan.Status,
+		Pillars:          pillars,
+		AdvancedResearch: advResearch,
+		Overall: SummaryProgress{
 			Total:      overall.total,
 			Complete:   overall.complete,
 			InProgress: overall.inProgress,

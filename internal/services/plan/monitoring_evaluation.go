@@ -44,7 +44,7 @@ func (s *Service) CreateMEItem(ctx context.Context, planID, orgID uuid.UUID, req
 	if !validMECategory(req.Category) {
 		return nil, fmt.Errorf("category must be one of: objective, critical_success_factor, review_note, conclusion_measure")
 	}
-	if err := s.requireLocalPlan(ctx, planID, orgID); err != nil {
+	if err := s.requirePlan(ctx, planID, orgID); err != nil {
 		return nil, err
 	}
 

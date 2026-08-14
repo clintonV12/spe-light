@@ -94,7 +94,7 @@ export const plansApi = {
 // ── Activities ────────────────────────────────────────────────────────────────
 
 export const activitiesApi = {
-  list:              (planId: string, params?: { phase?: string; objective_id?: string; status?: string }) =>
+  list:              (planId: string, params?: { category?: string; objective_id?: string; status?: string }) =>
                        api().then((m) => m.activitiesApi.list(planId, params))                   as Promise<Activity[]>,
   get:               (planId: string, activityId: string) =>
                        api().then((m) => m.activitiesApi.get(planId, activityId))                as Promise<Activity>,

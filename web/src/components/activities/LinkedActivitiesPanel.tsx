@@ -3,18 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   ArrowDownToLine, ArrowUpFromLine, Plus, Sparkles, X, Search,
-  Link2, Trash2, GitBranch,
+  Link2, Trash2, GitBranch, FlaskConical,
 } from 'lucide-react'
 import { activitiesApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
-import type { Activity, ActivityLink, Phase } from '../../types'
-
-const PHASE_DOT: Record<Phase, string> = {
-  P1: 'bg-p1', P2: 'bg-p2', P3: 'bg-p3',
-}
-const PHASE_BADGE: Record<Phase, string> = {
-  P1: 'bg-p1-light text-p1-dark', P2: 'bg-p2-light text-p2-dark', P3: 'bg-p3-light text-p3-dark',
-}
+import type { Activity, ActivityLink } from '../../types'
 
 const LINK_TYPE_META: Record<ActivityLink['link_type'], { labelKey: string; icon: React.ReactNode; color: string }> = {
   manual:       { labelKey: 'linkedActivities.linkType.manual',       icon: <Link2 className="size-3" />,    color: 'text-accent' },
@@ -73,7 +66,7 @@ export default function LinkedActivitiesPanel({
     return allActivities
       .filter((a) => !linkedIds.has(a.id))
       .filter((a) => !q || a.title.toLowerCase().includes(q) || typeLabel(a.type).toLowerCase().includes(q))
-      .sort((a, b) => (a.phase ?? '').localeCompare(b.phase ?? '') || a.user_order - b.user_order)
+      .sort((a, b) => a.user_order - b.user_order)
   }, [allActivities, linkedIds, search])
 
   const handleAddLink = async (otherId: string, direction: 'upstream' | 'downstream') => {
@@ -114,7 +107,9 @@ export default function LinkedActivitiesPanel({
     const meta = LINK_TYPE_META[link.link_type]
     return (
       <div className="group flex items-center gap-2 py-1.5 px-2 -mx-2 rounded-lg hover:bg-ink-50 transition-colors">
-        {act.phase && <span className={`size-1.5 rounded-full shrink-0 ${PHASE_DOT[act.phase]}`} />}
+        {act.category === 'advanced_research' && (
+          <FlaskConical className="size-3 text-ink-300 shrink-0" aria-label={t('linkedActivities.advancedResearch', { defaultValue: 'Advanced Research' })} />
+        )}
         <button
           onClick={() => navigate(`/plans/${act.plan_id}/activities/${act.id}`)}
           className="flex-1 min-w-0 text-left"
@@ -168,9 +163,9 @@ export default function LinkedActivitiesPanel({
               disabled={pendingId === a.id}
               className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ink-50 transition-colors disabled:opacity-50"
             >
-              <span className={`inline-flex items-center justify-center w-5 h-5 rounded-md text-[9px] font-bold shrink-0 ${a.phase ? PHASE_BADGE[a.phase] : 'bg-ink-100 text-ink-500'}`}>
-                {a.phase ?? '—'}
-              </span>
+              {a.category === 'advanced_research' && (
+                <FlaskConical className="size-3.5 text-ink-300 shrink-0" />
+              )}
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-ink-700 truncate">{a.title}</p>
                 <p className="text-[10px] text-ink-400">{typeLabel(a.type)}</p>

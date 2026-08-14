@@ -20,47 +20,45 @@ export type UserRole =
 
 export type PlanStatus = 'draft' | 'active' | 'review' | 'completed' | 'archived'
 
-// Selects which activity hierarchy a plan uses. 'international' (the
-// default) is the original fixed P1/P2/P3 phase model. 'local' follows the
-// ESWAMCU Strategic Plan standard: user-defined Strategic Pillars, each
-// containing Strategic Objectives (KPAs), each containing activities with a
-// budget, responsibility, target period, and one or more KPIs.
-export type PlanType = 'international' | 'local'
+// Plans no longer choose between a fixed P1/P2/P3 model and the ESWAMCU
+// pillar/objective model — every plan is the pillar/objective structure
+// (Strategic Pillars → Strategic Objectives (KPAs) → activities, each with
+// a budget, responsibility, target period, and one or more KPIs). There is
+// no PlanType and no `plan_type` field on Plan any more.
 
+// Retained only because ReportSectionConfig's 'custom' report type still
+// lets a person pick P1/P2/P3 sections (ReportType.per_phase / the
+// `phases`/`phase_activities` fields below) — that's a reporting-only
+// concept now, unrelated to how activities are organised, and hasn't been
+// redesigned yet (see the TODO on ReportSectionConfig below). Don't use
+// Phase for anything activity-related; Activity has no `phase` field.
 export type Phase = 'P1' | 'P2' | 'P3'
 
 export type ActivityStatus = 'not_started' | 'in_progress' | 'review' | 'complete'
 
-// Activity type values offered by the "new activity" picker (CreateActivityModal).
-// Not a backend-enforced enum — internal/models/models.go stores Activity.Type
-// as a plain string — but exported here so the modal (and anything else that
-// needs to enumerate the fixed P1/P2/P3 activity type options) gets proper
-// typing instead of falling back to `string`.
+// Marks a standalone activity that isn't nested under any Strategic
+// Objective — the "Advanced Research" tab. `null`/undefined on every
+// ordinary (objective-nested) activity.
+export type ActivityCategory = 'advanced_research'
+
+// The fixed set of activity types offered by the "Advanced Research" tab
+// (CreateActivityModal, advanced mode). Not a backend-enforced enum —
+// internal/models/models.go stores Activity.Type as a plain string — but
+// exported here so anything enumerating the options gets proper typing
+// instead of falling back to `string`. Deliberately just these 7: the
+// other former "international" activity types either moved to their own
+// dedicated chapter UI (vision_mission, swot, pestle, strategic_objectives)
+// or were dropped as redundant with per-activity KPIs / ordinary objective
+// activities (kpi_framework, action_items, and the remaining former P1–P3
+// types not listed here).
 export type ActivityType =
-  // P1 — Analysis
-  | 'swot'
-  | 'pestle'
   | 'business_model_canvas'
-  | 'stakeholder_map'
   | 'competitive_analysis'
   | 'risk_register'
-  | 'market_analysis'
-  // P2 — Strategy
-  | 'vision_mission'
-  | 'strategic_objectives'
-  | 'kpi_framework'
   | 'okr_balanced_scorecard'
-  | 'theory_of_change'
-  | 'value_proposition'
-  | 'strategic_initiatives'
-  | 'action_items'
-  | 'implementation_timeline'
-  // P3 — Operations
-  | 'financial_projections'
-  | 'budget_allocation'
   | 'operational_roadmap'
   | 'resource_plan'
-  | 'procurement_plan'
+  | 'budget_allocation'
 
 export type ActivityLinkType = 'manual' | 'ai_suggested'
 
@@ -86,14 +84,15 @@ export type ReportFormat = 'pdf' | 'docx' | 'xlsx'
 // true and controls which of P1/P2/P3 are pulled in.
 //
 // vision_mission / situational_analysis / org_structure / monitoring_evaluation
-// draw on local-plan-only data (Vision/Mission/Core Values, Stakeholders/
-// SWOT/PESTEL, org_structure_roles, me_items) when the plan is local, and
-// fall back to a best-effort read of the matching international activity's
-// content (vision_mission / swot / pestle / stakeholder_map) when it isn't
-// — org_structure has no international equivalent at all, so it's simply
-// omitted for those plans. scorecard (KPI target/actual/achievement, plus
-// an achievement-by-period chart) works the same for both plan types,
-// since KPIs live on Activity.KPIs regardless of plan type.
+// draw on their own chapter data (Vision/Mission/Core Values, Stakeholders/
+// SWOT/PESTEL, org_structure_roles, me_items) — every plan has these now.
+// scorecard (KPI target/actual/achievement, plus an achievement-by-period
+// chart) reads KPIs straight off Activity.KPIs.
+//
+// TODO(backend): `phases` / `phase_activities` / ReportType.per_phase still
+// reference the retired P1/P2/P3 phase model, which no longer means
+// anything now that activities are pillar/objective-only. Needs a follow-up
+// design pass with whoever owns report generation before this ships.
 export interface ReportSectionConfig {
   executive_summary:     boolean
   vision_mission:        boolean
@@ -227,7 +226,6 @@ export interface Plan {
   title:       string
   description?: string
   status:      PlanStatus
-  plan_type:   PlanType
   owner_id:    string
   start_date?: string
   end_date?:   string
@@ -236,20 +234,19 @@ export interface Plan {
   deleted_at?: string
   /** Injected by the frontend after a /progress call; not a backend field */
   progress?:   PlanProgress
-  /**Optional , used by local plan type*/
   vision?: string
   mission?: string
 }
 
 // ── Plan progress ─────────────────────────────────────────────────────────────
 //
-// Matches internal/services/plan/plan_service.go's PlanProgress/PhaseProgress
-// exactly (these are response DTOs, not persisted models, so they live in
+// Matches internal/services/plan/plan_service.go's PlanProgress exactly
+// (this is a response DTO, not a persisted model, so it lives in
 // plan_service.go rather than models.go — but the same "field names must
-// match the Go json tags exactly" rule applies). In particular: there is no
-// flat `overall_percent`/`overdue_count` on PlanProgress, and no `percent` on
-// PhaseProgress — the backend nests overall stats under `overall` (same shape
-// as each phase) and calls the percentage field `percent_complete`.
+// match the Go json tags exactly" rule applies). There is no flat
+// `overall_percent`/`overdue_count` on PlanProgress — the backend nests
+// overall stats under `overall` (same shape as each pillar) and calls the
+// percentage field `percent_complete`.
 
 export interface ProgressStats {
   total:            number
@@ -259,12 +256,7 @@ export interface ProgressStats {
   percent_complete: number
 }
 
-export interface PhaseProgress extends ProgressStats {
-  phase: Phase
-}
-
-// Local-plan equivalent of PhaseProgress — one entry per Strategic Pillar
-// instead of per fixed phase.
+// One entry per Strategic Pillar.
 export interface PillarProgress extends ProgressStats {
   pillar_id: string
   title:     string
@@ -277,23 +269,24 @@ export interface MilestoneStats {
   pending: number
 }
 
-// Exactly one of phases / pillars is populated, matching plan_type:
-// 'international' plans populate phases, 'local' plans populate pillars.
+// `pillars` is always present now (every plan has pillars). `advanced_research`
+// is only present once the plan has at least one Advanced Research activity —
+// render it as its own summary card, not folded into the pillar breakdown,
+// since it doesn't belong to any pillar. `overall` covers every activity in
+// the plan (pillar-attached + Advanced Research combined).
 export interface PlanProgress {
-  plan_id:    string
-  status:     PlanStatus
-  plan_type:  PlanType
-  phases?:    PhaseProgress[]
-  pillars?:   PillarProgress[]
-  overall:    ProgressStats
-  milestones: MilestoneStats
+  plan_id:            string
+  status:             PlanStatus
+  pillars:            PillarProgress[]
+  advanced_research?: ProgressStats
+  overall:            ProgressStats
+  milestones:         MilestoneStats
 }
 
-// ── Strategic pillars / objectives (local plan_type only) ────────────────
+// ── Strategic pillars / objectives ──────────────────────────────────────
 
-// Top-level, user-defined grouping for a 'local' plan — the equivalent of a
-// Phase in an international plan, except pillars are named per-plan by the
-// planner rather than fixed to P1/P2/P3.
+// Top-level, user-defined grouping for a plan — pillars are named per-plan
+// by the planner (there is no fixed P1/P2/P3 any more).
 export interface StrategicPillar {
   id:         string
   plan_id:    string
@@ -355,15 +348,19 @@ export interface KPI {
 
 // ── Activity ──────────────────────────────────────────────────────────────────
 
-// Exactly one of phase / objective_id is set: phase for an 'international'
-// plan's activities, objective_id for a 'local' plan's. kpis is only ever
-// populated for local-plan activities.
+// Exactly one of objective_id / category is set: objective_id for an
+// ordinary activity nested under a Strategic Objective, category:
+// 'advanced_research' for a standalone Advanced Research activity attached
+// directly to the plan (no objective, no pillar). category is null/absent
+// on every ordinary activity. kpis only makes sense — and is only accepted
+// by the backend — for objective-nested activities; Advanced Research
+// activities never send kpis.
 export interface Activity {
   id:            string
   plan_id:       string
   org_id:        string
-  phase?:        Phase
   objective_id?: string
+  category?:     ActivityCategory | null
   type:          string
   title:         string
   user_order:    number
@@ -373,7 +370,6 @@ export interface Activity {
   assigned_to?:  string[]
   due_date?:     string
 
-  // ── Local-plan-only field ─────────────────────────────────────────────
   // Budget/responsibility/target period used to live here as one set of
   // values for the whole activity — moved onto each KPI instead (see
   // KPI above), since the ESWAMCU table answers those per-indicator, not

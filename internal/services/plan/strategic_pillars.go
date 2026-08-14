@@ -1,14 +1,13 @@
-// strategic_pillars.go — Strategic Pillar / Strategic Objective CRUD for
-// "local" (Eswatini-standard) plans.
+// strategic_pillars_service.go (originally strategic_pillars.go in
+// internal/services/plan) — Strategic Pillar / Strategic Objective CRUD.
 //
-// A pillar is a top-level, user-defined grouping (the local equivalent of a
-// Phase). An objective (KPA) nests under exactly one pillar. Activities in a
-// local plan attach to an objective via activities.objective_id — see
-// CreateActivity in plan_service.go.
-//
-// Both CRUD surfaces are only meaningful for plans with plan_type = 'local',
-// and every method here verifies that up front so a caller can't create
-// pillars/objectives on an international plan by mistake.
+// A pillar is a top-level, user-defined grouping (the ESWAMCU Strategic
+// Plan standard). An objective (KPA) nests under exactly one pillar.
+// Activities attach to an objective via activities.objective_id — see
+// CreateActivity in plan_service.go. (Activities may alternatively be
+// "Advanced Research" activities that attach directly to the plan instead
+// of an objective — see models.ActivityCategory — but pillars/objectives
+// themselves are unaffected by that.)
 package plansvc
 
 import (
@@ -28,13 +27,13 @@ type CreatePillarRequest struct {
 	Title string `json:"title"`
 }
 
-// CreatePillar adds a new Strategic Pillar to a local plan. user_order is
+// CreatePillar adds a new Strategic Pillar to a plan. user_order is
 // set to (max existing + 1) so pillars display in creation order by default.
 func (s *Service) CreatePillar(ctx context.Context, planID, orgID uuid.UUID, req CreatePillarRequest) (*models.StrategicPillar, error) {
 	if req.Title == "" {
 		return nil, fmt.Errorf("title is required")
 	}
-	if err := s.requireLocalPlan(ctx, planID, orgID); err != nil {
+	if err := s.requirePlan(ctx, planID, orgID); err != nil {
 		return nil, err
 	}
 
@@ -63,7 +62,6 @@ func (s *Service) CreatePillar(ctx context.Context, planID, orgID uuid.UUID, req
 	return p, nil
 }
 
-// ListPillars returns all Strategic Pillars for a plan, in display order.
 // ListPillars returns all Strategic Pillars for a plan, in display order.
 func (s *Service) ListPillars(ctx context.Context, planID, orgID uuid.UUID) ([]models.StrategicPillar, error) {
 	rows, err := s.db.Query(ctx,
@@ -213,8 +211,6 @@ func (s *Service) CreateObjective(ctx context.Context, pillarID, orgID uuid.UUID
 
 // ListObjectives returns all Strategic Objectives for a plan (across all of
 // its pillars), in pillar then display order.
-// ListObjectives returns all Strategic Objectives for a plan (across all of
-// its pillars), in pillar then display order.
 func (s *Service) ListObjectives(ctx context.Context, planID, orgID uuid.UUID) ([]models.StrategicObjective, error) {
 	rows, err := s.db.Query(ctx,
 		`SELECT o.id, o.plan_id, o.pillar_id, o.org_id, o.title, o.user_order, o.created_at, o.updated_at
@@ -313,22 +309,23 @@ func (s *Service) DeleteObjective(ctx context.Context, objectiveID, orgID uuid.U
 
 // ── Shared helper ─────────────────────────────────────────────────────────
 
-// requireLocalPlan verifies planID exists, belongs to orgID, and is a
-// "local" plan — pillars only make sense for local plans.
-func (s *Service) requireLocalPlan(ctx context.Context, planID, orgID uuid.UUID) error {
-	var planType models.PlanType
+// requirePlan verifies planID exists and belongs to orgID. Shared by every
+// plan-chapter service file (this one, vision_mission.go,
+// situational_analysis.go, org_structure.go, monitoring_evaluation.go, and
+// the Advanced Research helpers in plan_service.go) — every plan uses the
+// same structure now, so there's no plan-type check here, just
+// existence/ownership.
+func (s *Service) requirePlan(ctx context.Context, planID, orgID uuid.UUID) error {
+	var exists bool
 	err := s.db.QueryRow(ctx,
-		`SELECT plan_type FROM plans WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
+		`SELECT EXISTS(SELECT 1 FROM plans WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL)`,
 		planID, orgID,
-	).Scan(&planType)
-	if err == pgx.ErrNoRows {
-		return fmt.Errorf("plan not found")
-	}
+	).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("check plan: %w", err)
 	}
-	if planType != models.PlanTypeLocal {
-		return fmt.Errorf("strategic pillars are only available for local plans")
+	if !exists {
+		return fmt.Errorf("plan not found")
 	}
 	return nil
 }

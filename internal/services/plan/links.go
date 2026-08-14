@@ -93,28 +93,23 @@ type CandidateLink struct {
 // target types. REQ-F-040: "auto-identifies candidate links based on activity
 // type pairs (e.g. SWOT threats → Risk Register → P3 mitigation tasks)."
 //
-// These strings must match the ActivityType values in the frontend's
-// types/index.ts (CreateActivityModal's PHASE_ACTIVITY_TYPES) exactly — an
-// activity's type is only ever set from that fixed picker, so any rule using
-// a value outside that set can never match a real activity and silently
-// never fires.
+// Since migration 014_collapse_plan_types, every plan uses the pillar/
+// objective structure, and Activity.Type is only a fixed, closed vocabulary
+// for Advanced Research activities (models.ValidAdvancedResearchTypes) — an
+// ordinary objective-attached activity's Type is free text a planner enters,
+// so it can never usefully appear on either side of a rule here. Rules
+// referencing types that used to belong to international plans (swot,
+// pestle, vision_mission, strategic_objectives, kpi_framework, action_items)
+// were removed: those either moved to their own dedicated chapter tables
+// (SWOTItem, PESTELItem, Plan.Vision/Mission, StrategicObjective) or were
+// dropped as redundant with per-activity KPIs / ordinary activities — none
+// of them are Activity.Type values that can occur anymore.
 var autoLinkRules = []struct {
 	from, to, reason string
 }{
-	{"swot", "risk_register", "SWOT threats feed into the Risk Register"},
-	{"swot", "strategic_objectives", "SWOT outcomes inform Strategic Objectives"},
-	{"swot", "okr_balanced_scorecard", "SWOT analysis contextualises OKR definition"},
-	{"pestle", "risk_register", "PESTLE factors are a primary risk source"},
-	{"pestle", "strategic_objectives", "PESTLE environment shapes strategy"},
 	{"risk_register", "operational_roadmap", "Risk mitigations belong in the Operational Roadmap"},
-	{"strategic_objectives", "okr_balanced_scorecard", "Strategic Objectives are operationalised as OKRs"},
-	{"strategic_objectives", "kpi_framework", "Strategic Objectives drive KPI selection"},
 	{"okr_balanced_scorecard", "operational_roadmap", "OKRs define goals the Roadmap must deliver"},
-	{"okr_balanced_scorecard", "action_items", "OKRs decompose into concrete Action Items"},
-	{"vision_mission", "strategic_objectives", "Vision sets the destination for Strategic Objectives"},
-	{"business_model_canvas", "strategic_objectives", "Canvas gaps drive Strategic Objectives"},
-	{"competitive_analysis", "strategic_objectives", "Competitive positioning informs strategy"},
-	{"kpi_framework", "operational_roadmap", "KPIs need to be trackable via Roadmap milestones"},
+	{"business_model_canvas", "competitive_analysis", "Canvas gaps are worth checking against the competitive landscape"},
 	{"operational_roadmap", "budget_allocation", "Roadmap drives Budget Allocation"},
 	{"operational_roadmap", "resource_plan", "Roadmap activities require a Resource Plan"},
 }

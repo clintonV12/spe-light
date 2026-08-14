@@ -4,50 +4,34 @@ import { Plus, Trash2, X } from 'lucide-react'
 import { Button, Input, Select } from '../ui'
 import { activitiesApi, pillarsApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
-import type { Phase, ActivityType, Plan, StrategicPillar, StrategicObjective, KPI, KPIPeriod } from '../../types'
+import type { ActivityType, Plan, StrategicPillar, StrategicObjective, KPI, KPIPeriod } from '../../types'
 import { KPI_PERIODS } from '../../types'
 import { useAiDraft, AiAssistTrigger, AiAssistPanel, parseKpiDraft } from './AiChapterAssist'
 
 // Labels come from t(`activityTypes.${value}`) — value stays the raw
 // ActivityType id so the API contract and toastError etc are unaffected.
-// Only used for 'international' plans — 'local' plans don't have a fixed
-// type picker (see LOCAL_ACTIVITY_TYPE below).
-const PHASE_ACTIVITY_TYPES: Record<Phase, { value: ActivityType }[]> = {
-  P1: [
-    { value: 'swot' },
-    { value: 'pestle' },
-    { value: 'business_model_canvas' },
-    { value: 'stakeholder_map' },
-    { value: 'competitive_analysis' },
-    { value: 'risk_register' },
-    { value: 'market_analysis' },
-  ],
-  P2: [
-    { value: 'vision_mission' },
-    { value: 'strategic_objectives' },
-    { value: 'kpi_framework' },
-    { value: 'okr_balanced_scorecard' },
-    { value: 'theory_of_change' },
-    { value: 'value_proposition' },
-    { value: 'strategic_initiatives' },
-    { value: 'action_items' },
-    { value: 'implementation_timeline' },
-  ],
-  P3: [
-    { value: 'financial_projections' },
-    { value: 'budget_allocation' },
-    { value: 'operational_roadmap' },
-    { value: 'resource_plan' },
-    { value: 'procurement_plan' },
-  ],
-}
+// Fixed set of 7 — the rest of the old international activity-type list
+// either moved to its own dedicated chapter UI (vision_mission, swot,
+// pestle, strategic_objectives) or was dropped as redundant with
+// per-activity KPIs / ordinary objective activities (kpi_framework,
+// action_items, and the remaining unlisted former types).
+export const ADVANCED_RESEARCH_TYPES: { value: ActivityType }[] = [
+  { value: 'business_model_canvas' },
+  { value: 'competitive_analysis' },
+  { value: 'risk_register' },
+  { value: 'okr_balanced_scorecard' },
+  { value: 'operational_roadmap' },
+  { value: 'resource_plan' },
+  { value: 'budget_allocation' },
+]
 
-// Local plans don't offer a type picker — the ESWAMCU "Implementation
-// Framework" doesn't distinguish activity types the way the international
-// P1/P2/P3 model does. Every local-plan activity gets this fixed type so
-// downstream code (e.g. ActivityCard's t(`activityTypes.${type}`) lookup)
-// still has something to resolve; add an `activityTypes.strategic_action`
-// locale key alongside the existing activityTypes.* ones.
+// Ordinary (objective-nested) activities don't offer a type picker — the
+// ESWAMCU "Implementation Framework" doesn't distinguish activity types the
+// way the old P1/P2/P3 model did. Every such activity gets this fixed type
+// so downstream code (e.g. ActivityCard's t(`activityTypes.${type}`)
+// lookup) still has something to resolve; add an
+// `activityTypes.strategic_action` locale key alongside the existing
+// activityTypes.* ones.
 const LOCAL_ACTIVITY_TYPE = 'strategic_action'
 
 function emptyKPI(): KPI {
@@ -56,39 +40,38 @@ function emptyKPI(): KPI {
 
 interface CreateActivityModalProps {
   planId: string
-  /**
-   * The full plan record — needed (rather than just planId) so the modal
-   * knows plan.plan_type and can render the right hierarchy picker.
-   */
-  plan: Plan
-  /** International plans only: which phase tab the modal was opened from. */
-  defaultPhase?: Phase
-  /** Local plans only: which objective the modal was opened from, if any. */
+  /** Retained for callers that still pass it, unused now that there's only one plan shape. */
+  plan?: Plan
+  /** Which objective the modal was opened from, if any. Ignored when `advanced` is set. */
   defaultObjectiveId?: string
+  /**
+   * Opens the modal in Advanced Research mode: a type picker restricted to
+   * ADVANCED_RESEARCH_TYPES, no pillar/objective picker, no KPIs — the
+   * created activity is standalone (category: 'advanced_research'), not
+   * nested under any objective.
+   */
+  advanced?: boolean
   onCreated: () => void
   onClose: () => void
 }
 
 export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
   planId,
-  plan,
-  defaultPhase = 'P1',
   defaultObjectiveId,
+  advanced = false,
   onCreated,
   onClose,
 }) => {
   const { t } = useTranslation()
-  const isLocal = plan.plan_type === 'local'
   const { success, error } = useToast()
 
-  // ── International-only state ──────────────────────────────────────────
-  const [phase, setPhase] = useState<Phase>(defaultPhase)
-  const [type, setType] = useState<ActivityType>(PHASE_ACTIVITY_TYPES[defaultPhase][0].value)
+  // ── Advanced Research-only state ────────────────────────────────────────
+  const [advancedType, setAdvancedType] = useState<ActivityType>(ADVANCED_RESEARCH_TYPES[0].value)
 
-  // ── Local-only state ─────────────────────────────────────────────────
+  // ── Objective-nested-only state ─────────────────────────────────────────
   const [pillars, setPillars] = useState<StrategicPillar[]>([])
   const [objectives, setObjectives] = useState<StrategicObjective[]>([])
-  const [pillarsLoading, setPillarsLoading] = useState(isLocal)
+  const [pillarsLoading, setPillarsLoading] = useState(!advanced)
   const [pillarId, setPillarId] = useState<string>('')
   const [objectiveId, setObjectiveId] = useState<string>(defaultObjectiveId ?? '')
   // Budget/Responsibility/Measurement Period used to be one set of fields
@@ -105,7 +88,7 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!isLocal) return
+    if (advanced) return
     let cancelled = false
     setPillarsLoading(true)
     Promise.all([pillarsApi.list(planId), pillarsApi.listObjectives(planId)])
@@ -132,17 +115,12 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
       .finally(() => { if (!cancelled) setPillarsLoading(false) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLocal, planId])
+  }, [advanced, planId])
 
   const objectivesForPillar = useMemo(
     () => objectives.filter((o) => o.pillar_id === pillarId),
     [objectives, pillarId],
   )
-
-  const handlePhaseChange = (p: Phase) => {
-    setPhase(p)
-    setType(PHASE_ACTIVITY_TYPES[p][0].value)
-  }
 
   const handlePillarChange = (id: string) => {
     setPillarId(id)
@@ -188,13 +166,21 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
     })
   }
 
-  const canSubmit = title.trim().length > 0 && (!isLocal || objectiveId.length > 0)
+  const canSubmit = title.trim().length > 0 && (advanced || objectiveId.length > 0)
 
   const handleSubmit = async () => {
     if (!canSubmit) return
     setLoading(true)
     try {
-      if (isLocal) {
+      if (advanced) {
+        await activitiesApi.create(planId, {
+          category: 'advanced_research',
+          type: advancedType,
+          title: title.trim(),
+          due_date: dueDate || undefined,
+          content: {},
+        })
+      } else {
         const cleanedKpis = kpis
           .map((k) => ({
             indicator: k.indicator.trim(),
@@ -215,14 +201,6 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
           content: {},
           kpis: cleanedKpis,
         })
-      } else {
-        await activitiesApi.create(planId, {
-          phase,
-          type,
-          title: title.trim(),
-          due_date: dueDate || undefined,
-          content: {},
-        })
       }
       success(t('createActivityModal.created'))
       onCreated()
@@ -234,7 +212,7 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
     }
   }
 
-  const typeOptions = PHASE_ACTIVITY_TYPES[phase].map((tItem) => ({
+  const advancedTypeOptions = ADVANCED_RESEARCH_TYPES.map((tItem) => ({
     value: tItem.value,
     label: t(`activityTypes.${tItem.value}`),
   }))
@@ -252,7 +230,7 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
         </div>
 
         <div className="space-y-4">
-          {isLocal ? (
+          {!advanced ? (
             <>
               {pillarsLoading ? (
                 <p className="text-sm text-ink-400">{t('common.loading')}</p>
@@ -392,33 +370,17 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
             </>
           ) : (
             <>
-              {/* Phase selector */}
-              <div>
-                <p className="text-sm font-medium text-ink-700 mb-1.5">{t('createActivityModal.phase')}</p>
-                <div className="flex gap-2">
-                  {(['P1', 'P2', 'P3'] as Phase[]).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => handlePhaseChange(p)}
-                      className={`flex-1 rounded-lg py-2 text-sm font-semibold transition-colors ${
-                        phase === p
-                          ? p === 'P1' ? 'bg-p1-light text-p1-dark'
-                            : p === 'P2' ? 'bg-p2-light text-p2-dark'
-                            : 'bg-p3-light text-p3-dark'
-                          : 'bg-ink-50 text-ink-500 hover:bg-ink-100'
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <p className="text-sm text-ink-500">
+                {t('createActivityModal.advancedIntro', {
+                  defaultValue: 'Standalone research tools — optional, and not tied to any Strategic Pillar.',
+                })}
+              </p>
 
               <Select
                 label={t('createActivityModal.activityType')}
-                options={typeOptions}
-                value={type}
-                onChange={(e) => setType(e.target.value as ActivityType)}
+                options={advancedTypeOptions}
+                value={advancedType}
+                onChange={(e) => setAdvancedType(e.target.value as ActivityType)}
               />
 
               <Input

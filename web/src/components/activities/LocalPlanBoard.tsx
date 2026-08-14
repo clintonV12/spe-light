@@ -1,21 +1,38 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
-  ChevronDown, ChevronRight, Plus, Trash2, Layers, Target, Clock,
+  ChevronDown, ChevronRight, Plus, Trash2, Pencil, Check, X, Layers, Target, Clock,
 } from 'lucide-react'
 import { pillarsApi, activitiesApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
 import { EmptyState } from '../ui'
 import CreateActivityModal from './CreateActivityModal'
 import { useAiDraft, AiAssistTrigger, AiAssistPanel } from './AiChapterAssist'
-import type { Plan, Activity, StrategicPillar, StrategicObjective, ActivityStatus } from '../../types'
+import type { Plan, Activity, StrategicPillar, StrategicObjective, ActivityStatus, KPIPeriod } from '../../types'
 
 const STATUS_DOT: Record<ActivityStatus, string> = {
   not_started: 'bg-ink-300',
   in_progress: 'bg-p2',
   review:      'bg-p1',
   complete:    'bg-green-500',
+}
+
+// Budget/Responsibility/Target Period live on each KPI, not on Activity
+// itself (an activity can carry several KPIs with different values for all
+// three) — see the KPI doc comment in types/index.ts. For the compact
+// activity row below, summarise across an activity's KPIs rather than
+// reading a field that no longer exists on Activity: total budget is the
+// sum of every KPI that has one set, and the period shown is the first
+// KPI's target_period (activities' KPIs are usually tracked on the same
+// cadence in practice, so showing just one avoids a cluttered row).
+function activityKpiSummary(activity: Activity): { period?: KPIPeriod; totalBudget?: number } {
+  const kpis = activity.kpis ?? []
+  const period = kpis.find((k) => k.target_period)?.target_period
+  const budgets = kpis.map((k) => k.budget).filter((b): b is number => typeof b === 'number')
+  const totalBudget = budgets.length > 0 ? budgets.reduce((sum, b) => sum + b, 0) : undefined
+  return { period, totalBudget }
 }
 
 interface LocalPlanBoardProps {
@@ -58,6 +75,78 @@ function InlineAddRow({ placeholder, onSubmit, loading }: {
         <Plus className="size-3.5" /> {t('common.add', { defaultValue: 'Add' })}
       </button>
     </div>
+  )
+}
+
+// ─── Inline "rename" text — click the pencil to swap a title for a text
+// input, Enter/checkmark to save, Escape/X to cancel. Shared by the pillar
+// header and the objective row so both get the same edit affordance instead
+// of only offering delete. ───────────────────────────────────────────────
+function EditableTitle({ value, onSave, saving, textClassName, inputClassName }: {
+  value: string
+  onSave: (title: string) => void
+  saving: boolean
+  textClassName: string
+  inputClassName: string
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+
+  const start = (e: ReactMouseEvent) => {
+    e.stopPropagation()
+    setDraft(value)
+    setEditing(true)
+  }
+  const cancel = (e?: ReactMouseEvent | ReactKeyboardEvent) => {
+    e?.stopPropagation()
+    setEditing(false)
+    setDraft(value)
+  }
+  const commit = (e?: ReactMouseEvent | ReactKeyboardEvent) => {
+    e?.stopPropagation()
+    const trimmed = draft.trim()
+    if (!trimmed || trimmed === value) {
+      setEditing(false)
+      return
+    }
+    onSave(trimmed)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <span className="flex-1 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit(e)
+            if (e.key === 'Escape') cancel(e)
+          }}
+          onBlur={() => commit()}
+          className={inputClassName}
+        />
+        <button onMouseDown={(e) => commit(e)} disabled={saving} className="text-accent hover:text-accent-600 shrink-0 p-0.5">
+          <Check className="size-3.5" />
+        </button>
+        <button onMouseDown={(e) => cancel(e)} disabled={saving} className="text-ink-300 hover:text-ink-600 shrink-0 p-0.5">
+          <X className="size-3.5" />
+        </button>
+      </span>
+    )
+  }
+
+  return (
+    <span className="flex-1 flex items-center gap-1.5 min-w-0 group">
+      <span className={textClassName}>{value}</span>
+      <button
+        onClick={start}
+        className="shrink-0 p-0.5 text-ink-300 opacity-0 group-hover:opacity-100 hover:text-accent transition-opacity"
+      >
+        <Pencil className="size-3" />
+      </button>
+    </span>
   )
 }
 
@@ -150,6 +239,19 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
     }
   }
 
+  const handleRenamePillar = async (pillarId: string, title: string) => {
+    setBusy(true)
+    try {
+      await pillarsApi.update(pillarId, { title })
+      success(t('localPlan.pillarRenamed', { defaultValue: 'Pillar updated' }))
+      load()
+    } catch {
+      toastError(t('localPlan.pillarRenameFailed', { defaultValue: 'Could not update pillar' }))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const handleDeletePillar = async (pillarId: string) => {
     setBusy(true)
     try {
@@ -160,6 +262,19 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
       toastError(t('localPlan.pillarDeleteFailed', {
         defaultValue: 'Could not delete pillar — remove its objectives first',
       }))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleRenameObjective = async (objectiveId: string, title: string) => {
+    setBusy(true)
+    try {
+      await pillarsApi.updateObjective(objectiveId, { title })
+      success(t('localPlan.objectiveRenamed', { defaultValue: 'Objective updated' }))
+      load()
+    } catch {
+      toastError(t('localPlan.objectiveRenameFailed', { defaultValue: 'Could not update objective' }))
     } finally {
       setBusy(false)
     }
@@ -282,13 +397,26 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
             const isOpen = expanded.has(pillar.id)
             return (
               <div key={pillar.id} className="bg-white rounded-2xl border border-ink-100 overflow-hidden">
-                <button
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => togglePillar(pillar.id)}
-                  className="w-full flex items-center gap-2 px-5 py-4 hover:bg-ink-50 transition-colors text-left"
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') togglePillar(pillar.id) }}
+                  className="w-full flex items-center gap-2 px-5 py-4 hover:bg-ink-50 transition-colors text-left cursor-pointer"
                 >
                   {isOpen ? <ChevronDown className="size-4 text-ink-400 shrink-0" /> : <ChevronRight className="size-4 text-ink-400 shrink-0" />}
                   <Layers className="size-4 text-accent shrink-0" />
-                  <span className="font-display font-bold text-sm text-ink-900 flex-1">{pillar.title}</span>
+                  {canEdit ? (
+                    <EditableTitle
+                      value={pillar.title}
+                      onSave={(title) => handleRenamePillar(pillar.id, title)}
+                      saving={busy}
+                      textClassName="font-display font-bold text-sm text-ink-900"
+                      inputClassName="flex-1 min-w-0 rounded-lg border border-accent-200 px-2 py-1 text-sm font-display font-bold text-ink-900 outline-none focus:border-accent"
+                    />
+                  ) : (
+                    <span className="font-display font-bold text-sm text-ink-900 flex-1">{pillar.title}</span>
+                  )}
                   <span className="text-xs text-ink-400">
                     {t('localPlan.objectiveCount', { count: pillarObjectives.length, defaultValue: `${pillarObjectives.length} objectives` })}
                   </span>
@@ -301,7 +429,7 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
                       <Trash2 className="size-3.5" />
                     </span>
                   )}
-                </button>
+                </div>
 
                 {isOpen && (
                   <div className="px-5 pb-4 space-y-3 border-t border-ink-50 pt-3">
@@ -311,7 +439,17 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
                         <div key={objective.id} className="rounded-xl border border-ink-100 p-3">
                           <div className="flex items-center gap-2 mb-2">
                             <Target className="size-3.5 text-p2 shrink-0" />
-                            <p className="text-sm font-semibold text-ink-800 flex-1">{objective.title}</p>
+                            {canEdit ? (
+                              <EditableTitle
+                                value={objective.title}
+                                onSave={(title) => handleRenameObjective(objective.id, title)}
+                                saving={busy}
+                                textClassName="text-sm font-semibold text-ink-800"
+                                inputClassName="flex-1 min-w-0 rounded-lg border border-accent-200 px-2 py-1 text-sm font-semibold text-ink-800 outline-none focus:border-accent"
+                              />
+                            ) : (
+                              <p className="text-sm font-semibold text-ink-800 flex-1">{objective.title}</p>
+                            )}
                             {canEdit && (
                               <>
                                 <button
@@ -336,7 +474,9 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
                             </p>
                           ) : (
                             <div className="divide-y divide-ink-50 pl-5">
-                              {objActivities.map((a) => (
+                              {objActivities.map((a) => {
+                                const { period, totalBudget } = activityKpiSummary(a)
+                                return (
                                 <div
                                   key={a.id}
                                   className="group w-full flex items-center gap-2 py-2 hover:bg-ink-50 -mx-2 px-2 rounded-lg transition-colors"
@@ -347,14 +487,14 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
                                   >
                                     <span className={`size-2 rounded-full shrink-0 ${STATUS_DOT[a.status]}`} />
                                     <span className="flex-1 min-w-0 text-sm text-ink-700 truncate">{a.title}</span>
-                                    {a.target_period && (
+                                    {period && (
                                       <span className="flex items-center gap-1 text-[11px] text-ink-400 shrink-0">
-                                        <Clock className="size-3" /> {a.target_period.charAt(0).toUpperCase() + a.target_period.slice(1)}
+                                        <Clock className="size-3" /> {period.charAt(0).toUpperCase() + period.slice(1)}
                                       </span>
                                     )}
-                                    {typeof a.budget === 'number' && (
+                                    {typeof totalBudget === 'number' && (
                                       <span className="text-[11px] text-ink-400 shrink-0">
-                                        {a.budget.toLocaleString(undefined, { style: 'currency', currency: 'SZL', maximumFractionDigits: 0 })}
+                                        {totalBudget.toLocaleString(undefined, { style: 'currency', currency: 'SZL', maximumFractionDigits: 0 })}
                                       </span>
                                     )}
                                   </button>
@@ -368,7 +508,7 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
                                     </button>
                                   )}
                                 </div>
-                              ))}
+                              )})}
                             </div>
                           )}
                         </div>
