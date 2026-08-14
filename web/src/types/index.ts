@@ -26,14 +26,6 @@ export type PlanStatus = 'draft' | 'active' | 'review' | 'completed' | 'archived
 // a budget, responsibility, target period, and one or more KPIs). There is
 // no PlanType and no `plan_type` field on Plan any more.
 
-// Retained only because ReportSectionConfig's 'custom' report type still
-// lets a person pick P1/P2/P3 sections (ReportType.per_phase / the
-// `phases`/`phase_activities` fields below) — that's a reporting-only
-// concept now, unrelated to how activities are organised, and hasn't been
-// redesigned yet (see the TODO on ReportSectionConfig below). Don't use
-// Phase for anything activity-related; Activity has no `phase` field.
-export type Phase = 'P1' | 'P2' | 'P3'
-
 export type ActivityStatus = 'not_started' | 'in_progress' | 'review' | 'complete'
 
 // Marks a standalone activity that isn't nested under any Strategic
@@ -80,32 +72,31 @@ export type ReportFormat = 'pdf' | 'docx' | 'xlsx'
 
 // Only relevant when ReportType === 'custom' — lets the user pick which
 // sections of the plan get included instead of using one of the fixed
-// report shapes above. `phases` only applies when `phase_activities` is
-// true and controls which of P1/P2/P3 are pulled in.
+// report shapes above.
 //
 // vision_mission / situational_analysis / org_structure / monitoring_evaluation
 // draw on their own chapter data (Vision/Mission/Core Values, Stakeholders/
 // SWOT/PESTEL, org_structure_roles, me_items) — every plan has these now.
-// scorecard (KPI target/actual/achievement, plus an achievement-by-period
-// chart) reads KPIs straight off Activity.KPIs.
-//
-// TODO(backend): `phases` / `phase_activities` / ReportType.per_phase still
-// reference the retired P1/P2/P3 phase model, which no longer means
-// anything now that activities are pillar/objective-only. Needs a follow-up
-// design pass with whoever owns report generation before this ships.
+// objective_activities covers every Pillar > Objective > Activity in the
+// plan (no per-phase filtering any more — activities are no longer grouped
+// by phase). advanced_research covers the plan's standalone Advanced
+// Research activities (see ActivityCategory), which don't belong to any
+// pillar/objective and so get their own toggle. scorecard (KPI target/
+// actual/achievement, plus an achievement-by-period chart) reads KPIs
+// straight off Activity.KPIs.
 export interface ReportSectionConfig {
-  executive_summary:     boolean
-  vision_mission:        boolean
-  situational_analysis:  boolean
-  phase_activities:      boolean
-  phases:                Phase[]
-  scorecard:              boolean
-  org_structure:          boolean
-  progress_status:        boolean
-  monitoring_evaluation:  boolean
-  milestones:             boolean
-  dependency_links:       boolean
-  ai_summary:             boolean
+  executive_summary:    boolean
+  vision_mission:       boolean
+  situational_analysis: boolean
+  objective_activities: boolean
+  advanced_research:    boolean
+  scorecard:             boolean
+  org_structure:         boolean
+  progress_status:       boolean
+  monitoring_evaluation: boolean
+  milestones:            boolean
+  dependency_links:      boolean
+  ai_summary:            boolean
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -428,8 +419,6 @@ export interface AiDraftRequest {
   /** Omitted for local-plan chapter drafts (2/3/6/7), which have no backing Activity. */
   activity_id?:  string
   activity_type: string
-  /** Omitted for local-plan chapter drafts, which have no P1/P2/P3 phase. */
-  phase?:        Phase
   keywords?:     string[]
 }
 
@@ -440,7 +429,6 @@ export interface AiDraftResponse {
 
 export interface AiSummaryRequest {
   plan_id: string
-  phase?:  Phase
 }
 
 export interface AiSummaryResponse {

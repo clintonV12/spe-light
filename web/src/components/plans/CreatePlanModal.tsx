@@ -64,6 +64,11 @@ export const CreatePlanModal: React.FC<CreatePlanModalProps> = ({ onCreated, onC
             />
           </div>
 
+          {/* No more plan-type picker — every plan now uses the same
+              Strategic Pillar > Strategic Objective > Activity structure,
+              with an optional Advanced Research tab available afterwards
+              from the plan view. See migration 014_collapse_plan_types. */}
+
           <div className="grid grid-cols-2 gap-3">
             <Input label="Start date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             <Input label="End date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />

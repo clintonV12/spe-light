@@ -3,16 +3,14 @@ import { useTranslation } from 'react-i18next'
 import { FileOutput, FileText, FileSpreadsheet, Clock, CheckCircle2, Loader, Plus, Download, SlidersHorizontal } from 'lucide-react'
 import { plansApi, reportsApi } from '../api/endpoints'
 import { useToast } from '../hooks'
-import type { Plan, Report, ReportType, ReportFormat, Phase, ReportSectionConfig } from '../types'
-
-const ALL_PHASES: Phase[] = ['P1', 'P2', 'P3']
+import type { Plan, Report, ReportType, ReportFormat, ReportSectionConfig } from '../types'
 
 const DEFAULT_CUSTOM_SECTIONS: ReportSectionConfig = {
   executive_summary:     true,
   vision_mission:        true,
   situational_analysis:  true,
-  phase_activities:      true,
-  phases:                [...ALL_PHASES],
+  objective_activities:  true,
+  advanced_research:     true,
   scorecard:             true,
   org_structure:         true,
   progress_status:       true,
@@ -22,13 +20,15 @@ const DEFAULT_CUSTOM_SECTIONS: ReportSectionConfig = {
   ai_summary:            false,
 }
 
-// True if the config would actually produce a non-empty report.
+// True if the config would actually produce a non-empty report. Mirrors
+// SectionConfig.hasContent() in report_service.go exactly.
 function hasSelectedContent(s: ReportSectionConfig): boolean {
   return (
     s.executive_summary ||
     s.vision_mission ||
     s.situational_analysis ||
-    (s.phase_activities && s.phases.length > 0) ||
+    s.objective_activities ||
+    s.advanced_research ||
     s.scorecard ||
     s.org_structure ||
     s.progress_status ||
@@ -45,7 +45,8 @@ function countSections(s: ReportSectionConfig): number {
     s.executive_summary,
     s.vision_mission,
     s.situational_analysis,
-    s.phase_activities && s.phases.length > 0,
+    s.objective_activities,
+    s.advanced_research,
     s.scorecard,
     s.org_structure,
     s.progress_status,
@@ -173,15 +174,6 @@ export default function ReportsPage() {
 
   const toggleSection = <K extends keyof ReportSectionConfig>(key: K, value: ReportSectionConfig[K]) => {
     setCustomSections((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const togglePhase = (phase: Phase) => {
-    setCustomSections((prev) => ({
-      ...prev,
-      phases: prev.phases.includes(phase)
-        ? prev.phases.filter((p) => p !== phase)
-        : [...prev.phases, phase],
-    }))
   }
 
   // Downloads go through apiClient (as a blob) rather than a plain <a href>,
@@ -324,32 +316,29 @@ export default function ReportsPage() {
                 </span>
               </label>
 
-              <div className="px-4 py-3">
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={customSections.phase_activities}
-                    onChange={(e) => toggleSection('phase_activities', e.target.checked)}
-                    className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
-                  />
-                  <span className="text-sm text-ink-800">{t('reportsPage.sections.phaseActivities')}</span>
-                </label>
-                {customSections.phase_activities && (
-                  <div className="flex items-center gap-4 mt-2 ml-6">
-                    {ALL_PHASES.map((phase) => (
-                      <label key={phase} className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={customSections.phases.includes(phase)}
-                          onChange={() => togglePhase(phase)}
-                          className="size-3.5 rounded border-ink-300 text-accent focus:ring-accent-400"
-                        />
-                        <span className="text-xs text-ink-500">{t(`plan.phases.${phase}`)}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+                <input
+                  type="checkbox"
+                  checked={customSections.objective_activities}
+                  onChange={(e) => toggleSection('objective_activities', e.target.checked)}
+                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
+                />
+                <span className="text-sm text-ink-800">
+                  {t('reportsPage.sections.objectiveActivities', { defaultValue: 'Pillar & Objective Activities' })}
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+                <input
+                  type="checkbox"
+                  checked={customSections.advanced_research}
+                  onChange={(e) => toggleSection('advanced_research', e.target.checked)}
+                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
+                />
+                <span className="text-sm text-ink-800">
+                  {t('reportsPage.sections.advancedResearch', { defaultValue: 'Advanced Research' })}
+                </span>
+              </label>
 
               <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
                 <input
@@ -359,7 +348,7 @@ export default function ReportsPage() {
                   className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
                 />
                 <span className="text-sm text-ink-800">
-                  {t('reportsPage.sections.orgStructure', { defaultValue: 'Organisational Structure (local plans only)' })}
+                  {t('reportsPage.sections.orgStructure', { defaultValue: 'Organisational Structure' })}
                 </span>
               </label>
 
@@ -381,7 +370,7 @@ export default function ReportsPage() {
                   className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
                 />
                 <span className="text-sm text-ink-800">
-                  {t('reportsPage.sections.monitoringEvaluation', { defaultValue: 'Monitoring & Evaluation (local plans only)' })}
+                  {t('reportsPage.sections.monitoringEvaluation', { defaultValue: 'Monitoring & Evaluation' })}
                 </span>
               </label>
 
