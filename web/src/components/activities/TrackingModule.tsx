@@ -77,6 +77,23 @@ export function overallKpiCompletion(kpis: KPI[]): number | null {
   return parts.reduce((a, b) => a + b, 0) / parts.length
 }
 
+// Convenience wrapper for pages that only need a single plan's "Overall"
+// KPI-achievement figure (DashboardPage's cards, PlansPage's progress
+// column, ProgressPage's summary stat row) and don't otherwise need the
+// plan's activities for anything else — fetches them just to feed
+// overallKpiCompletion, then discards them. Null on fetch failure, same as
+// "no KPIs scored yet" — every caller already treats null as "fall back to
+// activity-status progress," so a transient fetch error degrades to that
+// fallback instead of surfacing as a page-level error.
+export async function fetchPlanKpiAchievement(planId: string): Promise<number | null> {
+  try {
+    const acts = await activitiesApi.list(planId)
+    return overallKpiCompletion(acts.flatMap((a) => a.kpis ?? []))
+  } catch {
+    return null
+  }
+}
+
 function achievementColor(pct: number): string {
   if (pct >= 75) return 'text-green-600'
   if (pct <= 50) return 'text-red-600'

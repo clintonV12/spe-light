@@ -225,6 +225,18 @@ export interface Plan {
   deleted_at?: string
   /** Injected by the frontend after a /progress call; not a backend field */
   progress?:   PlanProgress
+  /**
+   * Injected by the frontend after computing it from the plan's activities
+   * (see TrackingModule.tsx's fetchPlanKpiAchievement / overallKpiCompletion);
+   * not a backend field. The average KPI achievement (actual vs. target)
+   * across every KPI on every activity in the plan — this is what "progress"
+   * means wherever a plan-level progress bar/percentage is shown now, with
+   * `progress.overall.percent_complete` (activity-status-based) as the
+   * fallback for a plan with no KPIs scored yet (`kpi_achievement` is then
+   * `null`, not `0` — a plan with no KPIs isn't "0% achieved," it just
+   * hasn't been measured that way).
+   */
+  kpi_achievement?: number | null
   vision?: string
   mission?: string
 }

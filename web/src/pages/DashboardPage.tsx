@@ -13,6 +13,7 @@ import { usePermission } from '../hooks'
 import { EmptyState } from '../components/ui'
 import CreatePlanModal from '../components/plans/CreatePlanModal'
 import { SHORTCUT_CREATE_EVENT } from '../components/layout/AppShell'
+import { fetchPlanKpiAchievement } from '../components/activities/TrackingModule'
 import type { Plan, PlanStatus, AuditLog, AuditAction } from '../types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -49,12 +50,6 @@ function groupByDay(logs: AuditLog[], t: (key: string) => string): Array<{ label
 
 // ─── Plan card ────────────────────────────────────────────────────────────────
 
-const PHASE_GRADIENT: Record<string, { track: string; bar: 'p1'|'p2'|'p3' }> = {
-  P1: { track: 'bg-amber-50',   bar: 'p1' },
-  P2: { track: 'bg-emerald-50', bar: 'p2' },
-  P3: { track: 'bg-violet-50',  bar: 'p3' },
-}
-
 const STATUS_PILL_CLS: Record<PlanStatus, string> = {
   draft:     'bg-ink-100 text-ink-500',
   active:    'bg-emerald-100 text-emerald-700',
@@ -65,16 +60,24 @@ const STATUS_PILL_CLS: Record<PlanStatus, string> = {
 
 function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
   const { t } = useTranslation()
-  const progress   = plan.progress
-  const overallPct = progress?.overall.percent_complete ?? 0
-  const overdue    = progress?.overall.overdue ?? 0
-  const pillCls    = STATUS_PILL_CLS[plan.status]
-  // 'international' plans populate progress.phases (fixed P1/P2/P3);
-  // 'local' plans populate progress.pillars instead (user-defined pillars).
-  // Only one of the two is ever present — guard both before mapping.
-  const bars = plan.plan_type === 'local'
-    ? (progress?.pillars ?? []).map((p) => ({ key: p.pillar_id, label: p.title.slice(0, 2).toUpperCase(), pct: p.percent_complete, gradient: 'from-accent-400 to-accent-500' as const }))
-    : (progress?.phases ?? []).map((p) => ({ key: p.phase, label: p.phase, pct: p.percent_complete, gradient: null }))
+  const progress = plan.progress
+  const overdue  = progress?.overall.overdue ?? 0
+  const pillCls  = STATUS_PILL_CLS[plan.status]
+
+  // The headline ring is KPI achievement (actual vs. target across every
+  // KPI in the plan) now that progress means KPI tracking — falls back to
+  // activity-status percent_complete for a plan that has no KPIs scored
+  // yet, so a brand-new plan doesn't just show an empty/zero ring.
+  const kpiPct = plan.kpi_achievement
+  const overallPct = kpiPct ?? progress?.overall.percent_complete ?? 0
+
+  // Per-pillar bars stay activity-completion-based (not KPI-based) — a
+  // per-pillar KPI figure would need its own activities fetch per pillar
+  // per card, too heavy for a dashboard grid of many plans. That level of
+  // detail lives on the Progress page instead (see ProgressPage.tsx).
+  const bars = (progress?.pillars ?? []).map((p) => ({
+    key: p.pillar_id, label: p.title.slice(0, 2).toUpperCase(), pct: p.percent_complete,
+  }))
 
   return (
     <button
@@ -98,34 +101,25 @@ function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
         </span>
       </div>
 
-      {/* Phase/pillar bars — each has its own tinted track */}
+      {/* Pillar bars — each a small tinted track for that pillar's activity completion */}
       {progress && bars.length > 0 && (
         <div className="space-y-2.5 mb-5">
-          {bars.map((bar) => {
-            const g = plan.plan_type === 'local' ? null : PHASE_GRADIENT[bar.label]
-            return (
-              <div key={bar.key} className="flex items-center gap-3">
-                <span className="text-[10px] font-bold tracking-wider text-ink-400 w-5 shrink-0" title={bar.label}>
-                  {bar.label}
-                </span>
-                <div className={`flex-1 h-1.5 rounded-full ${g ? g.track : 'bg-accent-50'} overflow-hidden`}>
-                  <div
-                    className={`h-full rounded-full bg-gradient-to-r transition-all duration-700 ease-out ${
-                      g
-                        ? g.bar === 'p1' ? 'from-amber-400 to-amber-500'
-                          : g.bar === 'p2' ? 'from-emerald-400 to-emerald-500'
-                          : 'from-violet-400 to-violet-500'
-                        : bar.gradient ?? 'from-accent-400 to-accent-500'
-                    }`}
-                    style={{ width: `${Math.max(0, Math.min(100, bar.pct))}%` }}
-                  />
-                </div>
-                <span className="text-[10px] text-ink-400 tabular-nums w-7 text-right shrink-0">
-                  {Math.round(bar.pct)}%
-                </span>
+          {bars.map((bar) => (
+            <div key={bar.key} className="flex items-center gap-3">
+              <span className="text-[10px] font-bold tracking-wider text-ink-400 w-5 shrink-0" title={bar.label}>
+                {bar.label}
+              </span>
+              <div className="flex-1 h-1.5 rounded-full bg-accent-50 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-accent-400 to-accent-500 transition-all duration-700 ease-out"
+                  style={{ width: `${Math.max(0, Math.min(100, bar.pct))}%` }}
+                />
               </div>
-            )
-          })}
+              <span className="text-[10px] text-ink-400 tabular-nums w-7 text-right shrink-0">
+                {Math.round(bar.pct)}%
+              </span>
+            </div>
+          ))}
         </div>
       )}
 
@@ -386,18 +380,18 @@ export default function DashboardPage() {
       // GET /api/v1/plans never returns `progress` — it's explicitly not a
       // backend field on Plan (see the type's own doc comment); it only
       // comes back from GET /plans/{id}/progress. Without this extra
-      // fetch-and-merge step every PlanCard's ring/phase-bars and this
+      // fetch-and-merge step every PlanCard's ring/pillar-bars and this
       // page's own avg-progress/overdue stats always read as zero, even
       // though ProgressPage.tsx (which does fetch it per plan) shows the
-      // real numbers for the same plans.
+      // real numbers for the same plans. kpi_achievement is fetched the
+      // same way, from each plan's activities — see fetchPlanKpiAchievement.
       const withProgress = await Promise.all(
         data.map(async (p) => {
-          try {
-            const progress = await plansApi.progress(p.id)
-            return { ...p, progress }
-          } catch {
-            return p
-          }
+          const [progress, kpi_achievement] = await Promise.all([
+            plansApi.progress(p.id).catch(() => undefined),
+            fetchPlanKpiAchievement(p.id),
+          ])
+          return progress ? { ...p, progress, kpi_achievement } : { ...p, kpi_achievement }
         })
       )
       setPlans(withProgress)
@@ -418,8 +412,10 @@ export default function DashboardPage() {
 
   const activePlans  = plans.filter((p) => p.status === 'active').length
   const totalOverdue = plans.reduce((s, p) => s + (p.progress?.overall.overdue ?? 0), 0)
+  // Same KPI-achievement-first, activity-status-fallback rule as PlanCard's
+  // ring — see the Plan.kpi_achievement doc comment in types/index.ts.
   const avgProgress  = plans.length
-    ? Math.round(plans.reduce((s, p) => s + (p.progress?.overall.percent_complete ?? 0), 0) / plans.length) : 0
+    ? Math.round(plans.reduce((s, p) => s + (p.kpi_achievement ?? p.progress?.overall.percent_complete ?? 0), 0) / plans.length) : 0
   const recentPlans  = [...plans]
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
     .slice(0, 6)

@@ -12,6 +12,7 @@ import { usePermission } from '../hooks'
 import { Badge, ProgressBar, EmptyState } from '../components/ui'
 import CreatePlanModal from '../components/plans/CreatePlanModal'
 import { SHORTCUT_CREATE_EVENT } from '../components/layout/AppShell'
+import { fetchPlanKpiAchievement } from '../components/activities/TrackingModule'
 import type { Plan, PlanStatus } from '../types'
 
 const STATUS_VARIANT: Record<PlanStatus, 'neutral' | 'p1' | 'p2' | 'p3' | 'success'> = {
@@ -186,14 +187,15 @@ export default function PlansPage() {
       // fetch-and-merge step, the progress column/sort and every card's
       // overall % always read as zero, even though ProgressPage.tsx (which
       // does fetch it per plan) shows the real numbers for the same plans.
+      // kpi_achievement is fetched the same way, from each plan's
+      // activities — see fetchPlanKpiAchievement.
       const withProgress = await Promise.all(
         data.map(async (p) => {
-          try {
-            const progress = await plansApi.progress(p.id)
-            return { ...p, progress }
-          } catch {
-            return p
-          }
+          const [progress, kpi_achievement] = await Promise.all([
+            plansApi.progress(p.id).catch(() => undefined),
+            fetchPlanKpiAchievement(p.id),
+          ])
+          return progress ? { ...p, progress, kpi_achievement } : { ...p, kpi_achievement }
         })
       )
       setPlans(withProgress)
@@ -227,7 +229,7 @@ export default function PlansPage() {
       if (sortKey === 'title')      { av = a.title; bv = b.title }
       if (sortKey === 'status')     { av = a.status; bv = b.status }
       if (sortKey === 'updated_at') { av = a.updated_at; bv = b.updated_at }
-      if (sortKey === 'progress')   { av = a.progress?.overall.percent_complete ?? 0; bv = b.progress?.overall.percent_complete ?? 0 }
+      if (sortKey === 'progress')   { av = a.kpi_achievement ?? a.progress?.overall.percent_complete ?? 0; bv = b.kpi_achievement ?? b.progress?.overall.percent_complete ?? 0 }
       if (av < bv) return sortDir === 'asc' ? -1 : 1
       if (av > bv) return sortDir === 'asc' ? 1 : -1
       return 0
@@ -429,7 +431,10 @@ export default function PlansPage() {
               {paginated.map((plan) => {
                 const statusLabel = t(`plan.status.${plan.status}`)
                 const statusVariant = STATUS_VARIANT[plan.status]
-                const overallPct = plan.progress?.overall.percent_complete ?? 0
+                // KPI achievement is what "progress" means now — falls
+                // back to activity-status percent_complete for a plan with
+                // no KPIs scored yet (see Plan.kpi_achievement in types).
+                const overallPct = plan.kpi_achievement ?? plan.progress?.overall.percent_complete ?? 0
                 const overdue = plan.progress?.overall.overdue ?? 0
                 const isSelected = selected.has(plan.id)
 
