@@ -2,10 +2,10 @@ import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, Clock, TrendingUp, GitBranch, FlaskConical } from 'lucide-react'
-import { plansApi, activitiesApi } from '../api/endpoints'
+import { plansApi, activitiesApi, pillarsApi } from '../api/endpoints'
 import { ProgressBar } from '../components/ui'
-import TransPhaseNetwork from '../components/progress/TransPhaseNetwork'
-import type { Plan, Activity, ActivityLink } from '../types'
+import ActivityDependencyNetwork from '../components/progress/ActivityDependencyNetwork'
+import type { Plan, Activity, ActivityLink, StrategicPillar, StrategicObjective } from '../types'
 
 function PlanProgressCard({ plan }: { plan: Plan }) {
   const { t, i18n } = useTranslation()
@@ -117,6 +117,8 @@ export default function ProgressPage() {
   const [networkPlanId, setNetworkPlanId] = useState<string>('')
   const [networkActivities, setNetworkActivities] = useState<Activity[]>([])
   const [networkLinks, setNetworkLinks] = useState<ActivityLink[]>([])
+  const [networkPillars, setNetworkPillars] = useState<StrategicPillar[]>([])
+  const [networkObjectives, setNetworkObjectives] = useState<StrategicObjective[]>([])
   const [networkLoading, setNetworkLoading] = useState(false)
 
   useEffect(() => {
@@ -147,26 +149,35 @@ export default function ProgressPage() {
       .finally(() => setLoading(false))
   }, [filterPlan]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Extracted so it can be reused as TransPhaseNetwork's onLinksChanged
-  // callback (after accepting an AI-suggested link) without duplicating the
-  // fetch logic. `silent` skips the loading-skeleton toggle — the diagram
-  // is already visible and interactive at that point, so swapping it for a
-  // pulsing placeholder just to add one edge would be a jarring flash for
-  // what's normally a near-instant refetch.
+  // Extracted so it can be reused as ActivityDependencyNetwork's
+  // onLinksChanged callback (after accepting an AI-suggested link) without
+  // duplicating the fetch logic. `silent` skips the loading-skeleton toggle
+  // — the diagram is already visible and interactive at that point, so
+  // swapping it for a pulsing placeholder just to add one edge would be a
+  // jarring flash for what's normally a near-instant refetch. Pillars/
+  // objectives are re-fetched too even on a silent refresh — cheap, and
+  // covers the (rare) case where a pillar was renamed or added elsewhere
+  // while the diagram was open.
   const fetchNetworkData = useCallback((planId: string, opts?: { silent?: boolean }) => {
     if (!opts?.silent) setNetworkLoading(true)
     return Promise.all([
       activitiesApi.list(planId),
       activitiesApi.listLinks(planId),
+      pillarsApi.list(planId),
+      pillarsApi.listObjectives(planId),
     ])
-      .then(([acts, links]) => {
+      .then(([acts, links, pillars, objectives]) => {
         setNetworkActivities(acts)
         setNetworkLinks(links)
+        setNetworkPillars(pillars)
+        setNetworkObjectives(objectives)
       })
       .catch(() => {
         if (!opts?.silent) {
           setNetworkActivities([])
           setNetworkLinks([])
+          setNetworkPillars([])
+          setNetworkObjectives([])
         }
         // A silent refresh failing just leaves existing data in place —
         // the newly-accepted link won't render until the next full load,
@@ -248,9 +259,11 @@ export default function ProgressPage() {
               {networkLoading ? (
                 <div className="h-[560px] bg-ink-100 rounded-2xl animate-pulse" />
               ) : (
-                <TransPhaseNetwork
+                <ActivityDependencyNetwork
                   activities={networkActivities}
                   links={networkLinks}
+                  pillars={networkPillars}
+                  objectives={networkObjectives}
                   planId={networkPlanId}
                   onLinksChanged={() => fetchNetworkData(networkPlanId, { silent: true })}
                 />

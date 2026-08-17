@@ -5,7 +5,7 @@ import {
   Clock, AlertTriangle, X, Loader2,
 } from 'lucide-react'
 import { aiApi, activitiesApi } from '../../api/endpoints'
-import type { Activity, ActivityLink, Phase, ActivityStatus, AiLinkSuggestion } from '../../types'
+import type { Activity, ActivityLink, ActivityStatus, AiLinkSuggestion, StrategicPillar, StrategicObjective } from '../../types'
 
 // ─── Layout constants ─────────────────────────────────────────────────────
 
@@ -17,13 +17,38 @@ const ROW_GAP = 28
 const TOP_PADDING = 70
 const SIDE_PADDING = 60
 
-const PHASES: Phase[] = ['P1', 'P2', 'P3']
+// Columns used to be a fixed P1/P2/P3 (Activity.phase). Since migration
+// 014_collapse_plan_types removed phases, every activity now belongs either
+// to a Strategic Objective (which belongs to exactly one Strategic Pillar)
+// or, if it's a standalone Advanced Research activity, to none — so columns
+// are built dynamically instead: one per pillar the plan actually has (in
+// pillar display order), plus one more for Advanced Research if the plan
+// has any. See buildColumns below.
+const ADVANCED_RESEARCH_KEY = '__advanced_research__'
+const UNCATEGORIZED_KEY = '__uncategorized__' // defensive fallback only — see buildColumns
 
-const PHASE_META: Record<Phase, { label: string; sub: string; accent: string; bg: string; border: string; dot: string }> = {
-  P1: { label: 'P1', sub: 'Analysis',   accent: '#D97706', bg: '#FEF3C7', border: '#F59E0B', dot: '#F59E0B' },
-  P2: { label: 'P2', sub: 'Strategy',   accent: '#059669', bg: '#D1FAE5', border: '#10B981', dot: '#10B981' },
-  P3: { label: 'P3', sub: 'Operations', accent: '#7C3AED', bg: '#EDE9FE', border: '#8B5CF6', dot: '#8B5CF6' },
+interface ColumnMeta {
+  key: string
+  label: string
+  sub: string
+  accent: string
+  bg: string
+  border: string
+  dot: string
 }
+
+// Cycled by column index rather than fixed per-pillar — a plan can have any
+// number of pillars, unlike the old fixed 3-phase palette.
+const PILLAR_PALETTE: { accent: string; bg: string; border: string }[] = [
+  { accent: '#D97706', bg: '#FEF3C7', border: '#F59E0B' }, // amber
+  { accent: '#059669', bg: '#D1FAE5', border: '#10B981' }, // emerald
+  { accent: '#2563EB', bg: '#DBEAFE', border: '#3B82F6' }, // blue
+  { accent: '#DB2777', bg: '#FCE7F3', border: '#EC4899' }, // pink
+  { accent: '#7C3AED', bg: '#EDE9FE', border: '#8B5CF6' }, // violet
+  { accent: '#CA8A04', bg: '#FEF9C3', border: '#EAB308' }, // yellow
+]
+const ADVANCED_RESEARCH_PALETTE = { accent: '#0D9488', bg: '#CCFBF1', border: '#14B8A6' } // teal — distinct from AI-suggestion purple
+const UNCATEGORIZED_PALETTE = { accent: '#6B7280', bg: '#F3F4F6', border: '#9CA3AF' } // grey
 
 const STATUS_META: Record<ActivityStatus, { label: string; color: string; fill: string }> = {
   not_started: { label: 'Not started',  color: '#94A3B8', fill: '#F1F5F9' },
@@ -49,13 +74,66 @@ function linkMeta(type: string) {
   return LINK_META[type] ?? DEFAULT_LINK_META
 }
 
+// ─── Column construction ────────────────────────────────────────────────────
+
+// Builds the ordered column list for a plan: one per pillar (in display
+// order), then Advanced Research (only if the plan actually has any —
+// unlike pillars, it's optional so an empty column would be noise), then
+// Uncategorized (only if some activity's objective_id doesn't resolve to
+// any pillar we know about — shouldn't happen in practice, but activities
+// and pillars/objectives are fetched separately in ProgressPage.tsx, so a
+// defensive fallback beats silently dropping a node from the diagram).
+function buildColumns(
+  pillars: StrategicPillar[],
+  activities: Activity[],
+  objectiveToPillar: Map<string, string>,
+): ColumnMeta[] {
+  const cols: ColumnMeta[] = pillars
+    .slice()
+    .sort((a, b) => a.user_order - b.user_order)
+    .map((p, i) => {
+      const palette = PILLAR_PALETTE[i % PILLAR_PALETTE.length]
+      return { key: p.id, label: p.title, sub: 'Pillar', ...palette, dot: palette.border }
+    })
+
+  if (activities.some((a) => a.category === 'advanced_research')) {
+    cols.push({
+      key: ADVANCED_RESEARCH_KEY, label: 'Advanced Research', sub: 'Plan-level',
+      ...ADVANCED_RESEARCH_PALETTE, dot: ADVANCED_RESEARCH_PALETTE.border,
+    })
+  }
+
+  const knownKeys = new Set(cols.map((c) => c.key))
+  const hasUncategorized = activities.some((a) => {
+    const key = columnKeyFor(a, objectiveToPillar)
+    return key === UNCATEGORIZED_KEY || !knownKeys.has(key)
+  })
+  if (hasUncategorized) {
+    cols.push({
+      key: UNCATEGORIZED_KEY, label: 'Uncategorized', sub: '',
+      ...UNCATEGORIZED_PALETTE, dot: UNCATEGORIZED_PALETTE.border,
+    })
+  }
+
+  return cols
+}
+
+function columnKeyFor(activity: Activity, objectiveToPillar: Map<string, string>): string {
+  if (activity.category === 'advanced_research') return ADVANCED_RESEARCH_KEY
+  if (activity.objective_id) {
+    const pillarId = objectiveToPillar.get(activity.objective_id)
+    if (pillarId) return pillarId
+  }
+  return UNCATEGORIZED_KEY
+}
+
 // ─── Layout computation ─────────────────────────────────────────────────────
 
 interface LayoutNode {
   activity: Activity
   x: number
   y: number
-  column: Phase
+  column: string // ColumnMeta.key
 }
 
 interface LayoutResult {
@@ -65,25 +143,34 @@ interface LayoutResult {
 }
 
 /**
- * Activities are grouped into one of three columns by phase (a label only —
- * NOT a pipeline stage). Within a column, nodes are ordered to minimise edge
- * crossings: nodes with more cross-phase out-degree float toward the top,
- * and we do one pass of barycenter ordering based on linked node positions.
+ * Activities are grouped into one column per pillar (plus Advanced Research
+ * / Uncategorized where applicable — see buildColumns). Within a column,
+ * nodes are ordered to minimise edge crossings: nodes with more cross-column
+ * out-degree float toward the top, via one pass of barycenter ordering based
+ * on linked node positions.
  */
-function computeLayout(activities: Activity[], links: ActivityLink[]): LayoutResult {
-  const byPhase: Record<Phase, Activity[]> = { P1: [], P2: [], P3: [] }
-  activities.forEach((a) => byPhase[a.phase]?.push(a))
+function computeLayout(
+  activities: Activity[],
+  links: ActivityLink[],
+  columns: ColumnMeta[],
+  objectiveToPillar: Map<string, string>,
+): LayoutResult {
+  const byColumn = new Map<string, Activity[]>(columns.map((c) => [c.key, []]))
+  activities.forEach((a) => {
+    const key = columnKeyFor(a, objectiveToPillar)
+    byColumn.get(key)?.push(a)
+  })
 
   // Initial order: by user_order (creation sequence) within each column
-  PHASES.forEach((p) => byPhase[p].sort((a, b) => a.user_order - b.user_order))
+  columns.forEach((c) => byColumn.get(c.key)?.sort((a, b) => a.user_order - b.user_order))
 
-  const positions = new Map<string, { x: number; y: number; column: Phase }>()
+  const positions = new Map<string, { x: number; y: number; column: string }>()
 
-  PHASES.forEach((phase, colIdx) => {
+  columns.forEach((col, colIdx) => {
     const x = SIDE_PADDING + colIdx * (COLUMN_WIDTH + COLUMN_GAP)
-    byPhase[phase].forEach((act, rowIdx) => {
+    ;(byColumn.get(col.key) ?? []).forEach((act, rowIdx) => {
       const y = TOP_PADDING + rowIdx * (NODE_HEIGHT + ROW_GAP)
-      positions.set(act.id, { x, y, column: phase })
+      positions.set(act.id, { x, y, column: col.key })
     })
   })
 
@@ -96,8 +183,8 @@ function computeLayout(activities: Activity[], links: ActivityLink[]): LayoutRes
     linksByTarget.set(l.target_id, [...(linksByTarget.get(l.target_id) ?? []), l.source_id])
   })
 
-  PHASES.forEach((phase, colIdx) => {
-    const acts = byPhase[phase]
+  columns.forEach((col, colIdx) => {
+    const acts = byColumn.get(col.key) ?? []
     const scored = acts.map((act) => {
       const neighbours = [
         ...(linksBySource.get(act.id) ?? []),
@@ -113,7 +200,7 @@ function computeLayout(activities: Activity[], links: ActivityLink[]): LayoutRes
     const x = SIDE_PADDING + colIdx * (COLUMN_WIDTH + COLUMN_GAP)
     scored.forEach(({ act }, rowIdx) => {
       const y = TOP_PADDING + rowIdx * (NODE_HEIGHT + ROW_GAP)
-      positions.set(act.id, { x, y, column: phase })
+      positions.set(act.id, { x, y, column: col.key })
     })
   })
 
@@ -125,8 +212,8 @@ function computeLayout(activities: Activity[], links: ActivityLink[]): LayoutRes
     })
     .filter((n): n is LayoutNode => n !== null)
 
-  const maxRows = Math.max(1, ...PHASES.map((p) => byPhase[p].length))
-  const width = SIDE_PADDING * 2 + PHASES.length * COLUMN_WIDTH + (PHASES.length - 1) * COLUMN_GAP
+  const maxRows = Math.max(1, ...columns.map((c) => (byColumn.get(c.key) ?? []).length))
+  const width = SIDE_PADDING * 2 + Math.max(1, columns.length) * COLUMN_WIDTH + Math.max(0, columns.length - 1) * COLUMN_GAP
   const height = TOP_PADDING + maxRows * (NODE_HEIGHT + ROW_GAP) + 40
 
   return { nodes, width, height }
@@ -141,20 +228,24 @@ function typeLabel(type: string): string {
   return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+function initialFor(label: string): string {
+  return label.trim().slice(0, 2).toUpperCase()
+}
+
 // ─── Edge path — smooth cubic bezier, curving toward the gap between columns ─
 
 function edgePath(
-  source: { x: number; y: number; column: Phase },
-  target: { x: number; y: number; column: Phase },
+  source: { x: number; y: number; column: string },
+  target: { x: number; y: number; column: string },
 ): string {
   const sameColumn = source.column === target.column
-  const sx = source.x + (sameColumn ? NODE_WIDTH : NODE_WIDTH)
+  const sx = source.x + NODE_WIDTH
   const sy = source.y + NODE_HEIGHT / 2
   const tx = sameColumn ? target.x + NODE_WIDTH : target.x
   const ty = target.y + NODE_HEIGHT / 2
 
   if (sameColumn) {
-    // Same-phase link: loop out to the right and back
+    // Same-column link: loop out to the right and back
     const bulge = 36
     return `M ${sx} ${sy} C ${sx + bulge} ${sy}, ${sx + bulge} ${ty}, ${sx} ${ty}`
   }
@@ -165,9 +256,11 @@ function edgePath(
 
 // ─── Component ────────────────────────────────────────────────────────────
 
-interface TransPhaseNetworkProps {
+interface ActivityDependencyNetworkProps {
   activities: Activity[]
   links: ActivityLink[]
+  pillars: StrategicPillar[]
+  objectives: StrategicObjective[]
   planId: string
   /**
    * Called after an AI-suggested link is accepted and successfully saved.
@@ -180,7 +273,9 @@ interface TransPhaseNetworkProps {
   onLinksChanged?: () => void
 }
 
-export default function TransPhaseNetwork({ activities, links, planId, onLinksChanged }: TransPhaseNetworkProps) {
+export default function ActivityDependencyNetwork({
+  activities, links, pillars, objectives, planId, onLinksChanged,
+}: ActivityDependencyNetworkProps) {
   const navigate = useNavigate()
   const containerRef = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(1)
@@ -250,9 +345,27 @@ export default function TransPhaseNetwork({ activities, links, planId, onLinksCh
     }
   }, [onLinksChanged])
 
+  const objectiveToPillar = useMemo(() => {
+    const m = new Map<string, string>()
+    objectives.forEach((o) => m.set(o.id, o.pillar_id))
+    return m
+  }, [objectives])
+
+  const objectiveTitle = useMemo(() => {
+    const m = new Map<string, string>()
+    objectives.forEach((o) => m.set(o.id, o.title))
+    return m
+  }, [objectives])
+
+  const columns = useMemo(
+    () => buildColumns(pillars, activities, objectiveToPillar),
+    [pillars, activities, objectiveToPillar],
+  )
+  const columnByKey = useMemo(() => new Map(columns.map((c) => [c.key, c])), [columns])
+
   const { nodes, width, height } = useMemo(
-    () => computeLayout(activities, links),
-    [activities, links],
+    () => computeLayout(activities, links, columns, objectiveToPillar),
+    [activities, links, columns, objectiveToPillar],
   )
 
   const nodeById = useMemo(() => {
@@ -344,7 +457,7 @@ export default function TransPhaseNetwork({ activities, links, planId, onLinksCh
     return types
   }, [linkCounts])
 
-  const crossPhaseCount = useMemo(
+  const crossColumnCount = useMemo(
     () => links.filter((l) => nodeById.get(l.source_id)?.column !== nodeById.get(l.target_id)?.column).length,
     [links, nodeById],
   )
@@ -356,10 +469,10 @@ export default function TransPhaseNetwork({ activities, links, planId, onLinksCh
         <div>
           <div className="flex items-center gap-2">
             <GitBranch className="size-4 text-accent" />
-            <h2 className="font-display text-sm font-bold text-ink-800">Trans-Phase Network</h2>
+            <h2 className="font-display text-sm font-bold text-ink-800">Activity Dependency Network</h2>
           </div>
           <p className="text-xs text-ink-400 mt-0.5">
-            {activities.length} activities · {links.length} links · {crossPhaseCount} cross-phase
+            {activities.length} activities · {links.length} links · {crossColumnCount} cross-pillar
           </p>
         </div>
 
@@ -418,18 +531,17 @@ export default function TransPhaseNetwork({ activities, links, planId, onLinksCh
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        {/* Phase column headers — fixed, not part of the pan/zoom transform */}
+        {/* Column background bands — fixed, not part of the pan/zoom transform */}
         <div className="absolute top-0 left-0 right-0 h-full pointer-events-none z-0">
           <svg width="100%" height="100%" className="absolute inset-0">
             <g transform={`translate(${pan.x}, 0) scale(${zoom}, 1)`} style={{ transformOrigin: '0 0' }}>
-              {PHASES.map((phase, idx) => {
+              {columns.map((col, idx) => {
                 const x = SIDE_PADDING + idx * (COLUMN_WIDTH + COLUMN_GAP)
-                const meta = PHASE_META[phase]
                 return (
-                  <g key={phase} transform={`translate(${x}, 0)`}>
+                  <g key={col.key} transform={`translate(${x}, 0)`}>
                     <rect
                       x={-16} y={0} width={NODE_WIDTH + 32} height={2000}
-                      fill={meta.bg} opacity={0.35}
+                      fill={col.bg} opacity={0.35}
                     />
                   </g>
                 )
@@ -449,17 +561,17 @@ export default function TransPhaseNetwork({ activities, links, planId, onLinksCh
         >
           <svg width={width} height={height} className="block">
             {/* Column header labels inside SVG so they scroll with content vertically but stay at top */}
-            {PHASES.map((phase, idx) => {
+            {columns.map((col, idx) => {
               const x = SIDE_PADDING + idx * (COLUMN_WIDTH + COLUMN_GAP)
-              const meta = PHASE_META[phase]
+              const label = col.label.length > 22 ? col.label.slice(0, 20) + '…' : col.label
               return (
-                <g key={`hdr-${phase}`} transform={`translate(${x}, 16)`}>
-                  <rect x={0} y={0} width={36} height={20} rx={6} fill={meta.border} />
-                  <text x={18} y={14} textAnchor="middle" fontSize={11} fontWeight={700} fill="white" fontFamily="Arial, sans-serif">
-                    {meta.label}
+                <g key={`hdr-${col.key}`} transform={`translate(${x}, 16)`}>
+                  <rect x={0} y={0} width={26} height={20} rx={6} fill={col.border} />
+                  <text x={13} y={14} textAnchor="middle" fontSize={10} fontWeight={700} fill="white" fontFamily="Arial, sans-serif">
+                    {initialFor(col.label)}
                   </text>
-                  <text x={44} y={14} fontSize={12} fontWeight={600} fill={meta.accent} fontFamily="Arial, sans-serif">
-                    {meta.sub}
+                  <text x={34} y={14} fontSize={12} fontWeight={600} fill={col.accent} fontFamily="Arial, sans-serif">
+                    {label}
                   </text>
                 </g>
               )
@@ -504,8 +616,8 @@ export default function TransPhaseNetwork({ activities, links, planId, onLinksCh
             {/* Nodes */}
             <g>
               {nodes.map((node) => {
-                const { activity, x, y } = node
-                const meta = PHASE_META[activity.phase]
+                const { activity, x, y, column } = node
+                const meta = columnByKey.get(column) ?? { border: UNCATEGORIZED_PALETTE.border } as ColumnMeta
                 const statusMeta = STATUS_META[activity.status]
                 const overdue = isOverdue(activity)
                 const isFocused = connectedIds?.has(activity.id)
@@ -532,7 +644,7 @@ export default function TransPhaseNetwork({ activities, links, planId, onLinksCh
                       strokeWidth={isSelected ? 2.5 : isFocused ? 2 : 1.5}
                       style={{ filter: isSelected ? 'drop-shadow(0 4px 10px rgba(0,0,0,0.12))' : 'drop-shadow(0 1px 2px rgba(0,0,0,0.04))' }}
                     />
-                    {/* Phase accent bar */}
+                    {/* Column accent bar */}
                     <rect x={0} y={0} width={5} height={NODE_HEIGHT} rx={2.5} fill={meta.border} />
 
                     {/* Status dot */}
@@ -568,7 +680,7 @@ export default function TransPhaseNetwork({ activities, links, planId, onLinksCh
         {/* Empty state */}
         {nodes.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-sm text-ink-400">No activities yet — add activities to any phase to see the network.</p>
+            <p className="text-sm text-ink-400">No activities yet — add activities under any objective, or to Advanced Research, to see the network.</p>
           </div>
         )}
       </div>
@@ -659,6 +771,8 @@ export default function TransPhaseNetwork({ activities, links, planId, onLinksCh
             node={selectedNode}
             allLinks={links}
             nodeById={nodeById}
+            columnByKey={columnByKey}
+            objectiveTitle={objectiveTitle}
             onClose={() => setSelectedId(null)}
             onOpen={() => navigate(`/plans/${planId}/activities/${selectedNode.activity.id}`)}
             onFocusNode={(id) => setSelectedId(id)}
@@ -672,19 +786,27 @@ export default function TransPhaseNetwork({ activities, links, planId, onLinksCh
 // ─── Detail panel for selected node ────────────────────────────────────────
 
 function NodeDetailPanel({
-  node, allLinks, nodeById, onClose, onOpen, onFocusNode,
+  node, allLinks, nodeById, columnByKey, objectiveTitle, onClose, onOpen, onFocusNode,
 }: {
   node: LayoutNode
   allLinks: ActivityLink[]
   nodeById: Map<string, LayoutNode>
+  columnByKey: Map<string, ColumnMeta>
+  objectiveTitle: Map<string, string>
   onClose: () => void
   onOpen: () => void
   onFocusNode: (id: string) => void
 }) {
   const { activity } = node
-  const meta = PHASE_META[activity.phase]
+  const meta = columnByKey.get(node.column) ?? { label: 'Uncategorized', border: UNCATEGORIZED_PALETTE.border } as ColumnMeta
   const statusMeta = STATUS_META[activity.status]
   const overdue = isOverdue(activity)
+  // For a pillar column, show "Pillar Title · Objective Title" if we can
+  // resolve the objective; Advanced Research/Uncategorized have no
+  // objective, so just the column label.
+  const subtitle = activity.objective_id && objectiveTitle.has(activity.objective_id)
+    ? `${meta.label} · ${objectiveTitle.get(activity.objective_id)}`
+    : meta.label
 
   const upstream = allLinks.filter((l) => l.target_id === activity.id)
   const downstream = allLinks.filter((l) => l.source_id === activity.id)
@@ -697,11 +819,11 @@ function NodeDetailPanel({
             className="inline-flex items-center justify-center w-9 h-9 rounded-xl text-xs font-bold text-white shrink-0"
             style={{ backgroundColor: meta.border }}
           >
-            {activity.phase}
+            {initialFor(meta.label)}
           </span>
           <div>
             <h3 className="text-sm font-semibold text-ink-900">{activity.title}</h3>
-            <p className="text-xs text-ink-400">{typeLabel(activity.type)} · {meta.sub}</p>
+            <p className="text-xs text-ink-400">{typeLabel(activity.type)} · {subtitle}</p>
           </div>
         </div>
         <button onClick={onClose} className="text-ink-300 hover:text-ink-600 transition-colors">
@@ -742,7 +864,7 @@ function NodeDetailPanel({
               {upstream.map((l) => {
                 const src = nodeById.get(l.source_id)
                 if (!src) return null
-                const srcMeta = PHASE_META[src.activity.phase]
+                const srcMeta = columnByKey.get(src.column) ?? { border: UNCATEGORIZED_PALETTE.border } as ColumnMeta
                 return (
                   <button
                     key={l.id}
@@ -750,7 +872,7 @@ function NodeDetailPanel({
                     className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 rounded-lg hover:bg-ink-50 transition-colors group"
                   >
                     <span className="size-5 rounded-md flex items-center justify-center text-[10px] font-bold text-white shrink-0" style={{ backgroundColor: srcMeta.border }}>
-                      {src.activity.phase}
+                      {initialFor(srcMeta.label ?? '?')}
                     </span>
                     <span className="text-xs text-ink-700 truncate group-hover:text-accent">{src.activity.title}</span>
                     {l.link_type === 'ai_suggested' && <Sparkles className="size-3 text-purple-400 shrink-0 ml-auto" />}
@@ -773,7 +895,7 @@ function NodeDetailPanel({
               {downstream.map((l) => {
                 const tgt = nodeById.get(l.target_id)
                 if (!tgt) return null
-                const tgtMeta = PHASE_META[tgt.activity.phase]
+                const tgtMeta = columnByKey.get(tgt.column) ?? { border: UNCATEGORIZED_PALETTE.border } as ColumnMeta
                 return (
                   <button
                     key={l.id}
@@ -781,7 +903,7 @@ function NodeDetailPanel({
                     className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 rounded-lg hover:bg-ink-50 transition-colors group"
                   >
                     <span className="size-5 rounded-md flex items-center justify-center text-[10px] font-bold text-white shrink-0" style={{ backgroundColor: tgtMeta.border }}>
-                      {tgt.activity.phase}
+                      {initialFor(tgtMeta.label ?? '?')}
                     </span>
                     <span className="text-xs text-ink-700 truncate group-hover:text-accent">{tgt.activity.title}</span>
                     {l.link_type === 'ai_suggested' && <Sparkles className="size-3 text-purple-400 shrink-0 ml-auto" />}

@@ -18,7 +18,7 @@
    - [4.10 Activity Links](#410-activity-links)
    - [4.11 Plan Viewers](#411-plan-viewers)
    - [4.12 Strategic Pillars & Objectives](#412-strategic-pillars--objectives-local-plans)
-   - [4.13 Local Plan Chapters (2, 3, 6, 7)](#413-local-plan-chapters-2-3-6-7)
+   - [4.13 Plan Chapters (2, 3, 6, 7)](#413-plan-chapters-2-3-6-7)
    - [4.14 Milestones](#414-milestones)
    - [4.15 AI Assistant](#415-ai-assistant--apiv1ai)
    - [4.16 Reports](#416-reports)
@@ -34,14 +34,31 @@ stale — kept only because it's low-risk framing, not a technical claim. Verify
 against current product/marketing material before reusing externally.)*
 
 StratPlan (internally `spe-light`) is a self-hosted, multi-tenant strategic
-planning and execution platform. Organisations create multi-phase strategic
-plans and track activities against them, with optional AI-assisted drafting.
+planning and execution platform. Organisations create strategic plans built
+around user-defined Strategic Pillars and Objectives (the ESWAMCU standard),
+and track activities against them, with optional AI-assisted drafting.
 
-Two plan structures exist side by side (see §3, **Plan**): a fixed **P1 /
-P2 / P3** phase model (Analysis → Strategy → Operations), and a **local
-("Eswatini Standard")** model with user-defined Strategic Pillars/Objectives
-and six additional plan "chapters." Activities in either model can be created
-in any order — phase/pillar assignment is a label, not a sequencing gate.
+Every plan uses the same structure (see §3, **Plan**): Strategic Pillars →
+Strategic Objectives (KPAs) → Activities, plus six additional plan
+"chapters" (Vision & Mission, Situational Analysis, Organisational
+Structure, Monitoring & Evaluation, Tracking, and an optional Advanced
+Research bucket for standalone research activities — Business Model Canvas,
+Competitive Analysis, Risk Register, and similar — that don't nest under
+any pillar). Activities can be created in any order — pillar/objective
+assignment is a label, not a sequencing gate.
+
+> **Migration note:** an earlier revision of the product also offered a
+> fixed **P1 / P2 / P3** phase model ("international" plans) alongside the
+> pillar-based ("local") model, selectable at plan creation. Migration
+> `014_collapse_plan_types` retired that distinction — `Plan.plan_type` and
+> `Activity.phase` no longer exist, every plan is the pillar/objective
+> structure, and the fixed P1/P2/P3 activity types that had no equivalent
+> elsewhere (Risk Register, Business Model Canvas, OKR/Balanced Scorecard,
+> Operational Roadmap, Resource Plan, Budget Allocation, Competitive
+> Analysis) moved to the optional Advanced Research bucket. Anything below
+> describing "phase," "P1/P2/P3," "international plans," or "local plans"
+> as a live distinction is describing the pre-migration model — flagged
+> inline where it still appears pending a full pass.
 
 **Tech stack** (per README; not independently re-verified against `go.mod`/
 `config.go` in this pass): Go + [Chi](https://github.com/go-chi/chi) router,
@@ -164,29 +181,37 @@ Only fields touched by endpoints in this document — not a full schema dump.
 | `title` | string | required |
 | `description` | string \| null | |
 | `status` | `draft`\|`active`\|`review`\|`completed`\|`archived` | |
-| `plan_type` | `international`\|`local` | **immutable after creation** |
 | `start_date`, `end_date` | date \| null | |
-| `vision`, `mission` | string \| null | local plans only, singleton text (§4.13) |
+| `vision`, `mission` | string \| null | singleton text (§4.13) |
 | `created_at`, `updated_at` | timestamp | |
+
+> `plan_type` (`international`\|`local`) existed pre-migration; removed by
+> `014_collapse_plan_types`. Every plan now has `vision`/`mission` and
+> access to every chapter endpoint in §4.12–4.13 — there's no longer a plan
+> that 400s on `POST /plans/{id}/pillars`.
 
 ### Activity
 | Field | Type | Notes |
 |---|---|---|
 | `id`, `plan_id`, `org_id` | uuid | |
-| `phase` | `P1`\|`P2`\|`P3` \| null | set iff parent plan is `international` |
-| `objective_id` | uuid \| null | set iff parent plan is `local` |
-| `type` | string | free text at this layer; frontend constrains via a fixed picker |
+| `objective_id` | uuid \| null | set for an ordinary activity nested under a Strategic Objective |
+| `category` | `advanced_research` \| null | set instead of `objective_id` for a standalone Advanced Research activity |
+| `type` | string | free text for objective-nested activities; validated against a fixed 7-value set (§4.8) when `category` is `advanced_research` |
 | `title` | string | required |
 | `status` | `not_started`\|`in_progress`\|`review`\|`complete` | |
-| `content` | object | shape depends on `type` |
+| `content` | object | shape depends on `type` — only meaningful for Advanced Research activities |
 | `ai_draft` | object \| null | populated by §4.15, read-only here |
 | `assigned_to` | uuid[] | |
 | `due_date` | date \| null | |
-| `kpis` | `KPI[]` | **local plans only** — international activities always `[]` |
+| `kpis` | `KPI[]` | only meaningful for objective-nested activities — Advanced Research activities always `[]` |
 | `user_order`, `created_at`, `updated_at` | | |
 
-A DB constraint enforces exactly one of `phase`/`objective_id` set, never
+A DB constraint enforces exactly one of `objective_id`/`category` set, never
 both, never neither — validated at the app layer too, for a readable error.
+
+> `phase` (`P1`\|`P2`\|`P3`) existed pre-migration, set iff the parent plan
+> was `international`. Removed by `014_collapse_plan_types` — Activity has
+> no `phase` field any more.
 
 ### KPI
 Embedded inline in `Activity.kpis` — no standalone table/endpoint.
@@ -207,9 +232,10 @@ Embedded inline in `Activity.kpis` — no standalone table/endpoint.
 > every code path was updated for this move.
 
 ### StrategicPillar / StrategicObjective
-Local-plan only — the user-defined equivalent of a Phase, two levels deep.
-`{id, plan_id, org_id, title, user_order, created_at, updated_at}` +
-`pillar_id` on the objective (which pillar it nests under).
+The user-defined top-level grouping for a plan, two levels deep — every
+plan has these now (no longer local-plan-only). `{id, plan_id, org_id,
+title, user_order, created_at, updated_at}` + `pillar_id` on the objective
+(which pillar it nests under).
 
 ### CoreValue
 `{id, plan_id, org_id, name, description?, user_order}`
@@ -244,27 +270,37 @@ cascade-delete them.
 — directional, source → target; `link_type` defaults to `manual`.
 
 ### PlanProgress
-Returned by `GET /plans/{planID}/progress`. Exactly one of `phases`/`pillars`
-populated, matching `plan_type`:
+Returned by `GET /plans/{planID}/progress`. `pillars` is always present now
+(every plan has pillars); `advanced_research` is present only once the plan
+has at least one Advanced Research activity:
 ```jsonc
 {
-  "plan_id": "uuid", "status": "active", "plan_type": "local",
-  "phases": null,
+  "plan_id": "uuid", "status": "active",
   "pillars": [{ "pillar_id": "uuid", "title": "...", "total": 8, "complete": 3,
                 "in_progress": 4, "overdue": 1, "percent_complete": 37.5 }],
-  "overall": { "total": 8, "complete": 3, "in_progress": 4, "overdue": 1, "percent_complete": 37.5 },
+  "advanced_research": { "total": 2, "complete": 1, "in_progress": 1,
+                          "overdue": 0, "percent_complete": 50.0 },
+  "overall": { "total": 10, "complete": 4, "in_progress": 5, "overdue": 1, "percent_complete": 40.0 },
   "milestones": { "total": 5, "reached": 2, "missed": 1, "pending": 2 }
 }
 ```
 `percent_complete = complete/total*100`, or `0` if `total` is 0. A pillar
 with zero activities still appears (all-zero counts), not dropped.
+`overall` covers every activity in the plan — pillar-attached and Advanced
+Research combined.
+
+> `plan_type` and `phases` (mutually exclusive with `pillars`, pre-migration)
+> no longer exist on this response.
 
 ### CompletenessDetail
 Computed (`ComputeCompleteness`) but **not currently wired into any response
 reviewed** — see [§5.2](#5-known-issues).
-`phase_coverage` (0–60, 20pts/phase with ≥1 activity) + `activity_compl`
-(0–30, `complete/total×30`) + `link_density` (0–10, capped credit vs.
-`total_activities/2` link target) = 0–100 score. Deterministic, no ML.
+`pillar_coverage` (0–60, `pillars_with_work/total_pillars×60`) +
+`activity_compl` (0–30, `complete/total×30`) + `link_density` (0–10, capped
+credit vs. `total_activities/2` link target) = 0–100 score. Deterministic,
+no ML. `total_pillars`/`pillars_with_work` replaced a pre-migration fixed
+"3 phases × 20pts" scheme — pillars are user-defined and variable in
+number, so coverage is now a ratio rather than a fixed per-phase value.
 
 ### FlexDate
 Input-only adapter — see [§2](#2-conventions).
@@ -619,7 +655,7 @@ their explicitly granted plans (§4.11) if they have at least one grant. →
 `404` if not found / not in caller's org. → `Plan`.
 
 #### `POST /api/v1/plans` — org_admin, planner
-`{ title (required), description?, plan_type? (default "international"), start_date?, end_date? }`.
+`{ title (required), description?, start_date?, end_date? }`.
 Always created `status: "draft"` — there's no `status` field on the create
 request at all. → `201` `Plan`.
 
@@ -636,8 +672,8 @@ are left in place, orphaned but harmless. → `200`
 
 #### `POST /api/v1/plans/{planID}/duplicate` — org_admin, planner
 Deep-copies the plan row (title `+ " (copy)"`, `status: draft`, owner = the
-caller), pillars/objectives (local plans, fresh IDs re-linked), and all
-non-deleted activities. **Activity links are deliberately not copied** —
+caller), pillars/objectives (fresh IDs re-linked), and all non-deleted
+activities. **Activity links are deliberately not copied** —
 rewriting every link's endpoints against new IDs was judged too easy to get
 subtly wrong; re-run auto-detect (§4.10) on the new plan instead. → `201`
 new `Plan`.
@@ -648,14 +684,20 @@ new `Plan`.
 ### 4.8 Activities
 
 #### `GET /api/v1/plans/{planID}/activities`
-No role gate. Query params (combinable): `phase`, `objective_id`, `status`.
-→ `Activity[]`, sorted `phase, objective_id, user_order`.
+No role gate. Query params (combinable): `objective_id`, `category`
+(only accepted value: `advanced_research`), `status`. Passing neither
+`objective_id` nor `category` returns every activity in the plan.
+→ `Activity[]`, sorted `objective_id, user_order`.
 
 #### `POST /api/v1/plans/{planID}/activities` — org_admin, planner
 `{ type (required), title (required), content?, assigned_to?, due_date?, kpis? }`
-plus **exactly one** of `phase`/`objective_id` matching the plan's type
-(wrong/both/neither → specific error naming what was expected). Any KPI
-with `target_period` set must use a valid period value. → `201` `Activity`.
+plus **exactly one** of `objective_id`/`category` (wrong/both/neither →
+specific error naming what was expected). When `category` is
+`advanced_research`: `objective_id` and `kpis` must both be omitted, and
+`type` must be one of `business_model_canvas`, `competitive_analysis`,
+`risk_register`, `okr_balanced_scorecard`, `operational_roadmap`,
+`resource_plan`, `budget_allocation` — anything else 400s. Any KPI with
+`target_period` set must use a valid period value. → `201` `Activity`.
 
 #### `GET /api/v1/activities/{activityID}`
 No role gate. Direct fetch by ID — removes a client-side list-and-filter
@@ -704,11 +746,12 @@ activity — prevents deleting an arbitrary link in the org by ID alone. →
 
 #### `GET /api/v1/plans/{planID}/auto-links`
 No role gate. Rule-based **suggestions only** — nothing written. Matches
-activities by `type` against ~16 hardcoded `(from, to, reason)` rules (e.g.
-`swot → risk_register`). A `type` outside that fixed set (enforced by the
-*frontend* picker, not this API) simply never matches — no error, silently
-zero suggestions for that activity. Accepting a suggestion is a normal
-`POST .../links` call. → `CandidateLink[]`:
+Advanced Research activities by `type` against 5 hardcoded `(from, to,
+reason)` rules (e.g. `risk_register → operational_roadmap`) — since
+migration `014_collapse_plan_types`, ordinary objective-attached activities
+have a free-text `type` a planner enters, so only the fixed Advanced
+Research vocabulary can ever match either side of a rule. Accepting a
+suggestion is a normal `POST .../links` call. → `CandidateLink[]`:
 ```jsonc
 { "source_id", "target_id", "source_type", "target_type", "reason" }
 ```
@@ -728,11 +771,10 @@ only**, both routes.
 **Not** idempotent — `400` if no grant exists for that pair. → `200`
 `{ "message": "viewer access revoked" }`.
 
-### 4.12 Strategic Pillars & Objectives (local plans)
+### 4.12 Strategic Pillars & Objectives
 
-Rejected on international plans (`"strategic pillars are only available for
-local plans"` or equivalent) — every method here checks the plan's type
-first.
+Available on every plan (no longer rejected on a "wrong" plan type — that
+distinction no longer exists).
 
 | Method | Path | Role |
 |---|---|---|
@@ -755,11 +797,13 @@ still references it.
 > is pillar-scoped. A client wanting "objectives under pillar X" filters
 > the flat list client-side by `pillar_id`.
 
-### 4.13 Local Plan Chapters (2, 3, 6, 7)
+### 4.13 Plan Chapters (2, 3, 6, 7)
 
-All local-plan only, all follow the identical list/create/update/delete
+All follow the identical list/create/update/delete
 shape, all confirm the exact delete-message wording below directly from
-`local_plan_sections.go`.
+`local_plan_sections.go`. (Chapter 8, Advanced Research, isn't a
+list/create/update/delete resource of its own — it's just Activities with
+`category: "advanced_research"`; see §4.8.)
 
 #### Chapter 2 — Strategic Focus (Vision/Mission/Core Values)
 | Method | Path | Role |
@@ -845,33 +889,37 @@ timeout) → `503`; everything else → `400` — lets the frontend distinguish
   "plan_id": "uuid, required",
   "activity_id": "uuid — omit for plan-wide/chapter-level drafts, or drafting before an activity exists",
   "activity_type": "string, required",
-  "phase": "P1|P2|P3 — omitted for local-plan chapter drafts (no phase)",
   "keywords": ["string", "..."]
 }
 ```
 `400 plan_id and activity_type are required` if either missing. →
 `{ "draft": {...shape depends on activity_type...}, "model": "string", "warning": "string, optional" }`.
-`warning` is currently only set for `kpi_framework`/`okr_balanced_scorecard`
+`warning` is currently only set for `okr_balanced_scorecard`
 when the plan has no Strategic Objectives for the drafted KPIs to track —
 the draft still comes back usable, never blocked outright, but the frontend
 should surface the warning prominently.
 
-`activity_type` → draft shape (selected highlights — ~20 types total map to
-type-specific object shapes; anything unrecognized falls back to
-`{content, notes}` rather than erroring):
+`activity_type` → draft shape (selected highlights — anything unrecognized
+falls back to `{content, notes}` rather than erroring):
 
 | `activity_type` | Shape |
 |---|---|
-| `swot` | `{strengths, weaknesses, opportunities, threats}` (string arrays) |
-| `kpi_framework`, `okr_balanced_scorecard` | `{rows: [{kpi, target, current, objective_id}]}` |
 | `risk_register` | `{rows: [{risk, likelihood, impact, mitigation}]}` — likelihood/impact normalized to 1–5 |
-| `action_items` | `{rows: [{action, owner: "", status: "Open"}]}` — always unassigned/Open for new items |
-| `local_pillars`, `local_core_values`, `local_stakeholders`, `local_pestel`, `local_org_structure`, `local_me` | chapter-specific — plan-wide, no `activity_id`/`phase` |
+| `okr_balanced_scorecard` | `{rows: [{kpi, target, current, objective_id}]}` |
+| `local_pillars`, `local_core_values`, `local_stakeholders`, `local_pestel`, `local_org_structure`, `local_me` | chapter-specific — plan-wide, no `activity_id` |
 | `local_activity_kpis` | `{kpis: [{indicator, target, target_value, direction, budget?, responsibility?, target_period?}]}` — budget/responsibility/target_period explicitly optional; model instructed to omit rather than guess |
 | anything else | `{content, notes}` fallback |
 
+> `swot`, `kpi_framework`, and `action_items` no longer reach this endpoint
+> as `activity_type` values — SWOT drafting moved to the `local_swot`-style
+> chapter draft, `kpi_framework` was dropped (redundant with per-activity
+> KPIs), and `action_items` was dropped (redundant with ordinary
+> objective-attached activities). `phase` is also no longer a request
+> field — it was already optional/omitted for chapter-level drafts, and
+> Activity has no `phase` to pass through for anything else now.
+
 #### `POST /api/v1/ai/summary`
-`{ "plan_id": "uuid, required", "phase": "P1|P2|P3, optional" }` →
+`{ "plan_id": "uuid, required" }` →
 `{ "summary": "string", "model": "string" }`. Also invoked internally
 (no HTTP hop) by Reports' AI Summary section (§4.16), via a closure
 `router.go` wires so `reportsvc` never imports `aisvc` directly.
@@ -921,6 +969,15 @@ vision_mission, scorecard, progress_status}, `per_phase`={phase_activities,
 all 3 phases}, `progress_status`={progress_status, scorecard, milestones},
 `activity_detail`={phase_activities all 3 phases, milestones}.
 
+> ⚠️ **Open item, not yet reconciled with `014_collapse_plan_types`:**
+> `phase_activities`/`phases`/`ReportType.per_phase` still reference the
+> retired P1/P2/P3 phase model, which no longer means anything now that
+> activities are pillar/objective-only. This wasn't addressed as part of
+> the plan-type collapse — report generation needs a follow-up design pass
+> (most likely: a Strategic Pillars section replacing `phase_activities`,
+> covering both ordinary and Advanced Research activities) before this
+> section of the doc can be trusted.
+
 `400` on invalid `type`/`format`, or (for `custom`) an all-false/empty
 `sections` (`"at least one section must be selected for a custom report"`).
 
@@ -944,8 +1001,8 @@ for shape compatibility but **not currently applied as a filter** — every
 section reports the plan's full current state, not a windowed slice.
 
 **Sections affected by migration 013** (Budget/Responsibility/TargetPeriod
-now per-KPI): Scorecard — one row per `(activity, KPI)`; Phase Activities
-(local plans) — one row per `(activity, KPI)` with columns `Activity /
+now per-KPI): Scorecard — one row per `(activity, KPI)`; Phase Activities —
+one row per `(activity, KPI)` with columns `Activity /
 Status / KPI / Target Period / Responsible / Budget`, and an activity with
 zero KPIs still gets one placeholder row so it isn't silently dropped.
 
