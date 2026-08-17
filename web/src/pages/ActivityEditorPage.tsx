@@ -52,14 +52,14 @@ const TABLE_CONFIGS: Record<string, { columns: TableColumn[]; chart?: ChartConfi
     addLabel: 'Add market segment',
     columns: [
       { key: 'segment', label: 'Market Segment', type: 'text', width: 'min-w-40' },
-      { key: 'market_size', label: 'Market Size ($M)', type: 'number', width: 'min-w-28' },
+      { key: 'market_size', label: 'Market Size (SZLM)', type: 'number', width: 'min-w-28' },
       { key: 'growth_rate', label: 'Growth Rate (%)', type: 'number', width: 'min-w-28' },
       { key: 'notes', label: 'Notes', type: 'text', width: 'min-w-48' },
     ],
     chart: {
       labelColumn: 'segment',
       series: [
-        { key: 'market_size', label: 'Market Size ($M)', color: '#3b82f6' },
+        { key: 'market_size', label: 'Market Size (SZLM)', color: '#3b82f6' },
         { key: 'growth_rate', label: 'Growth Rate (%)', color: '#10b981' },
       ],
     },
@@ -78,9 +78,9 @@ const TABLE_CONFIGS: Record<string, { columns: TableColumn[]; chart?: ChartConfi
     addLabel: 'Add period',
     columns: [
       { key: 'period', label: 'Period', type: 'text', placeholder: 'e.g. Q1 2026', width: 'min-w-28' },
-      { key: 'revenue', label: 'Revenue ($)', type: 'number', width: 'min-w-28' },
-      { key: 'costs', label: 'Costs ($)', type: 'number', width: 'min-w-28' },
-      { key: 'profit', label: 'Profit ($)', type: 'number', width: 'min-w-28' },
+      { key: 'revenue', label: 'Revenue (SZL)', type: 'number', width: 'min-w-28' },
+      { key: 'costs', label: 'Costs (SZL)', type: 'number', width: 'min-w-28' },
+      { key: 'profit', label: 'Profit (SZL)', type: 'number', width: 'min-w-28' },
     ],
     chart: {
       labelColumn: 'period',
@@ -96,10 +96,10 @@ const TABLE_CONFIGS: Record<string, { columns: TableColumn[]; chart?: ChartConfi
     addLabel: 'Add budget line',
     columns: [
       { key: 'category', label: 'Category', type: 'text', width: 'min-w-40' },
-      { key: 'amount', label: 'Amount ($)', type: 'number', width: 'min-w-28' },
+      { key: 'amount', label: 'Amount (SZL)', type: 'number', width: 'min-w-28' },
       { key: 'notes', label: 'Notes', type: 'text', width: 'min-w-48' },
     ],
-    chart: { labelColumn: 'category', series: [{ key: 'amount', label: 'Amount ($)', color: '#3b82f6' }] },
+    chart: { labelColumn: 'category', series: [{ key: 'amount', label: 'Amount (SZL)', color: '#3b82f6' }] },
   },
   resource_plan: {
     addLabel: 'Add resource',
@@ -135,11 +135,11 @@ const TABLE_CONFIGS: Record<string, { columns: TableColumn[]; chart?: ChartConfi
     columns: [
       { key: 'item', label: 'Item', type: 'text', width: 'min-w-40' },
       { key: 'quantity', label: 'Quantity', type: 'number', width: 'min-w-24' },
-      { key: 'estimated_cost', label: 'Estimated Cost ($)', type: 'number', width: 'min-w-28' },
+      { key: 'estimated_cost', label: 'Estimated Cost (SZL)', type: 'number', width: 'min-w-28' },
       { key: 'vendor', label: 'Vendor', type: 'text', width: 'min-w-32' },
       { key: 'status', label: 'Status', type: 'select', options: ['Pending', 'Ordered', 'Received', 'Cancelled'], width: 'min-w-28' },
     ],
-    chart: { labelColumn: 'item', series: [{ key: 'estimated_cost', label: 'Estimated Cost ($)', color: '#f59e0b' }] },
+    chart: { labelColumn: 'item', series: [{ key: 'estimated_cost', label: 'Estimated Cost (SZL)', color: '#f59e0b' }] },
   },
 }
 

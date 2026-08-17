@@ -19,7 +19,7 @@ export const ADVANCED_RESEARCH_TYPES: { value: ActivityType }[] = [
   { value: 'business_model_canvas' },
   { value: 'competitive_analysis' },
   { value: 'risk_register' },
-  { value: 'okr_balanced_scorecard' },
+  { value: 'financial_projections' },
   { value: 'operational_roadmap' },
   { value: 'resource_plan' },
   { value: 'budget_allocation' },

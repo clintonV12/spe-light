@@ -528,7 +528,7 @@ func (s *Service) CreateActivity(ctx context.Context, planID, orgID, creatorID u
 			return nil, fmt.Errorf("objective_id must not be set for an advanced research activity")
 		}
 		if !models.AdvancedResearchType(req.Type).Valid() {
-			return nil, fmt.Errorf("type must be one of the advanced research types: business_model_canvas, competitive_analysis, risk_register, okr_balanced_scorecard, operational_roadmap, resource_plan, budget_allocation")
+			return nil, fmt.Errorf("type must be one of the advanced research types: business_model_canvas, competitive_analysis, risk_register, financial_projections, operational_roadmap, resource_plan, budget_allocation")
 		}
 		if len(req.KPIs) > 0 {
 			return nil, fmt.Errorf("kpis are not supported on advanced research activities")

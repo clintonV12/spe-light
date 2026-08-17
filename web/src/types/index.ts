@@ -47,7 +47,7 @@ export type ActivityType =
   | 'business_model_canvas'
   | 'competitive_analysis'
   | 'risk_register'
-  | 'okr_balanced_scorecard'
+  | 'financial_projections'
   | 'operational_roadmap'
   | 'resource_plan'
   | 'budget_allocation'

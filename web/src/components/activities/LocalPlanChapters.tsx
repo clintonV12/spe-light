@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import {
-  Compass, Users, Layers, Network, Gauge, Plus, Trash2,
+  Compass, Users, Layers, Network, Gauge, Plus, Trash2, Pencil, Check, X,
   Target, ShieldCheck, CalendarClock, FlagTriangleRight, FlaskConical,
 } from 'lucide-react'
 import { Button, Input } from '../ui'
@@ -327,8 +327,42 @@ const StakeholderTable: React.FC<{
   const [name, setName] = useState('')
   const [influence, setInfluence] = useState<StakeholderLevel>('high')
   const [interest, setInterest] = useState<StakeholderLevel>('high')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editInfluence, setEditInfluence] = useState<StakeholderLevel>('high')
+  const [editInterest, setEditInterest] = useState<StakeholderLevel>('high')
   const { error } = useToast()
   const ai = useAiDraft(plan.id, 'local_stakeholders')
+
+  const startEditing = (item: Stakeholder) => {
+    setEditingId(item.id)
+    setEditName(item.name ?? '')
+    setEditInfluence(item.influence)
+    setEditInterest(item.interest)
+  }
+
+  const cancelEditing = () => {
+    setEditingId(null)
+    setEditName('')
+    setEditInfluence('high')
+    setEditInterest('high')
+  }
+
+  const update = async (id: string) => {
+    const trimmed = editName.trim()
+    if (!trimmed) return
+    try {
+      const updated = await stakeholdersApi.update(id, {
+        name: trimmed,
+        influence: editInfluence,
+        interest: editInterest,
+      })
+      setStakeholders((prev) => prev.map((s) => (s.id === id ? updated : s)))
+      cancelEditing()
+    } catch {
+      error('Failed to update stakeholder')
+    }
+  }
 
   const add = async () => {
     if (!name.trim()) return
@@ -402,9 +436,22 @@ const StakeholderTable: React.FC<{
                   <span key={s.id} className="group inline-flex items-center gap-1 rounded-full bg-white border border-ink-200 px-2.5 py-1 text-xs font-medium text-ink-800">
                     {s.name}
                     {canEdit && (
-                      <button onClick={() => remove(s.id)} className="opacity-0 group-hover:opacity-100 text-ink-400 hover:text-red-600 transition-opacity">
-                        ×
-                      </button>
+                      <>
+                        <button
+                          onClick={() => startEditing(s)}
+                          className="opacity-0 group-hover:opacity-100 text-ink-400 hover:text-accent transition-opacity"
+                          title="Edit stakeholder"
+                        >
+                          <Pencil className="size-3" />
+                        </button>
+                        <button
+                          onClick={() => remove(s.id)}
+                          className="opacity-0 group-hover:opacity-100 text-ink-400 hover:text-red-600 transition-opacity"
+                          title="Delete stakeholder"
+                        >
+                          ×
+                        </button>
+                      </>
                     )}
                   </span>
                 ))}
@@ -414,6 +461,30 @@ const StakeholderTable: React.FC<{
           )
         })}
       </div>
+
+      {canEdit && editingId && (
+        <div className="mb-3 rounded-xl border border-accent-200 bg-accent-50/40 p-3">
+          <div className="flex flex-wrap gap-2 items-center">
+            <Input placeholder="Stakeholder name" value={editName} onChange={(e) => setEditName(e.target.value)} />
+            <select
+              className="rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900"
+              value={editInfluence}
+              onChange={(e) => setEditInfluence(e.target.value as StakeholderLevel)}
+            >
+              {STAKEHOLDER_LEVELS.map((l) => <option key={l} value={l}>{l} influence</option>)}
+            </select>
+            <select
+              className="rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900"
+              value={editInterest}
+              onChange={(e) => setEditInterest(e.target.value as StakeholderLevel)}
+            >
+              {STAKEHOLDER_LEVELS.map((l) => <option key={l} value={l}>{l} interest</option>)}
+            </select>
+            <Button variant="secondary" onClick={() => update(editingId)}><Check className="size-4" /></Button>
+            <Button variant="secondary" onClick={cancelEditing}><X className="size-4" /></Button>
+          </div>
+        </div>
+      )}
 
       {canEdit && (
         <div className="flex flex-wrap gap-2 items-center">
@@ -459,8 +530,32 @@ const SWOTGrid: React.FC<{
   const [drafts, setDrafts] = useState<Record<SWOTCategory, string>>({
     strength: '', weakness: '', opportunity: '', threat: '',
   })
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editText, setEditText] = useState('')
   const { error } = useToast()
   const ai = useAiDraft(plan.id, 'swot')
+
+  const startEditing = (item: SWOTItem) => {
+    setEditingId(item.id)
+    setEditText(item.text)
+  }
+
+  const cancelEditing = () => {
+    setEditingId(null)
+    setEditText('')
+  }
+
+  const update = async (id: string) => {
+    const text = editText.trim()
+    if (!text) return
+    try {
+      const updated = await swotApi.update(id, { text })
+      setSwot((prev) => prev.map((item) => (item.id === id ? updated : item)))
+      cancelEditing()
+    } catch {
+      error('Failed to update SWOT item')
+    }
+  }
 
   const add = async (cat: SWOTCategory) => {
     const text = drafts[cat].trim()
@@ -530,11 +625,30 @@ const SWOTGrid: React.FC<{
               <ul className="space-y-1 mb-2">
                 {swot.filter((s) => s.category === cat).map((item) => (
                   <li key={item.id} className="group flex items-start justify-between gap-2 text-sm text-ink-800 bg-white/70 rounded-md px-2 py-1.5">
-                    <span>{item.text}</span>
-                    {canEdit && (
-                      <button onClick={() => remove(item.id)} className="opacity-0 group-hover:opacity-100 text-ink-400 hover:text-red-600 transition-opacity shrink-0">
-                        <Trash2 className="size-3.5" />
-                      </button>
+                    {editingId === item.id ? (
+                      <div className="flex flex-1 items-center gap-1.5">
+                        <Input
+                          autoFocus
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') update(item.id)
+                            if (e.key === 'Escape') cancelEditing()
+                          }}
+                        />
+                        <button onClick={() => update(item.id)} className="text-accent hover:text-accent-600 p-1" title="Save"><Check className="size-4" /></button>
+                        <button onClick={cancelEditing} className="text-ink-400 hover:text-ink-600 p-1" title="Cancel"><X className="size-4" /></button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="flex-1">{item.text}</span>
+                        {canEdit && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button onClick={() => startEditing(item)} className="text-ink-400 hover:text-accent transition-colors" title="Edit item"><Pencil className="size-3.5" /></button>
+                            <button onClick={() => remove(item.id)} className="text-ink-400 hover:text-red-600 transition-colors" title="Delete item"><Trash2 className="size-3.5" /></button>
+                          </div>
+                        )}
+                      </>
                     )}
                   </li>
                 ))}
@@ -585,8 +699,42 @@ const PESTELTable: React.FC<{
       PESTELFactor, { implication: string; positive: string; negative: string }
     >,
   )
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ implication: '', positive: '', negative: '' })
   const { error } = useToast()
   const ai = useAiDraft(plan.id, 'local_pestel')
+
+  const startEditing = (item: PESTELItem) => {
+    setEditingId(item.id)
+    setEditForm({
+      implication: item.implication ?? '',
+      positive: item.positive ?? '',
+      negative: item.negative ?? '',
+    })
+  }
+
+  const cancelEditing = () => {
+    setEditingId(null)
+    setEditForm({ implication: '', positive: '', negative: '' })
+  }
+
+  const update = async (id: string) => {
+    const implication = editForm.implication.trim()
+    const positive = editForm.positive.trim()
+    const negative = editForm.negative.trim()
+    if (!implication && !positive && !negative) return
+    try {
+      const updated = await pestelApi.update(id, {
+        implication: implication || undefined,
+        positive: positive || undefined,
+        negative: negative || undefined,
+      })
+      setPestel((prev) => prev.map((item) => (item.id === id ? updated : item)))
+      cancelEditing()
+    } catch {
+      error('Failed to update PESTEL item')
+    }
+  }
 
   const add = async (factor: PESTELFactor) => {
     const d = drafts[factor]
@@ -708,15 +856,39 @@ const PESTELTable: React.FC<{
             <div className="space-y-1 mb-2">
               {pestel.filter((p) => p.factor === factor).map((item) => (
                 <div key={item.id} className="group flex items-start justify-between gap-2 text-sm text-ink-900 bg-white/70 rounded-md px-2 py-1.5">
-                  <span>
-                    {item.implication && <>Implication: {item.implication}. </>}
-                    {item.positive && <>Positive: {item.positive}. </>}
-                    {item.negative && <>Negative: {item.negative}.</>}
-                  </span>
-                  {canEdit && (
-                    <button onClick={() => remove(item.id)} className="opacity-0 group-hover:opacity-100 text-ink-400 hover:text-red-600 transition-opacity shrink-0">
-                      <Trash2 className="size-3.5" />
-                    </button>
+                  {editingId === item.id ? (
+                    <div className="flex-1 space-y-1.5">
+                      <Input placeholder="Implication" value={editForm.implication} onChange={(e) => setEditForm((prev) => ({ ...prev, implication: e.target.value }))} />
+                      <Input placeholder="Positive angle" value={editForm.positive} onChange={(e) => setEditForm((prev) => ({ ...prev, positive: e.target.value }))} />
+                      <div className="flex gap-2">
+                        <Input
+                          autoFocus
+                          placeholder="Negative angle"
+                          value={editForm.negative}
+                          onChange={(e) => setEditForm((prev) => ({ ...prev, negative: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') update(item.id)
+                            if (e.key === 'Escape') cancelEditing()
+                          }}
+                        />
+                        <button onClick={() => update(item.id)} className="text-accent hover:text-accent-600 p-1" title="Save"><Check className="size-4" /></button>
+                        <button onClick={cancelEditing} className="text-ink-400 hover:text-ink-600 p-1" title="Cancel"><X className="size-4" /></button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="flex-1">
+                        {item.implication && <>Implication: {item.implication}. </>}
+                        {item.positive && <>Positive: {item.positive}. </>}
+                        {item.negative && <>Negative: {item.negative}.</>}
+                      </span>
+                      {canEdit && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button onClick={() => startEditing(item)} className="text-ink-400 hover:text-accent transition-colors" title="Edit item"><Pencil className="size-3.5" /></button>
+                          <button onClick={() => remove(item.id)} className="text-ink-400 hover:text-red-600 transition-colors" title="Delete item"><Trash2 className="size-3.5" /></button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               ))}

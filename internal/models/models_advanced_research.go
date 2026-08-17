@@ -32,7 +32,7 @@ const (
 	ARTypeBusinessModelCanvas  AdvancedResearchType = "business_model_canvas"
 	ARTypeCompetitiveAnalysis  AdvancedResearchType = "competitive_analysis"
 	ARTypeRiskRegister         AdvancedResearchType = "risk_register"
-	ARTypeOKRBalancedScorecard AdvancedResearchType = "okr_balanced_scorecard"
+	ARTypeFinancialProjections AdvancedResearchType = "financial_projections"
 	ARTypeOperationalRoadmap   AdvancedResearchType = "operational_roadmap"
 	ARTypeResourcePlan         AdvancedResearchType = "resource_plan"
 	ARTypeBudgetAllocation     AdvancedResearchType = "budget_allocation"
@@ -44,7 +44,7 @@ var ValidAdvancedResearchTypes = []AdvancedResearchType{
 	ARTypeBusinessModelCanvas,
 	ARTypeCompetitiveAnalysis,
 	ARTypeRiskRegister,
-	ARTypeOKRBalancedScorecard,
+	ARTypeFinancialProjections,
 	ARTypeOperationalRoadmap,
 	ARTypeResourcePlan,
 	ARTypeBudgetAllocation,
