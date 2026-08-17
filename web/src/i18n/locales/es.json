@@ -86,7 +86,7 @@
     "backToPlan": "Volver al plan",
     "overdue": "Atrasada",
     "assigned": "{{count}} asignadas",
-    "aiDraft": "Borrador de IA",
+    "aiDraft": "Preguntar a Lwazi",
     "offlineNotice": "Estás sin conexión. Los cambios se guardarán automáticamente al reconectar.",
     "delete": "Eliminar actividad",
     "deleteConfirmTitle": "¿Eliminar actividad?",

@@ -86,7 +86,7 @@
     "backToPlan": "Back to plan",
     "overdue": "Overdue",
     "assigned": "{{count}} assigned",
-    "aiDraft": "AI draft",
+    "aiDraft": "Ask Lwazi",
     "offlineNotice": "You're offline. Changes will be saved automatically when reconnected.",
     "delete": "Delete activity",
     "deleteConfirmTitle": "Delete activity?",

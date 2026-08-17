@@ -86,7 +86,7 @@
     "backToPlan": "Retour au plan",
     "overdue": "En retard",
     "assigned": "{{count}} assigné(s)",
-    "aiDraft": "Brouillon IA",
+    "aiDraft": "Demander à Lwazi",
     "offlineNotice": "Vous êtes hors ligne. Les modifications seront enregistrées automatiquement une fois reconnecté.",
     "delete": "Supprimer l'activité",
     "deleteConfirmTitle": "Supprimer l'activité ?",
