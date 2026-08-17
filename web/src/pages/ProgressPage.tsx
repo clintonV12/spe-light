@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, CheckCircle2, Clock, TrendingUp, GitBranch, FlaskConical } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, TrendingUp, GitBranch, FlaskConical, Target } from 'lucide-react'
 import { plansApi, activitiesApi, pillarsApi } from '../api/endpoints'
 import { ProgressBar } from '../components/ui'
 import ActivityDependencyNetwork from '../components/progress/ActivityDependencyNetwork'
+import { overallKpiCompletion } from '../components/activities/TrackingModule'
 import type { Plan, Activity, ActivityLink, StrategicPillar, StrategicObjective } from '../types'
 
-function PlanProgressCard({ plan }: { plan: Plan }) {
+function PlanProgressCard({ plan, activities }: { plan: Plan; activities: Activity[] }) {
   const { t, i18n } = useTranslation()
   const progress = plan.progress
   if (!progress) return null
@@ -15,6 +16,17 @@ function PlanProgressCard({ plan }: { plan: Plan }) {
   const pillarRows = progress.pillars
   const totalComplete = pillarRows.reduce((s, p) => s + p.complete, 0)
   const totalInProgress = pillarRows.reduce((s, p) => s + p.in_progress, 0)
+
+  // Same formula as the Tracking tab's "Overall" gauge (see
+  // overallKpiCompletion in TrackingModule.tsx) — a deliberately different
+  // number from progress.overall.percent_complete above: that one is what
+  // fraction of activities are marked complete (a status), this one is how
+  // close KPI actuals are to their targets (a performance measure). Shown
+  // side by side rather than picked between, since a plan can legitimately
+  // have activities marked complete before their KPIs hit target, or KPIs
+  // on track while the activity itself is still "in progress". Null (no
+  // KPIs scored yet) hides the stat rather than showing a misleading 0%.
+  const kpiAchievement = overallKpiCompletion(activities.flatMap((a) => a.kpis ?? []))
 
   return (
     <div className="bg-white rounded-2xl border border-ink-100 p-5">
@@ -30,9 +42,22 @@ function PlanProgressCard({ plan }: { plan: Plan }) {
             </p>
           )}
         </div>
-        <div className="text-right">
-          <p className="text-2xl font-bold text-ink-900">{Math.round(progress.overall.percent_complete)}%</p>
-          <p className="text-xs text-ink-400">{t('progressPage.overall')}</p>
+        <div className="flex items-start gap-5">
+          <div className="text-right">
+            <p className="text-2xl font-bold text-ink-900">{Math.round(progress.overall.percent_complete)}%</p>
+            <p className="text-xs text-ink-400">{t('progressPage.overall')}</p>
+          </div>
+          {kpiAchievement !== null && (
+            <div className="text-right border-l border-ink-100 pl-5">
+              <p className={`text-2xl font-bold ${kpiAchievement >= 75 ? 'text-green-600' : kpiAchievement <= 50 ? 'text-red-600' : 'text-yellow-600'}`}>
+                {Math.round(kpiAchievement)}%
+              </p>
+              <p className="text-xs text-ink-400 flex items-center gap-1 justify-end">
+                <Target className="size-3" />
+                {t('progressPage.kpiAchievement', { defaultValue: 'KPI achievement' })}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -249,7 +274,17 @@ export default function ProgressPage() {
               )}
             </div>
 
-            {selectedPlan && <PlanProgressCard plan={selectedPlan} />}
+            {selectedPlan && (
+              <PlanProgressCard
+                plan={selectedPlan}
+                // Reuse the activities already fetched for the dependency
+                // network below rather than a second per-plan fetch — but
+                // only once they actually belong to this plan (they lag
+                // one tick behind networkPlanId during a plan switch), so
+                // the KPI stat doesn't flash a stale plan's numbers.
+                activities={networkPlanId === selectedPlan.id ? networkActivities : []}
+              />
+            )}
 
             <div>
               <div className="flex items-center gap-2 mb-4">

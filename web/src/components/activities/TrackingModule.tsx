@@ -27,8 +27,14 @@ const PERIOD_META: Record<KPIPeriod, { label: string; color: string }> = {
 //
 // Not capped at 100 — overachievement is meaningful — but progress bars
 // clamp their *width* at 100% so a 150% KPI doesn't overflow its box.
+//
+// Exported (along with periodCompletion/overallKpiCompletion below) so
+// ProgressPage.tsx's per-plan progress card can show the same KPI-
+// achievement "Overall" figure this module computes — using the literal
+// same formula, not a second implementation that could quietly drift from
+// this one. See ProgressPage.tsx's PlanProgressCard for the other caller.
 
-function computeAchievement(direction: KPIDirection | undefined, target?: number, actual?: number): number | null {
+export function computeAchievement(direction: KPIDirection | undefined, target?: number, actual?: number): number | null {
   if (target === undefined || target === null || actual === undefined || actual === null) return null
   if (direction === 'decrease') {
     if (actual === 0) return null
@@ -36,6 +42,39 @@ function computeAchievement(direction: KPIDirection | undefined, target?: number
   }
   if (target === 0) return null
   return (actual / target) * 100
+}
+
+// Grouped by KPI.target_period, not Activity.target_period (migration 013
+// moved Budget/Responsibility/TargetPeriod off the activity and onto each
+// KPI individually — two KPIs under the same activity can report on
+// different cadences, so the gauge has to bucket at the KPI level too).
+// Takes raw KPI[] rather than this file's local KpiRow[] wrapper — the
+// activity/kpiIndex pairing KpiRow adds is TrackingModule-specific
+// (editing, breadcrumbs), not needed by the math itself.
+export function periodCompletion(kpis: KPI[], period: KPIPeriod): number | null {
+  const values = kpis
+    .filter((k) => k.target_period === period)
+    .map((k) => computeAchievement(k.direction, k.target_value, k.actual_value))
+    .filter((v): v is number => v !== null)
+    // Capped here, not at the source — an individual KPI's own display
+    // still shows genuine overachievement (e.g. 150%), but one KPI running
+    // hot shouldn't be able to drag a whole period's average above 100%
+    // and mask other KPIs that are behind.
+    .map((v) => Math.min(100, v))
+  if (values.length === 0) return null
+  return values.reduce((a, b) => a + b, 0) / values.length
+}
+
+// The "Overall" gauge: average of whichever of monthly/quarterly/annual
+// actually have at least one scored KPI. Same rule ProgressPage.tsx now
+// uses for its per-plan KPI-achievement figure, so the two pages can never
+// show different numbers for the same plan.
+export function overallKpiCompletion(kpis: KPI[]): number | null {
+  const parts = KPI_PERIODS
+    .map((p) => periodCompletion(kpis, p))
+    .filter((v): v is number => v !== null)
+  if (parts.length === 0) return null
+  return parts.reduce((a, b) => a + b, 0) / parts.length
 }
 
 function achievementColor(pct: number): string {
@@ -103,28 +142,6 @@ interface KpiRow {
   kpi: KPI
 }
 
-function achievementForRow(row: KpiRow): number | null {
-  return computeAchievement(row.kpi.direction, row.kpi.target_value, row.kpi.actual_value)
-}
-
-// Grouped by KPI.target_period now, not Activity.target_period (migration
-// 013 moved Budget/Responsibility/TargetPeriod off the activity and onto
-// each KPI individually — two KPIs under the same activity can report on
-// different cadences, so the gauge has to bucket at the KPI level too).
-function periodCompletion(rows: KpiRow[], period: KPIPeriod): number | null {
-  const values = rows
-    .filter((r) => r.kpi.target_period === period)
-    .map(achievementForRow)
-    .filter((v): v is number => v !== null)
-    // Capped here, not at the source — an individual KPI's own display
-    // still shows genuine overachievement (e.g. 150%), but one KPI running
-    // hot shouldn't be able to drag a whole period's average above 100%
-    // and mask other KPIs that are behind.
-    .map((v) => Math.min(100, v))
-  if (values.length === 0) return null
-  return values.reduce((a, b) => a + b, 0) / values.length
-}
-
 export const TrackingModule: React.FC<TrackingModuleProps> = ({ plan, canEdit }) => {
   const [activities, setActivities] = useState<Activity[]>([])
   const [pillars, setPillars] = useState<StrategicPillar[]>([])
@@ -178,14 +195,14 @@ export const TrackingModule: React.FC<TrackingModuleProps> = ({ plan, canEdit })
     [rows],
   )
 
-  const monthly = useMemo(() => periodCompletion(rows, 'monthly'), [rows])
-  const quarterly = useMemo(() => periodCompletion(rows, 'quarterly'), [rows])
-  const annual = useMemo(() => periodCompletion(rows, 'annual'), [rows])
-  const overall = useMemo(() => {
-    const parts = [monthly, quarterly, annual].filter((v): v is number => v !== null)
-    if (parts.length === 0) return null
-    return parts.reduce((a, b) => a + b, 0) / parts.length
-  }, [monthly, quarterly, annual])
+  // Raw KPI[] for the shared math functions above — they don't need (and
+  // shouldn't need to know about) KpiRow's activity/kpiIndex pairing.
+  const allKpis = useMemo(() => rows.map((r) => r.kpi), [rows])
+
+  const monthly = useMemo(() => periodCompletion(allKpis, 'monthly'), [allKpis])
+  const quarterly = useMemo(() => periodCompletion(allKpis, 'quarterly'), [allKpis])
+  const annual = useMemo(() => periodCompletion(allKpis, 'annual'), [allKpis])
+  const overall = useMemo(() => overallKpiCompletion(allKpis), [allKpis])
 
   const saveActivityKpis = async (activityId: string, newKpis: KPI[]) => {
     try {
