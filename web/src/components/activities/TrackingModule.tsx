@@ -253,7 +253,7 @@ export const TrackingModule: React.FC<TrackingModuleProps> = ({ plan, canEdit })
         </div>
         {rows.length === 0 && (
           <p className="text-sm text-ink-400 text-center mt-3">
-            No KPIs yet — add one when creating or editing an activity under Strategic Pillars.
+            No KPIs yet - add one when creating or editing an activity under Strategic Pillars.
           </p>
         )}
         {rows.length > 0 && unscheduledCount > 0 && (
@@ -404,7 +404,7 @@ const ActivityKpiCard: React.FC<{
                   {targetLocked ? (
                     <p
                       className="w-full rounded-md border border-ink-100 bg-ink-100 px-2 py-1.5 text-sm text-ink-600"
-                      title="Set on the activity in Strategic Pillars — edit it there to change."
+                      title="Set on the activity in Strategic Pillars - edit it there to change."
                     >
                       {drafts[i]?.target}
                     </p>
