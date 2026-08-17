@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -10,7 +10,7 @@ import { usePermission } from '../hooks'
 import { useAutoSave } from '../hooks/useAutoSave'
 import SaveIndicator from '../components/ui/SaveIndicator'
 import AiDraftPanel from '../components/activities/AiDraftPanel'
-import LinkedActivitiesPanel from '../components/activities/LinkedActivitiesPanel'
+import { LwaziFace } from '../components/activities/LwaziAvatar'
 import LocalActivityEditor from '../components/activities/LocalActivityEditor'
 import SwotEditor from '../components/activities/editors/SwotEditor'
 import KpiEditor from '../components/activities/editors/KpiEditor'
@@ -29,7 +29,7 @@ import TheoryOfChangeEditor from '../components/activities/editors/TheoryOfChang
 import RoadmapEditor from '../components/activities/editors/RoadmapEditor'
 import TableEditor from '../components/activities/editors/TableEditor'
 import type { TableColumn, ChartConfig, TableRow } from '../components/activities/editors/TableEditor'
-import type { Activity, ActivityStatus, ActivityType, ActivityLink, StrategicObjective } from '../types'
+import type { Activity, ActivityStatus, ActivityType, StrategicObjective } from '../types'
 
 const STATUS_COLORS: Record<ActivityStatus, string> = {
   not_started: 'bg-ink-100 text-ink-600',
@@ -332,9 +332,6 @@ export default function ActivityEditorPage() {
   const [status, setStatus] = useState<ActivityStatus>('not_started')
   const [loading, setLoading] = useState(true)
   const [showAi, setShowAi] = useState(false)
-  const [planActivities, setPlanActivities] = useState<Activity[]>([])
-  const [planLinks, setPlanLinks] = useState<ActivityLink[]>([])
-  const [linksLoading, setLinksLoading] = useState(true)
   // Formal Strategic Objectives for this plan — used as KPI-editor link
   // targets (objectiveOptions below).
   const [formalObjectives, setFormalObjectives] = useState<StrategicObjective[]>([])
@@ -379,17 +376,6 @@ export default function ActivityEditorPage() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [activityId])
-
-  const loadLinks = useCallback(() => {
-    if (!planId) return
-    setLinksLoading(true)
-    Promise.all([activitiesApi.list(planId), activitiesApi.listLinks(planId)])
-      .then(([acts, links]) => { setPlanActivities(acts); setPlanLinks(links) })
-      .catch(() => { setPlanActivities([]); setPlanLinks([]) })
-      .finally(() => setLinksLoading(false))
-  }, [planId])
-
-  useEffect(() => { loadLinks() }, [loadLinks])
 
   // Formal Strategic Objectives for this plan.
   useEffect(() => {
@@ -610,7 +596,7 @@ export default function ActivityEditorPage() {
                 showAi ? 'bg-accent text-white' : 'border border-ink-200 bg-white text-ink-600 hover:bg-ink-50'
               }`}
             >
-              <Sparkles className="size-4" /> {t('activityEditor.aiDraft')}
+              <LwaziFace size={16} state={showAi ? 'happy' : 'idle'} /> {t('activityEditor.aiDraft')}
             </button>
           )}
 
@@ -677,42 +663,28 @@ export default function ActivityEditorPage() {
         </div>
       )}
 
-      {/* Two-column: editor + linked activities */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6 items-start">
-        <div className="bg-white rounded-2xl border border-ink-100 p-6">
-          {isObjectiveNested ? (
-            <LocalActivityEditor
-              activity={activity}
-              canEdit={canEdit}
-              onUpdated={(a) => { setActivity(a); setStatus(a.status) }}
-            />
-          ) : (
-            <ActivityEditor
-              // Forces SwotEditor/KpiEditor/RiskRegisterEditor/GenericEditor to
-              // remount and re-read `content` as fresh initial state whenever
-              // an AI draft is accepted or discarded — those components own
-              // their field state internally and only read `value` on mount,
-              // so without this key a programmatic content swap wouldn't show
-              // up in the fields even though `content` (and the eventual save)
-              // is genuinely updated.
-              key={contentVersion}
-              activity={{ ...activity, content }}
-              onChange={handleContentChange}
-              readOnly={!canEdit}
-              objectives={objectiveOptions}
-            />
-          )}
-        </div>
-
-        {linksLoading ? (
-          <div className="h-72 bg-ink-100 rounded-2xl animate-pulse" />
-        ) : (
-          <LinkedActivitiesPanel
+      {/* Editor */}
+      <div className="bg-white rounded-2xl border border-ink-100 p-6">
+        {isObjectiveNested ? (
+          <LocalActivityEditor
             activity={activity}
-            allActivities={planActivities}
-            links={planLinks}
-            onLinksChanged={loadLinks}
             canEdit={canEdit}
+            onUpdated={(a) => { setActivity(a); setStatus(a.status) }}
+          />
+        ) : (
+          <ActivityEditor
+            // Forces SwotEditor/KpiEditor/RiskRegisterEditor/GenericEditor to
+            // remount and re-read `content` as fresh initial state whenever
+            // an AI draft is accepted or discarded — those components own
+            // their field state internally and only read `value` on mount,
+            // so without this key a programmatic content swap wouldn't show
+            // up in the fields even though `content` (and the eventual save)
+            // is genuinely updated.
+            key={contentVersion}
+            activity={{ ...activity, content }}
+            onChange={handleContentChange}
+            readOnly={!canEdit}
+            objectives={objectiveOptions}
           />
         )}
       </div>

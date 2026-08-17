@@ -10,7 +10,7 @@ interface TrackingModuleProps {
   canEdit: boolean
 }
 
-const PERIOD_META: Record<KPIPeriod, { label: string; color: string }> = {
+export const PERIOD_META: Record<KPIPeriod, { label: string; color: string }> = {
   monthly:   { label: 'Monthly',   color: 'border-p1 bg-p1-light' },
   quarterly: { label: 'Quarterly', color: 'border-p2 bg-p2-light' },
   annual:    { label: 'Annual',    color: 'border-p3 bg-p3-light' },
@@ -94,13 +94,13 @@ export async function fetchPlanKpiAchievement(planId: string): Promise<number | 
   }
 }
 
-function achievementColor(pct: number): string {
+export function achievementColor(pct: number): string {
   if (pct >= 75) return 'text-green-600'
   if (pct <= 50) return 'text-red-600'
   return 'text-yellow-600'
 }
 
-function achievementBarColor(pct: number): string {
+export function achievementBarColor(pct: number): string {
   if (pct >= 75) return 'bg-green-500'
   if (pct <= 50) return 'bg-red-400'
   return 'bg-yellow-400'

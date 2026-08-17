@@ -1,47 +1,47 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, CheckCircle2, Clock, TrendingUp, GitBranch, FlaskConical, Target } from 'lucide-react'
-import { plansApi, activitiesApi, pillarsApi } from '../api/endpoints'
+import { AlertTriangle, CheckCircle2, Clock, TrendingUp, FlaskConical, Target } from 'lucide-react'
+import { plansApi, activitiesApi } from '../api/endpoints'
 import { ProgressBar } from '../components/ui'
-import ActivityDependencyNetwork from '../components/progress/ActivityDependencyNetwork'
-import { overallKpiCompletion, fetchPlanKpiAchievement } from '../components/activities/TrackingModule'
-import type { Plan, Activity, ActivityLink, StrategicPillar, StrategicObjective } from '../types'
+import {
+  overallKpiCompletion, periodCompletion, fetchPlanKpiAchievement,
+  PERIOD_META, achievementColor,
+} from '../components/activities/TrackingModule'
+import type { Plan, Activity } from '../types'
+import { KPI_PERIODS } from '../types'
 
-function PlanProgressCard({ plan, activities, objectives }: { plan: Plan; activities: Activity[]; objectives: StrategicObjective[] }) {
+// ─── Per-plan progress card ─────────────────────────────────────────────────
+//
+// "Progress" means KPI achievement now (actual vs. target), not "% of
+// activities marked complete." A breakdown *by Strategic Pillar* doesn't fit
+// that well any more — pillars are free-text, self-defined per plan, so
+// there's no consistent axis to compare across plans, and a pillar with
+// zero KPIs on it (only status-tracked activities) would show a misleading
+// 0%. Breaking down by KPI reporting cadence (Monthly/Quarterly/Annual)
+// instead is a property every KPI actually has, comparable across any plan,
+// and answers the question a KPI-tracking-focused progress page should
+// answer: "how are we doing on the things we're measuring, and how often
+// do we expect to check."
+function PlanProgressCard({ plan, activities }: { plan: Plan; activities: Activity[] }) {
   const { t, i18n } = useTranslation()
   const progress = plan.progress
   if (!progress) return null
 
-  const pillarRows = progress.pillars
-  const totalComplete = pillarRows.reduce((s, p) => s + p.complete, 0)
-  const totalInProgress = pillarRows.reduce((s, p) => s + p.in_progress, 0)
-
-  // Progress now means KPI achievement (actual vs. target), not "% of
-  // activities marked complete" — every bar below (overall, per-pillar,
-  // Advanced Research) uses whichever KPI-achievement figure applies to
-  // that row, falling back to the activity-status percent_complete only
-  // for a row with no scored KPIs yet, so it still shows *something*
-  // meaningful rather than an empty bar. objectiveToPillar maps an
-  // activity's objective_id to its pillar_id so each pillar's bar reflects
-  // only the KPIs on activities actually under that pillar.
-  const objectiveToPillar = new Map(objectives.map((o) => [o.id, o.pillar_id]))
-  const kpisByPillar = new Map<string, Activity[]>()
-  const advancedResearchActivities: Activity[] = []
-  activities.forEach((a) => {
-    if (a.category === 'advanced_research') {
-      advancedResearchActivities.push(a)
-      return
-    }
-    const pillarId = a.objective_id ? objectiveToPillar.get(a.objective_id) : undefined
-    if (!pillarId) return
-    kpisByPillar.set(pillarId, [...(kpisByPillar.get(pillarId) ?? []), a])
-  })
-
-  const kpiAchievement = overallKpiCompletion(activities.flatMap((a) => a.kpis ?? []))
+  const allKpis = activities.flatMap((a) => a.kpis ?? [])
+  const kpiAchievement = overallKpiCompletion(allKpis)
+  // Falls back to the activity-status percent_complete only when the plan
+  // has no scored KPIs at all yet, so a brand-new plan still shows
+  // *something* meaningful instead of an empty bar.
   const overallDisplayPct = kpiAchievement ?? progress.overall.percent_complete
 
-  const advancedResearchKpi = overallKpiCompletion(advancedResearchActivities.flatMap((a) => a.kpis ?? []))
+  const periodRows = KPI_PERIODS.map((period) => ({
+    period,
+    pct: periodCompletion(allKpis, period),
+    count: allKpis.filter((k) => k.target_period === period).length,
+  }))
+
+  const advancedResearchCount = activities.filter((a) => a.category === 'advanced_research').length
 
   return (
     <div className="bg-white rounded-2xl border border-ink-100 p-5">
@@ -57,97 +57,54 @@ function PlanProgressCard({ plan, activities, objectives }: { plan: Plan; activi
             </p>
           )}
         </div>
-        <div className="flex items-start gap-5">
-          <div className="text-right">
-            <p className={`text-2xl font-bold ${kpiAchievement !== null ? (overallDisplayPct >= 75 ? 'text-green-600' : overallDisplayPct <= 50 ? 'text-red-600' : 'text-yellow-600') : 'text-ink-900'}`}>
-              {Math.round(overallDisplayPct)}%
-            </p>
-            <p className="text-xs text-ink-400 flex items-center gap-1 justify-end">
-              {kpiAchievement !== null && <Target className="size-3" />}
-              {t('progressPage.overall')}
-            </p>
-          </div>
-          {kpiAchievement === null && (
-            <div className="text-right border-l border-ink-100 pl-5">
-              <p className="text-2xl font-bold text-ink-300">—</p>
-              <p className="text-xs text-ink-400 flex items-center gap-1 justify-end">
-                <Target className="size-3" />
-                {t('progressPage.noKpisScored', { defaultValue: 'No KPIs scored yet' })}
-              </p>
-            </div>
-          )}
+        <div className="text-right">
+          <p className={`text-2xl font-bold ${kpiAchievement !== null ? achievementColor(overallDisplayPct) : 'text-ink-900'}`}>
+            {Math.round(overallDisplayPct)}%
+          </p>
+          <p className="text-xs text-ink-400 flex items-center gap-1 justify-end">
+            {kpiAchievement !== null && <Target className="size-3" />}
+            {kpiAchievement !== null
+              ? t('progressPage.overall')
+              : t('progressPage.noKpisScored', { defaultValue: 'No KPIs scored yet' })}
+          </p>
         </div>
       </div>
 
       <ProgressBar value={overallDisplayPct} className="mb-5" />
 
+      {/* KPI breakdown by reporting cadence */}
       <div className="space-y-3">
-        {pillarRows.map((p) => {
-          const pillarKpi = overallKpiCompletion((kpisByPillar.get(p.pillar_id) ?? []).flatMap((a) => a.kpis ?? []))
-          const pillarDisplayPct = pillarKpi ?? p.percent_complete
-          return (
-            <div key={p.pillar_id}>
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xs font-medium text-ink-700 truncate">{p.title}</span>
-                  {p.overdue > 0 && (
-                    <span className="flex items-center gap-0.5 text-xs text-red-500 shrink-0">
-                      <AlertTriangle className="size-3" /> {p.overdue}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 text-xs text-ink-400 shrink-0">
-                  <span>{t('progressPage.done', { complete: p.complete, total: p.total })}</span>
-                  <span className={`font-semibold ${pillarKpi !== null ? (pillarDisplayPct >= 75 ? 'text-green-600' : pillarDisplayPct <= 50 ? 'text-red-600' : 'text-yellow-600') : 'text-accent'}`}>
-                    {Math.round(pillarDisplayPct)}%
-                  </span>
-                </div>
-              </div>
-              <ProgressBar value={pillarDisplayPct} />
-            </div>
-          )
-        })}
-
-        {/* Advanced Research activities don't belong to any pillar, so they
-            get their own row here rather than being folded into (or
-            silently dropped from) the pillar breakdown above — only shown
-            once the plan actually has at least one such activity. */}
-        {progress.advanced_research && (() => {
-          const advancedDisplayPct = advancedResearchKpi ?? progress.advanced_research.percent_complete
-          return (
-          <div>
+        {periodRows.map(({ period, pct, count }) => (
+          <div key={period}>
             <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2 min-w-0">
-                <FlaskConical className="size-3 text-ink-400 shrink-0" />
-                <span className="text-xs font-medium text-ink-700 truncate">{t('progressPage.advancedResearch', { defaultValue: 'Advanced Research' })}</span>
-                {progress.advanced_research.overdue > 0 && (
-                  <span className="flex items-center gap-0.5 text-xs text-red-500 shrink-0">
-                    <AlertTriangle className="size-3" /> {progress.advanced_research.overdue}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-3 text-xs text-ink-400 shrink-0">
-                <span>{t('progressPage.done', { complete: progress.advanced_research.complete, total: progress.advanced_research.total })}</span>
-                <span className={`font-semibold ${advancedResearchKpi !== null ? (advancedDisplayPct >= 75 ? 'text-green-600' : advancedDisplayPct <= 50 ? 'text-red-600' : 'text-yellow-600') : 'text-accent'}`}>
-                  {Math.round(advancedDisplayPct)}%
+              <span className="text-xs font-medium text-ink-700">{PERIOD_META[period].label}</span>
+              <div className="flex items-center gap-3 text-xs text-ink-400">
+                <span>{t('progressPage.kpiCount', { count, defaultValue: `${count} KPI${count === 1 ? '' : 's'}` })}</span>
+                <span className={`font-semibold ${pct !== null ? achievementColor(pct) : 'text-ink-300'}`}>
+                  {pct !== null ? `${Math.round(pct)}%` : '—'}
                 </span>
               </div>
             </div>
-            <ProgressBar value={advancedDisplayPct} />
+            <ProgressBar value={pct ?? 0} />
           </div>
-          )
-        })()}
+        ))}
       </div>
 
       <div className="flex items-center gap-4 mt-4 pt-4 border-t border-ink-50">
         <div className="flex items-center gap-1.5 text-xs text-ink-500">
           <CheckCircle2 className="size-3.5 text-p2-dark" />
-          {totalComplete} {t('progressPage.complete')}
+          {progress.overall.complete} {t('progressPage.complete')}
         </div>
         <div className="flex items-center gap-1.5 text-xs text-ink-500">
           <TrendingUp className="size-3.5 text-accent" />
-          {totalInProgress} {t('progressPage.inProgress')}
+          {progress.overall.in_progress} {t('progressPage.inProgress')}
         </div>
+        {advancedResearchCount > 0 && (
+          <div className="flex items-center gap-1.5 text-xs text-ink-500">
+            <FlaskConical className="size-3.5 text-ink-400" />
+            {advancedResearchCount} {t('progressPage.advancedResearch', { defaultValue: 'Advanced Research' })}
+          </div>
+        )}
         {progress.overall.overdue > 0 && (
           <div className="flex items-center gap-1.5 text-xs text-red-500 font-medium ml-auto">
             <AlertTriangle className="size-3.5" />
@@ -159,6 +116,7 @@ function PlanProgressCard({ plan, activities, objectives }: { plan: Plan; activi
   )
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ProgressPage() {
   const { t } = useTranslation()
   const [searchParams] = useSearchParams()
@@ -167,13 +125,13 @@ export default function ProgressPage() {
   const [plans, setPlans] = useState<Plan[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Network diagram state — scoped to one plan at a time
-  const [networkPlanId, setNetworkPlanId] = useState<string>('')
-  const [networkActivities, setNetworkActivities] = useState<Activity[]>([])
-  const [networkLinks, setNetworkLinks] = useState<ActivityLink[]>([])
-  const [networkPillars, setNetworkPillars] = useState<StrategicPillar[]>([])
-  const [networkObjectives, setNetworkObjectives] = useState<StrategicObjective[]>([])
-  const [networkLoading, setNetworkLoading] = useState(false)
+  // Selected-plan detail state — just the one plan's activities, to feed
+  // the KPI breakdown above. No links/pillars/objectives needed any more:
+  // the dependency network (and activity linking generally) was removed —
+  // that kind of cross-activity linking is no longer part of the product.
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('')
+  const [selectedPlanActivities, setSelectedPlanActivities] = useState<Activity[]>([])
+  const [selectedPlanLoading, setSelectedPlanLoading] = useState(false)
 
   useEffect(() => {
     plansApi.list()
@@ -195,56 +153,22 @@ export default function ProgressPage() {
           })
         )
         setPlans(withProgress)
-        if (withProgress.length > 0 && !networkPlanId) {
-          setNetworkPlanId(withProgress[0].id)
+        if (withProgress.length > 0 && !selectedPlanId) {
+          setSelectedPlanId(withProgress[0].id)
         }
       })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [filterPlan]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Extracted so it can be reused as ActivityDependencyNetwork's
-  // onLinksChanged callback (after accepting an AI-suggested link) without
-  // duplicating the fetch logic. `silent` skips the loading-skeleton toggle
-  // — the diagram is already visible and interactive at that point, so
-  // swapping it for a pulsing placeholder just to add one edge would be a
-  // jarring flash for what's normally a near-instant refetch. Pillars/
-  // objectives are re-fetched too even on a silent refresh — cheap, and
-  // covers the (rare) case where a pillar was renamed or added elsewhere
-  // while the diagram was open.
-  const fetchNetworkData = useCallback((planId: string, opts?: { silent?: boolean }) => {
-    if (!opts?.silent) setNetworkLoading(true)
-    return Promise.all([
-      activitiesApi.list(planId),
-      activitiesApi.listLinks(planId),
-      pillarsApi.list(planId),
-      pillarsApi.listObjectives(planId),
-    ])
-      .then(([acts, links, pillars, objectives]) => {
-        setNetworkActivities(acts)
-        setNetworkLinks(links)
-        setNetworkPillars(pillars)
-        setNetworkObjectives(objectives)
-      })
-      .catch(() => {
-        if (!opts?.silent) {
-          setNetworkActivities([])
-          setNetworkLinks([])
-          setNetworkPillars([])
-          setNetworkObjectives([])
-        }
-        // A silent refresh failing just leaves existing data in place —
-        // the newly-accepted link won't render until the next full load,
-        // but that's preferable to blanking an otherwise-working diagram
-        // over a transient refetch failure.
-      })
-      .finally(() => { if (!opts?.silent) setNetworkLoading(false) })
-  }, [])
-
   useEffect(() => {
-    if (!networkPlanId) return
-    fetchNetworkData(networkPlanId)
-  }, [networkPlanId, fetchNetworkData])
+    if (!selectedPlanId) return
+    setSelectedPlanLoading(true)
+    activitiesApi.list(selectedPlanId)
+      .then(setSelectedPlanActivities)
+      .catch(() => setSelectedPlanActivities([]))
+      .finally(() => setSelectedPlanLoading(false))
+  }, [selectedPlanId])
 
   // overall is populated for every plan (pillar-attached + Advanced
   // Research activities combined) — no more plan-type branching needed here.
@@ -285,19 +209,17 @@ export default function ProgressPage() {
       {/* Selected plan detail — one plan at a time via the selector below,
           rather than rendering every plan's card in a row. With more than a
           handful of plans a full list gets long fast; this keeps the page a
-          fixed height and reuses one selector for both the progress card and
-          the dependency network instead of the two disconnected pickers this
-          page used to have. */}
+          fixed height and reuses one selector for the progress card. */}
       {!loading && plans.length > 0 && (() => {
-        const selectedPlan = plans.find((p) => p.id === networkPlanId) ?? plans[0]
+        const selectedPlan = plans.find((p) => p.id === selectedPlanId) ?? plans[0]
         return (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-display text-sm font-bold text-ink-800">{t('progressPage.perPlanDetail')}</h2>
               {plans.length > 1 && (
                 <select
-                  value={networkPlanId}
-                  onChange={(e) => setNetworkPlanId(e.target.value)}
+                  value={selectedPlanId}
+                  onChange={(e) => setSelectedPlanId(e.target.value)}
                   className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs text-ink-700 outline-none focus:ring-2 focus:ring-accent-400"
                 >
                   {plans.map((p) => (
@@ -308,36 +230,17 @@ export default function ProgressPage() {
             </div>
 
             {selectedPlan && (
-              <PlanProgressCard
-                plan={selectedPlan}
-                // Reuse the activities/objectives already fetched for the
-                // dependency network below rather than a second per-plan
-                // fetch — but only once they actually belong to this plan
-                // (they lag one tick behind networkPlanId during a plan
-                // switch), so the KPI bars don't flash a stale plan's numbers.
-                activities={networkPlanId === selectedPlan.id ? networkActivities : []}
-                objectives={networkPlanId === selectedPlan.id ? networkObjectives : []}
-              />
-            )}
-
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <GitBranch className="size-4 text-ink-400" />
-                <h3 className="font-display text-sm font-bold text-ink-800">{t('progressPage.dependencyNetwork')}</h3>
-              </div>
-              {networkLoading ? (
-                <div className="h-[560px] bg-ink-100 rounded-2xl animate-pulse" />
+              selectedPlanLoading && selectedPlanId === selectedPlan.id ? (
+                <div className="h-64 bg-ink-100 rounded-2xl animate-pulse" />
               ) : (
-                <ActivityDependencyNetwork
-                  activities={networkActivities}
-                  links={networkLinks}
-                  pillars={networkPillars}
-                  objectives={networkObjectives}
-                  planId={networkPlanId}
-                  onLinksChanged={() => fetchNetworkData(networkPlanId, { silent: true })}
+                <PlanProgressCard
+                  plan={selectedPlan}
+                  // Lags one tick behind selectedPlanId during a plan
+                  // switch, so guard against showing a stale plan's KPIs.
+                  activities={selectedPlanId === selectedPlan.id ? selectedPlanActivities : []}
                 />
-              )}
-            </div>
+              )
+            )}
           </div>
         )
       })()}
