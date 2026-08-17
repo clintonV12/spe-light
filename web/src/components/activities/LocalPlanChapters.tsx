@@ -931,8 +931,39 @@ const OrgStructureSection: React.FC<{ plan: Plan; canEdit: boolean }> = ({ plan,
   const [roles, setRoles] = useState<OrgStructureRole[]>([])
   const [title, setTitle] = useState('')
   const [reportsToId, setReportsToId] = useState<string>('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editReportsToId, setEditReportsToId] = useState<string>('')
   const { error } = useToast()
   const ai = useAiDraft(plan.id, 'local_org_structure')
+
+  const startEditing = (role: OrgStructureRole) => {
+    setEditingId(role.id)
+    setEditTitle(role.title ?? '')
+    setEditReportsToId(role.reports_to_id ?? '')
+  }
+
+  const cancelEditing = () => {
+    setEditingId(null)
+    setEditTitle('')
+    setEditReportsToId('')
+  }
+
+  const update = async (id: string) => {
+    const trimmed = editTitle.trim()
+    if (!trimmed) return
+
+    try {
+      const updated = await orgStructureApi.update(id, {
+        title: trimmed,
+        reports_to_id: editReportsToId || undefined,
+      })
+      setRoles((prev) => prev.map((role) => (role.id === id ? updated : role)))
+      cancelEditing()
+    } catch {
+      error('Failed to update role')
+    }
+  }
 
   useEffect(() => {
     orgStructureApi.list(plan.id).then(setRoles).catch(() => error('Failed to load org structure'))
@@ -992,20 +1023,83 @@ const OrgStructureSection: React.FC<{ plan: Plan; canEdit: boolean }> = ({ plan,
 
   const renderNode = (role: OrgStructureRole, depth: number): React.ReactNode => (
     <div key={role.id}>
-      <div
-        className="flex items-center justify-between rounded-lg bg-ink-50 px-3 py-2 mb-1.5"
-        style={{ marginLeft: depth * 24 }}
-      >
-        <div className="flex items-center gap-2">
-          {depth > 0 && <span className="text-ink-300 text-sm">└</span>}
-          <span className="text-sm text-ink-900 font-medium">{role.title}</span>
+      {editingId === role.id && canEdit ? (
+        <div
+          className="rounded-lg border border-accent-200 bg-accent-50/40 px-3 py-2 mb-1.5"
+          style={{ marginLeft: depth * 24 }}
+        >
+          <div className="flex flex-wrap gap-2 items-center">
+            {depth > 0 && <span className="text-ink-300 text-sm">└</span>}
+            <Input
+              autoFocus
+              className="flex-1 min-w-[180px]"
+              placeholder="Role title"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') update(role.id)
+                if (e.key === 'Escape') cancelEditing()
+              }}
+            />
+            <select
+              className="rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900"
+              value={editReportsToId}
+              onChange={(e) => setEditReportsToId(e.target.value)}
+            >
+              <option value="">Top of chart (no manager)</option>
+              {roles
+                .filter((r) => r.id !== role.id)
+                .map((r) => (
+                  <option key={r.id} value={r.id}>
+                    Reports to: {r.title}
+                  </option>
+                ))}
+            </select>
+            <button
+              onClick={() => update(role.id)}
+              className="text-accent hover:text-accent-600 p-1"
+              title="Save"
+            >
+              <Check className="size-4" />
+            </button>
+            <button
+              onClick={cancelEditing}
+              className="text-ink-400 hover:text-ink-600 p-1"
+              title="Cancel"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
         </div>
-        {canEdit && (
-          <button onClick={() => remove(role.id)} className="text-ink-400 hover:text-red-600">
-            <Trash2 className="size-4" />
-          </button>
-        )}
-      </div>
+      ) : (
+        <div
+          className="group flex items-center justify-between rounded-lg bg-ink-50 px-3 py-2 mb-1.5"
+          style={{ marginLeft: depth * 24 }}
+        >
+          <div className="flex items-center gap-2">
+            {depth > 0 && <span className="text-ink-300 text-sm">└</span>}
+            <span className="text-sm text-ink-900 font-medium">{role.title}</span>
+          </div>
+          {canEdit && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => startEditing(role)}
+                className="text-ink-400 hover:text-accent transition-colors"
+                title="Edit role"
+              >
+                <Pencil className="size-4" />
+              </button>
+              <button
+                onClick={() => remove(role.id)}
+                className="text-ink-400 hover:text-red-600"
+                title="Delete role"
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {(byParent.get(role.id) ?? []).map((child) => renderNode(child, depth + 1))}
     </div>
   )
@@ -1068,8 +1162,33 @@ const MESection: React.FC<{ plan: Plan; canEdit: boolean }> = ({ plan, canEdit }
   const [drafts, setDrafts] = useState<Record<MECategory, string>>({
     objective: '', critical_success_factor: '', review_note: '', conclusion_measure: '',
   })
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editText, setEditText] = useState('')
   const { error } = useToast()
   const ai = useAiDraft(plan.id, 'local_me')
+
+  const startEditing = (item: MEItem) => {
+    setEditingId(item.id)
+    setEditText(item.text ?? '')
+  }
+
+  const cancelEditing = () => {
+    setEditingId(null)
+    setEditText('')
+  }
+
+  const update = async (id: string) => {
+    const text = editText.trim()
+    if (!text) return
+
+    try {
+      const updated = await meItemsApi.update(id, { text })
+      setItems((prev) => prev.map((item) => (item.id === id ? updated : item)))
+      cancelEditing()
+    } catch {
+      error('Failed to update M&E item')
+    }
+  }
 
   useEffect(() => {
     meItemsApi.list(plan.id).then(setItems).catch(() => error('Failed to load M&E items'))
@@ -1144,12 +1263,55 @@ const MESection: React.FC<{ plan: Plan; canEdit: boolean }> = ({ plan, canEdit }
             </h4>
             <ul className="space-y-1 mb-2">
               {items.filter((i) => i.category === key).map((item) => (
-                <li key={item.id} className="group flex items-center justify-between text-sm text-ink-900 bg-white rounded-md px-2 py-1.5">
-                  <span>{item.text}</span>
-                  {canEdit && (
-                    <button onClick={() => remove(item.id)} className="opacity-0 group-hover:opacity-100 text-ink-400 hover:text-red-600 transition-opacity">
-                      <Trash2 className="size-3.5" />
-                    </button>
+                <li key={item.id} className="group flex items-center justify-between gap-2 text-sm text-ink-900 bg-white rounded-md px-2 py-1.5">
+                  {editingId === item.id ? (
+                    <div className="flex flex-1 items-center gap-1.5">
+                      <Input
+                        autoFocus
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') update(item.id)
+                          if (e.key === 'Escape') cancelEditing()
+                        }}
+                      />
+                      <button
+                        onClick={() => update(item.id)}
+                        className="text-accent hover:text-accent-600 p-1"
+                        title="Save"
+                      >
+                        <Check className="size-4" />
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        className="text-ink-400 hover:text-ink-600 p-1"
+                        title="Cancel"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="flex-1">{item.text}</span>
+                      {canEdit && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => startEditing(item)}
+                            className="text-ink-400 hover:text-accent transition-colors"
+                            title="Edit item"
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+                          <button
+                            onClick={() => remove(item.id)}
+                            className="text-ink-400 hover:text-red-600 transition-colors"
+                            title="Delete item"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </li>
               ))}
