@@ -237,6 +237,16 @@ export interface Plan {
    * hasn't been measured that way).
    */
   kpi_achievement?: number | null
+  /**
+   * Injected by the frontend (see TrackingModule.tsx's fetchPlanKpiSummary);
+   * not a backend field. How many of the plan's scored KPIs (both a target
+   * and an actual value recorded) are at or past 100% of target — the
+   * "X of Y KPIs on track" figure DashboardPage's PlanCard shows instead of
+   * (or alongside) the blended kpi_achievement percentage above. Undefined
+   * until fetched; both 0 when the plan genuinely has no scored KPIs yet.
+   */
+  kpi_on_track?: number
+  kpi_scored?: number
   vision?: string
   mission?: string
 }

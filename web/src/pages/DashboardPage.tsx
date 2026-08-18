@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import {
-  Plus, AlertTriangle, TrendingUp, CheckCircle2,
+import { Plus, AlertTriangle, TrendingUp, CheckCircle2,
   ArrowUpRight, Sparkles, Activity,
   FileText, GitBranch, UserCheck, BarChart2,
-  FileOutput, RefreshCw, ArrowRight,
+  FileOutput, RefreshCw, ArrowRight, Target,
 } from 'lucide-react'
 import { plansApi, auditApi } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
@@ -13,7 +12,7 @@ import { usePermission } from '../hooks'
 import { EmptyState } from '../components/ui'
 import CreatePlanModal from '../components/plans/CreatePlanModal'
 import { SHORTCUT_CREATE_EVENT } from '../components/layout/AppShell'
-import { fetchPlanKpiAchievement } from '../components/activities/TrackingModule'
+import { fetchPlanKpiSummary } from '../components/activities/TrackingModule'
 import type { Plan, PlanStatus, AuditLog, AuditAction } from '../types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -58,38 +57,49 @@ const STATUS_PILL_CLS: Record<PlanStatus, string> = {
   archived:  'bg-ink-100 text-ink-400',
 }
 
+// Same rail color per status as the pill above, used as a left accent bar
+// on the card so a whole row of cards can be status-scanned at a glance
+// without reading each pill individually.
+const STATUS_RAIL_CLS: Record<PlanStatus, string> = {
+  draft:     'bg-ink-300',
+  active:    'bg-emerald-400',
+  review:    'bg-amber-400',
+  completed: 'bg-blue-400',
+  archived:  'bg-ink-200',
+}
+
 function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
   const { t } = useTranslation()
   const progress = plan.progress
   const overdue  = progress?.overall.overdue ?? 0
   const pillCls  = STATUS_PILL_CLS[plan.status]
+  const railCls  = STATUS_RAIL_CLS[plan.status]
 
-  // The headline ring is KPI achievement (actual vs. target across every
-  // KPI in the plan) now that progress means KPI tracking — falls back to
-  // activity-status percent_complete for a plan that has no KPIs scored
-  // yet, so a brand-new plan doesn't just show an empty/zero ring.
+  // "Progress" means KPI achievement now (actual vs. target), not "% of
+  // activities marked complete" — the ring and the "on track" line below
+  // are both KPI-based, matching TrackingModule.tsx and ProgressPage.tsx.
+  // Falls back to activity-status percent_complete only for a plan with no
+  // KPIs scored yet, so a brand-new plan doesn't just show an empty ring.
   const kpiPct = plan.kpi_achievement
   const overallPct = kpiPct ?? progress?.overall.percent_complete ?? 0
-
-  // Per-pillar bars stay activity-completion-based (not KPI-based) — a
-  // per-pillar KPI figure would need its own activities fetch per pillar
-  // per card, too heavy for a dashboard grid of many plans. That level of
-  // detail lives on the Progress page instead (see ProgressPage.tsx).
-  const bars = (progress?.pillars ?? []).map((p) => ({
-    key: p.pillar_id, label: p.title.slice(0, 2).toUpperCase(), pct: p.percent_complete,
-  }))
+  const kpiScored = plan.kpi_scored ?? 0
+  const kpiOnTrack = plan.kpi_on_track ?? 0
+  const ringColor = kpiPct === null ? '#CBD5E1' : overallPct >= 80 ? '#10B981' : overallPct >= 40 ? '#4B6BFB' : '#EF4444'
 
   return (
     <button
       onClick={onClick}
-      className="group w-full text-left bg-white rounded-2xl border border-ink-100 p-5
-                 hover:border-accent/30 hover:shadow-[0_4px_24px_rgba(75,107,251,0.10)]
+      className="group relative w-full text-left bg-white rounded-2xl border border-ink-100 pl-6 pr-5 py-5 overflow-hidden
+                 hover:border-accent/30 hover:shadow-[0_8px_30px_rgba(15,23,42,0.08)] hover:-translate-y-0.5
                  transition-all duration-200 cursor-pointer"
     >
+      {/* Status rail */}
+      <span className={`absolute left-0 top-0 bottom-0 w-1 ${railCls}`} />
+
       {/* Title row */}
-      <div className="flex items-start justify-between gap-3 mb-5">
+      <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-ink-900 text-sm leading-snug truncate group-hover:text-accent transition-colors duration-150">
+          <p className="font-semibold text-ink-900 text-[15px] leading-snug truncate group-hover:text-accent transition-colors duration-150">
             {plan.title}
           </p>
           {plan.description && (
@@ -101,57 +111,47 @@ function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
         </span>
       </div>
 
-      {/* Pillar bars — each a small tinted track for that pillar's activity completion */}
-      {progress && bars.length > 0 && (
-        <div className="space-y-2.5 mb-5">
-          {bars.map((bar) => (
-            <div key={bar.key} className="flex items-center gap-3">
-              <span className="text-[10px] font-bold tracking-wider text-ink-400 w-5 shrink-0" title={bar.label}>
-                {bar.label}
-              </span>
-              <div className="flex-1 h-1.5 rounded-full bg-accent-50 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-accent-400 to-accent-500 transition-all duration-700 ease-out"
-                  style={{ width: `${Math.max(0, Math.min(100, bar.pct))}%` }}
-                />
-              </div>
-              <span className="text-[10px] text-ink-400 tabular-nums w-7 text-right shrink-0">
-                {Math.round(bar.pct)}%
-              </span>
-            </div>
-          ))}
+      {/* KPI achievement — ring + "on track" readout */}
+      <div className="flex items-center gap-4 py-3 px-3.5 rounded-xl bg-ink-50/60 mb-4">
+        <div className="relative size-14 shrink-0">
+          <svg viewBox="0 0 44 44" className="size-14 -rotate-90">
+            <circle cx="22" cy="22" r="18.5" fill="none" stroke="#E2E8F0" strokeWidth="4" />
+            <circle
+              cx="22" cy="22" r="18.5" fill="none"
+              stroke={ringColor}
+              strokeWidth="4"
+              strokeDasharray={`${(overallPct / 100) * 116.2} 116.2`}
+              strokeLinecap="round"
+              className="transition-all duration-700"
+            />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-ink-800 tabular-nums">
+            {Math.round(overallPct)}%
+          </span>
         </div>
-      )}
-
-      {/* Footer */}
-      <div className="flex items-center justify-between pt-3.5 border-t border-ink-50">
-        <div className="flex items-center gap-3">
-          {/* Overall ring indicator */}
-          <div className="relative size-8 shrink-0">
-            <svg viewBox="0 0 32 32" className="size-8 -rotate-90">
-              <circle cx="16" cy="16" r="13" fill="none" stroke="#F1F5F9" strokeWidth="3.5" />
-              <circle
-                cx="16" cy="16" r="13" fill="none"
-                stroke={overallPct >= 80 ? '#10B981' : overallPct >= 40 ? '#4B6BFB' : '#94A3B8'}
-                strokeWidth="3.5"
-                strokeDasharray={`${(overallPct / 100) * 81.7} 81.7`}
-                strokeLinecap="round"
-                className="transition-all duration-700"
-              />
-            </svg>
-            <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold text-ink-600 tabular-nums">
-              {Math.round(overallPct)}
-            </span>
-          </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-ink-700 flex items-center gap-1.5">
+            <Target className="size-3 text-ink-400 shrink-0" />
+            {kpiScored > 0
+              ? t('dashboard.kpisOnTrack', { onTrack: kpiOnTrack, scored: kpiScored, defaultValue: `${kpiOnTrack} of ${kpiScored} KPIs on track` })
+              : t('dashboard.noKpisScored', { defaultValue: 'No KPIs scored yet' })}
+          </p>
           {overdue > 0 ? (
-            <span className="flex items-center gap-1 text-xs text-red-500 font-medium">
+            <p className="flex items-center gap-1 text-xs text-red-500 font-medium mt-0.5">
               <AlertTriangle className="size-3" /> {t('dashboard.overdueBadge', { count: overdue })}
-            </span>
+            </p>
           ) : (
-            <span className="text-xs text-ink-400">{t('dashboard.onTrack')}</span>
+            <p className="text-xs text-ink-400 mt-0.5">{t('dashboard.onTrack')}</p>
           )}
         </div>
-        <ArrowUpRight className="size-4 text-ink-200 group-hover:text-accent group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-150" />
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-end">
+        <span className="flex items-center gap-1 text-xs font-medium text-ink-300 group-hover:text-accent transition-colors duration-150">
+          {t('dashboard.viewPlan', { defaultValue: 'View plan' })}
+          <ArrowUpRight className="size-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-150" />
+        </span>
       </div>
     </button>
   )
@@ -159,16 +159,20 @@ function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, icon, loading, alert = false, sub }: {
+function StatCard({ label, value, icon, loading, alert = false, sub, accent }: {
   label: string
   value: string | number
   icon: React.ReactNode
   loading: boolean
   alert?: boolean
   sub?: string
+  /** Tailwind bg-* class for the top accent bar, e.g. 'bg-emerald-400'. */
+  accent: string
 }) {
   return (
-    <div className={`relative overflow-hidden rounded-2xl border bg-white p-5 ${alert ? 'border-red-200' : 'border-ink-100'}`}>
+    <div className={`group relative overflow-hidden rounded-2xl border bg-white p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.06)] hover:-translate-y-0.5 transition-all duration-200 ${alert ? 'border-red-200' : 'border-ink-100'}`}>
+      {/* Top accent bar */}
+      <span className={`absolute top-0 left-0 right-0 h-[3px] ${alert ? 'bg-red-400' : accent}`} />
       {/* Subtle gradient wash in corner */}
       <div className={`absolute -top-4 -right-4 size-20 rounded-full opacity-40 blur-2xl pointer-events-none ${alert ? 'bg-red-200' : 'bg-accent-100'}`} />
 
@@ -380,18 +384,20 @@ export default function DashboardPage() {
       // GET /api/v1/plans never returns `progress` — it's explicitly not a
       // backend field on Plan (see the type's own doc comment); it only
       // comes back from GET /plans/{id}/progress. Without this extra
-      // fetch-and-merge step every PlanCard's ring/pillar-bars and this
-      // page's own avg-progress/overdue stats always read as zero, even
-      // though ProgressPage.tsx (which does fetch it per plan) shows the
-      // real numbers for the same plans. kpi_achievement is fetched the
-      // same way, from each plan's activities — see fetchPlanKpiAchievement.
+      // fetch-and-merge step every PlanCard's ring and this page's own
+      // avg-progress/overdue stats always read as zero, even though
+      // ProgressPage.tsx (which does fetch it per plan) shows the real
+      // numbers for the same plans. kpi_achievement/kpi_on_track/kpi_scored
+      // are fetched the same way, from each plan's activities — see
+      // fetchPlanKpiSummary.
       const withProgress = await Promise.all(
         data.map(async (p) => {
-          const [progress, kpi_achievement] = await Promise.all([
+          const [progress, kpiSummary] = await Promise.all([
             plansApi.progress(p.id).catch(() => undefined),
-            fetchPlanKpiAchievement(p.id),
+            fetchPlanKpiSummary(p.id),
           ])
-          return progress ? { ...p, progress, kpi_achievement } : { ...p, kpi_achievement }
+          const withKpi = { ...p, kpi_achievement: kpiSummary.achievement, kpi_on_track: kpiSummary.onTrack, kpi_scored: kpiSummary.scored }
+          return progress ? { ...withKpi, progress } : withKpi
         })
       )
       setPlans(withProgress)
@@ -422,19 +428,27 @@ export default function DashboardPage() {
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? t('dashboard.greetingMorning') : hour < 17 ? t('dashboard.greetingAfternoon') : t('dashboard.greetingEvening')
+  const orgInitial = (org?.name ?? t('dashboard.orgFallback')).trim().charAt(0).toUpperCase()
+  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-7">
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-ink-900">
-            {greeting}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}.
-          </h1>
-          <p className="text-ink-400 text-sm mt-0.5">
-            {org?.name ?? t('dashboard.orgFallback')} · {t('dashboard.subtitle')}
-          </p>
+        <div className="flex items-start gap-4">
+          <div className="size-11 rounded-2xl bg-gradient-to-br from-accent to-accent-600 flex items-center justify-center text-white font-display font-bold text-lg shrink-0 shadow-sm shadow-accent/25">
+            {orgInitial}
+          </div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-ink-300 mb-0.5">{today}</p>
+            <h1 className="font-display text-2xl font-bold text-ink-900 leading-tight">
+              {greeting}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}.
+            </h1>
+            <p className="text-ink-400 text-sm mt-0.5">
+              {org?.name ?? t('dashboard.orgFallback')} · {t('dashboard.subtitle')}
+            </p>
+          </div>
         </div>
         {can.createPlan && (
           <button
@@ -451,21 +465,25 @@ export default function DashboardPage() {
         <StatCard
           label={t('dashboard.statActivePlans')} loading={loading} value={activePlans}
           sub={t('dashboard.statActivePlansSub', { count: activePlans })}
+          accent="bg-emerald-400"
           icon={<div className="size-9 rounded-xl bg-emerald-50 flex items-center justify-center"><TrendingUp className="size-4 text-emerald-600" /></div>}
         />
         <StatCard
           label={t('dashboard.statAvgProgress')} loading={loading} value={`${avgProgress}%`}
           sub={t('dashboard.statAvgProgressSub')}
+          accent="bg-blue-400"
           icon={<div className="size-9 rounded-xl bg-blue-50 flex items-center justify-center"><CheckCircle2 className="size-4 text-blue-500" /></div>}
         />
         <StatCard
           label={t('dashboard.statOverdue')} loading={loading} value={totalOverdue} alert={totalOverdue > 0}
           sub={totalOverdue > 0 ? t('dashboard.statOverdueSubAlert') : t('dashboard.statOverdueSubOk')}
+          accent="bg-ink-300"
           icon={<div className={`size-9 rounded-xl flex items-center justify-center ${totalOverdue > 0 ? 'bg-red-50' : 'bg-ink-50'}`}><AlertTriangle className={`size-4 ${totalOverdue > 0 ? 'text-red-500' : 'text-ink-300'}`} /></div>}
         />
         <StatCard
           label={t('dashboard.statTotalPlans')} loading={loading} value={plans.length}
           sub={t('dashboard.statTotalPlansSub', { count: plans.filter(p => p.status === 'completed').length })}
+          accent="bg-violet-400"
           icon={<div className="size-9 rounded-xl bg-violet-50 flex items-center justify-center"><BarChart2 className="size-4 text-violet-500" /></div>}
         />
       </div>

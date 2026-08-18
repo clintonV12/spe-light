@@ -94,6 +94,40 @@ export async function fetchPlanKpiAchievement(planId: string): Promise<number | 
   }
 }
 
+// Richer version of fetchPlanKpiAchievement for cards that want to show
+// "how many KPIs are actually on track" rather than just one blended
+// percentage — DashboardPage's PlanCard, specifically. Reuses the exact
+// same activities fetch and computeAchievement/overallKpiCompletion math,
+// just also counts per-KPI outcomes instead of only averaging them.
+export interface PlanKpiSummary {
+  /** Same figure fetchPlanKpiAchievement returns — kept so callers that only need one number don't need a second fetch. */
+  achievement: number | null
+  /** KPIs with both a target and an actual value set, so an achievement % could be computed for them. */
+  scored: number
+  /** Of the scored KPIs, how many are at or past 100% of target. */
+  onTrack: number
+  /** Every KPI on the plan, scored or not — an unscored KPI (no actual recorded yet) still counts here. */
+  total: number
+}
+
+export async function fetchPlanKpiSummary(planId: string): Promise<PlanKpiSummary> {
+  try {
+    const acts = await activitiesApi.list(planId)
+    const kpis = acts.flatMap((a) => a.kpis ?? [])
+    let scored = 0
+    let onTrack = 0
+    kpis.forEach((k) => {
+      const pct = computeAchievement(k.direction, k.target_value, k.actual_value)
+      if (pct === null) return
+      scored++
+      if (pct >= 100) onTrack++
+    })
+    return { achievement: overallKpiCompletion(kpis), scored, onTrack, total: kpis.length }
+  } catch {
+    return { achievement: null, scored: 0, onTrack: 0, total: 0 }
+  }
+}
+
 export function achievementColor(pct: number): string {
   if (pct >= 75) return 'text-green-600'
   if (pct <= 50) return 'text-red-600'

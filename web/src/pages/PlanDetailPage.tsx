@@ -30,45 +30,62 @@ function PlanStatusPicker({
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
 
+  // Sits in the header next to other controls (the Progress button, etc.)
+  // with nothing else on the page to anchor it — without an explicit
+  // label it can read as referring to whatever's currently in view (the
+  // open chapter, an activity) rather than the plan as a whole. The
+  // uppercase micro-label above makes that unambiguous.
+  const label = (
+    <p className="text-[10px] font-bold uppercase tracking-wide text-ink-300 mb-1">
+      {t('planDetail.statusLabel', { defaultValue: 'Plan Status' })}
+    </p>
+  )
+
   if (disabled) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-600">
-        <span className={`size-2 rounded-full shrink-0 ${PLAN_STATUS_DOT[status]}`} />
-        {t(`plan.status.${status}`)}
-      </span>
+      <div>
+        {label}
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-600">
+          <span className={`size-2 rounded-full shrink-0 ${PLAN_STATUS_DOT[status]}`} />
+          {t(`plan.status.${status}`)}
+        </span>
+      </div>
     )
   }
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        disabled={loading}
-        className="flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-700 hover:bg-ink-50 transition-colors disabled:opacity-50"
-      >
-        <span className={`size-2 rounded-full shrink-0 ${PLAN_STATUS_DOT[status]}`} />
-        {t(`plan.status.${status}`)}
-        <ChevronDown className="size-3.5" />
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-20 mt-1 w-40 rounded-xl border border-ink-100 bg-white shadow-lg py-1">
-            {PLAN_STATUS_ORDER.map((value) => (
-              <button
-                key={value}
-                onClick={() => { onChange(value); setOpen(false) }}
-                disabled={value === status}
-                className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-ink-700 hover:bg-ink-50 disabled:opacity-40 disabled:cursor-default"
-              >
-                <span className={`size-2 rounded-full shrink-0 ${PLAN_STATUS_DOT[value]}`} />
-                {t(`plan.status.${value}`)}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-      {loading && <span className="ml-2 size-4 animate-spin rounded-full border-2 border-accent border-t-transparent inline-block align-middle" />}
+    <div>
+      {label}
+      <div className="relative">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          disabled={loading}
+          className="flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-700 hover:bg-ink-50 transition-colors disabled:opacity-50"
+        >
+          <span className={`size-2 rounded-full shrink-0 ${PLAN_STATUS_DOT[status]}`} />
+          {t(`plan.status.${status}`)}
+          <ChevronDown className="size-3.5" />
+        </button>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+            <div className="absolute right-0 z-20 mt-1 w-40 rounded-xl border border-ink-100 bg-white shadow-lg py-1">
+              {PLAN_STATUS_ORDER.map((value) => (
+                <button
+                  key={value}
+                  onClick={() => { onChange(value); setOpen(false) }}
+                  disabled={value === status}
+                  className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-ink-700 hover:bg-ink-50 disabled:opacity-40 disabled:cursor-default"
+                >
+                  <span className={`size-2 rounded-full shrink-0 ${PLAN_STATUS_DOT[value]}`} />
+                  {t(`plan.status.${value}`)}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {loading && <span className="ml-2 size-4 animate-spin rounded-full border-2 border-accent border-t-transparent inline-block align-middle" />}
+      </div>
     </div>
   )
 }
@@ -141,7 +158,7 @@ export default function PlanDetailPage() {
             <h1 className="font-display text-2xl font-bold text-ink-900">{plan.title}</h1>
             {plan.description && <p className="text-ink-500 text-sm mt-0.5">{plan.description}</p>}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-end gap-2 shrink-0">
             <PlanStatusPicker
               status={plan.status}
               onChange={handlePlanStatusChange}
