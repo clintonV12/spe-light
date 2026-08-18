@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useTranslation } from 'react-i18next'
 import {
-  LayoutDashboard, FileText, BarChart2, FileOutput,
+  LayoutDashboard, FileText, FileOutput,
   Settings, ChevronLeft, ChevronRight, WifiOff, RefreshCw,
   Menu, Search, Keyboard, ShieldCheck, LogOut, UserCircle, BookOpen,
 } from 'lucide-react'
@@ -95,20 +95,22 @@ export const AppShell: React.FC = () => {
 
   // ── Role-based navigation ────────────────────────────────────────────────
   // Platform-tier users (super_admin, platform_support) have no org and no
-  // access to Plans/Progress/Reports/org-Admin per the SRS permission
-  // matrix — they get a single link to their own console instead. Docs is
-  // the one item both lists share, since it's permission-agnostic reading
-  // material rather than org-scoped work.
+  // access to Plans/Reports/org-Admin per the SRS permission matrix — they
+  // get a single link to their own console instead. Docs is the one item
+  // both lists share, since it's permission-agnostic reading material
+  // rather than org-scoped work.
   const isPlatformTier = role === 'super_admin' || role === 'platform_support'
 
   const orgNavItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: t('nav.dashboard') },
-    { to: '/plans',     icon: FileText,        label: t('nav.plans')     },
-    { to: '/progress',  icon: BarChart2,        label: t('nav.progress')  },
-    { to: '/reports',   icon: FileOutput,       label: t('nav.reports')   },
+    // Admin follows Dashboard for roles that can see it — org config is
+    // the next thing worth surfacing early, just not ahead of the
+    // landing page people expect to see first.
     ...(role && ROLE_HIERARCHY[role] >= ROLE_HIERARCHY.org_admin
       ? [{ to: '/admin', icon: Settings, label: t('nav.admin') }]
       : []),
+    { to: '/plans',     icon: FileText,        label: t('nav.plans')     },
+    { to: '/reports',   icon: FileOutput,       label: t('nav.reports')   },
     // Docs are useful to every org-tier role regardless of what else they
     // can see above — deliberately placed last so it doesn't compete with
     // the actual work items for top-of-list attention.

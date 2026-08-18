@@ -209,8 +209,7 @@ export default function PlansPage() {
       // backend field on Plan (see the type's own doc comment); it only
       // comes back from GET /plans/{id}/progress. Without this extra
       // fetch-and-merge step, the progress column/sort and every card's
-      // overall % always read as zero, even though ProgressPage.tsx (which
-      // does fetch it per plan) shows the real numbers for the same plans.
+      // overall % always read as zero.
       // kpi_achievement is fetched the same way, from each plan's
       // activities — see fetchPlanKpiAchievement.
       const withProgress = await Promise.all(

@@ -1,5 +1,5 @@
 /**
- * store/auth.ts — Authentication state (Zustand + localStorage persistence).
+ * store/auth.ts — Authentication state (Zustand + sessionStorage persistence).
  *
  * Responsibilities:
  *   - Hold the logged-in user, their org, and the token pair.
@@ -7,8 +7,12 @@
  *     login or invite-accept) and clearAuth (called by logout).
  *   - Keep tokenStore in sync so the Axios interceptor always has the latest
  *     access token without a circular import.
- *   - Rehydrate from localStorage on page reload via the `persist` middleware
- *     so users don't have to log in again after refreshing.
+ *   - Rehydrate from sessionStorage on page reload via the `persist`
+ *     middleware, so a reload or navigation mid-session doesn't sign the
+ *     user out — but closing the tab/browser does, matching tokenStore
+ *     (api/client.ts), which stores the actual tokens the same way and for
+ *     the same reason. localStorage here would silently re-authenticate
+ *     whoever opens the browser next; sessionStorage dies with the tab.
  *
  * Usage in components:
  *   const user  = useAuthStore((s) => s.user)
@@ -36,8 +40,8 @@ interface AuthState {
 
   /**
    * Call after a successful login, token refresh, or invite acceptance.
-   * Writes tokens into localStorage via tokenStore so the Axios interceptor
-   * picks them up immediately on the next request.
+   * Writes tokens into sessionStorage via tokenStore so the Axios
+   * interceptor picks them up immediately on the next request.
    */
   setAuth: (
     user:         User,
@@ -48,7 +52,7 @@ interface AuthState {
 
   /**
    * Call on logout or when a refresh fails.
-   * Clears tokens from localStorage and resets state.
+   * Clears tokens from sessionStorage and resets state.
    */
   clearAuth: () => void
 }
@@ -86,8 +90,8 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name:    'stratplan_auth',
-      storage: createJSONStorage(() => localStorage),
-      // Only persist user + org — tokens are already in their own localStorage
+      storage: createJSONStorage(() => sessionStorage),
+      // Only persist user + org — tokens are already in their own sessionStorage
       // keys via tokenStore; we don't want them duplicated in the JSON blob.
       partialize: (state) => ({ user: state.user, org: state.org, isAuthenticated: state.isAuthenticated }),
     },

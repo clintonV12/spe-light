@@ -12,7 +12,6 @@ const DashboardPage      = lazy(() => import('./pages/DashboardPage'))
 const PlansPage          = lazy(() => import('./pages/PlansPage'))
 const PlanDetailPage     = lazy(() => import('./pages/PlanDetailPage'))
 const ActivityEditorPage = lazy(() => import('./pages/ActivityEditorPage'))
-const ProgressPage       = lazy(() => import('./pages/ProgressPage'))
 const ReportsPage        = lazy(() => import('./pages/ReportsPage'))
 const AdminPage          = lazy(() => import('./pages/AdminPage'))
 const PlatformAdminPage  = lazy(() => import('./pages/PlatformAdminPage'))
@@ -73,7 +72,6 @@ export default function App() {
             <Route path="/plans"       element={<Suspense fallback={<PageLoader />}><PlansPage /></Suspense>} />
             <Route path="/plans/:planId" element={<Suspense fallback={<PageLoader />}><PlanDetailPage /></Suspense>} />
             <Route path="/plans/:planId/activities/:activityId" element={<Suspense fallback={<PageLoader />}><ActivityEditorPage /></Suspense>} />
-            <Route path="/progress"    element={<Suspense fallback={<PageLoader />}><ProgressPage /></Suspense>} />
             <Route path="/reports"     element={<Suspense fallback={<PageLoader />}><ReportsPage /></Suspense>} />
             {/* No role gate — every authenticated user, org-tier or
                 platform-tier, manages their own account here. */}

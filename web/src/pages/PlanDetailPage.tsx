@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, BarChart2, ChevronDown } from 'lucide-react'
+import { ArrowLeft, ChevronDown } from 'lucide-react'
 import { plansApi, activitiesApi } from '../api/endpoints'
 import { usePermission } from '../hooks'
 import LocalPlanChapters from '../components/activities/LocalPlanChapters'
@@ -30,8 +30,7 @@ function PlanStatusPicker({
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
 
-  // Sits in the header next to other controls (the Progress button, etc.)
-  // with nothing else on the page to anchor it — without an explicit
+  // Sits in the header with nothing else on the page to anchor it — without an explicit
   // label it can read as referring to whatever's currently in view (the
   // open chapter, an activity) rather than the plan as a whole. The
   // uppercase micro-label above makes that unambiguous.
@@ -165,12 +164,6 @@ export default function PlanDetailPage() {
               loading={planStatusLoading}
               disabled={!can.createPlan}
             />
-            <button
-              onClick={() => navigate(`/progress?plan=${plan.id}`)}
-              className="flex items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm font-medium text-ink-600 hover:bg-ink-50 transition-colors"
-            >
-              <BarChart2 className="size-4" /> {t('planDetail.progress')}
-            </button>
           </div>
         </div>
       </div>

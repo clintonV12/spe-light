@@ -4,7 +4,7 @@ import {
 import {
   UserPlus, RefreshCw, MoreHorizontal, ShieldCheck, Shield, Eye,
   Users, Mail, Activity, ChevronLeft, ChevronRight, Filter,
-  ArrowDownUp, Building2, Save,
+  ArrowDownUp, Building2, Save, AlertCircle, ArrowRight,
 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -318,6 +318,14 @@ type OrgProfileForm = {
   total_members:  string
 }
 
+// An org that hasn't touched any of these fields yet is what "not set up"
+// means here — this is deliberately loose (any one field saved clears the
+// flag) since the point is just to catch orgs that never opened this tab
+// at all, not to nag admins who've already filled in some but not all of it.
+function isOrgProfileUnset(org: Organisation): boolean {
+  return !org.industry && !org.address && !org.country && !org.contact_email && !org.org_structure
+}
+
 const emptyOrgForm: OrgProfileForm = {
   industry: '', address: '', country: '', contact_email: '',
   contact_phone: '', org_structure: '', total_members: '',
@@ -335,7 +343,7 @@ function orgToForm(org: Organisation): OrgProfileForm {
   }
 }
 
-function OrganisationTab() {
+function OrganisationTab({ onProfileStatus }: { onProfileStatus?: (unset: boolean) => void }) {
   const { t } = useTranslation()
   const [org, setOrg] = useState<Organisation | null>(null)
   const [form, setForm] = useState<OrgProfileForm>(emptyOrgForm)
@@ -350,12 +358,13 @@ function OrganisationTab() {
       const data = await orgApi.getOrg()
       setOrg(data)
       setForm(orgToForm(data))
+      onProfileStatus?.(isOrgProfileUnset(data))
     } catch {
       setError(t('admin.organisation.loadError'))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load() }, [load])
 
@@ -382,6 +391,7 @@ function OrganisationTab() {
       setOrg(updated)
       setForm(orgToForm(updated))
       setSaved(true)
+      onProfileStatus?.(isOrgProfileUnset(updated))
     } catch {
       setError(t('admin.organisation.saveError'))
     } finally {
@@ -397,13 +407,30 @@ function OrganisationTab() {
     )
   }
 
+  const unset = org ? isOrgProfileUnset(org) : false
+
   return (
     <div className="bg-white rounded-2xl border border-ink-100 p-6 max-w-2xl">
-      <div className="flex items-center gap-2 mb-1">
-        <Building2 className="size-5 text-ink-400" />
-        <h2 className="font-display text-lg font-bold text-ink-900">{org?.name ?? t('admin.organisation.title')}</h2>
+      <div className="flex items-center gap-3 mb-1">
+        <div className="size-9 rounded-xl bg-accent-50 flex items-center justify-center shrink-0">
+          <Building2 className="size-4.5 text-accent" />
+        </div>
+        <div>
+          <h2 className="font-display text-lg font-bold text-ink-900">{org?.name ?? t('admin.organisation.title')}</h2>
+          <p className="text-ink-500 text-xs">{t('admin.organisation.description')}</p>
+        </div>
       </div>
-      <p className="text-ink-500 text-sm mb-6">{t('admin.organisation.description')}</p>
+
+      {unset && (
+        <div className="mt-4 mb-2 flex items-start gap-2.5 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+          <AlertCircle className="size-4 text-amber-500 shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-800">
+            {t('admin.organisation.unsetNudge', "This profile hasn't been filled in yet. Adding your industry, address, and contact details helps AI drafts and reports speak accurately about your organisation.")}
+          </p>
+        </div>
+      )}
+
+      <div className="h-2" />
 
       <form onSubmit={handleSave} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
@@ -490,6 +517,10 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [showInvite, setShowInvite] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  // Drives the amber tab badge and the setup banner below — undefined
+  // until the Organisation tab's own fetch reports in, so neither renders
+  // a false positive while that request is still in flight.
+  const [orgProfileUnset, setOrgProfileUnset] = useState<boolean | undefined>(undefined)
 
   const loadUsers = async () => {
     try {
@@ -499,6 +530,12 @@ export default function AdminPage() {
   }
 
   useEffect(() => { loadUsers() }, [])
+
+  useEffect(() => {
+    orgApi.getOrg()
+      .then((org) => setOrgProfileUnset(isOrgProfileUnset(org)))
+      .catch(() => {})
+  }, [])
 
   const handleToggleActive = async (user: User) => {
     setActionLoading(user.id)
@@ -526,22 +563,27 @@ export default function AdminPage() {
 
   const pendingInvitations = invitations.filter((i) => i.status === 'pending')
 
-  const TABS: { id: Tab; label: string; count?: number }[] = [
-    { id: 'users',        label: t('admin.tabs.members'),      count: users.length },
-    { id: 'invitations',  label: t('admin.tabs.invitations'),  count: pendingInvitations.length },
-    { id: 'audit',        label: t('admin.tabs.auditLog') },
-    { id: 'organisation', label: t('admin.tabs.organisation') },
+  const TABS: { id: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
+    { id: 'users',        label: t('admin.tabs.members'),      icon: <Users className="size-4" />,    count: users.length },
+    { id: 'invitations',  label: t('admin.tabs.invitations'),  icon: <Mail className="size-4" />,     count: pendingInvitations.length },
+    { id: 'audit',        label: t('admin.tabs.auditLog'),     icon: <Activity className="size-4" /> },
+    { id: 'organisation', label: t('admin.tabs.organisation', 'Organisation settings'), icon: <Building2 className="size-4" /> },
   ]
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-ink-900">{t('admin.title')}</h1>
-          <p className="text-ink-500 text-sm mt-0.5">
-            {t('admin.membersCount', { count: users.length })} · {t('admin.pendingInvitesCount', { count: pendingInvitations.length })}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="size-11 rounded-2xl bg-ink-900 flex items-center justify-center shrink-0">
+            <ShieldCheck className="size-5 text-white" />
+          </div>
+          <div>
+            <h1 className="font-display text-2xl font-bold text-ink-900">{t('admin.title')}</h1>
+            <p className="text-ink-500 text-sm mt-0.5">
+              {t('admin.membersCount', { count: users.length })} · {t('admin.pendingInvitesCount', { count: pendingInvitations.length })}
+            </p>
+          </div>
         </div>
         <button
           onClick={() => setShowInvite(true)}
@@ -551,9 +593,35 @@ export default function AdminPage() {
         </button>
       </div>
 
+      {/* Setup banner — this is the one place org-wide config (industry,
+          address, contact info, org structure) lives, and it's easy to
+          miss inside a tab strip. Surface it proactively for admins who
+          haven't touched it yet, rather than relying on them to notice
+          the "Organisation settings" tab on their own. Hidden once the
+          admin is already looking at that tab, or once it's filled in. */}
+      {orgProfileUnset && tab !== 'organisation' && (
+        <button
+          onClick={() => { setTab('organisation'); setSearchParams({ tab: 'organisation' }) }}
+          className="w-full flex items-center gap-3 rounded-2xl border border-accent-200 bg-accent-50 px-4 py-3.5 text-left hover:bg-accent-100 transition-colors"
+        >
+          <div className="size-9 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-sm">
+            <Building2 className="size-4.5 text-accent" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-ink-900">
+              {t('admin.organisation.setupBannerTitle', 'Set up your organisation profile')}
+            </p>
+            <p className="text-xs text-ink-500 mt-0.5">
+              {t('admin.organisation.setupBannerDesc', "Add your industry, address, and contact details — this is what AI drafts and reports use to talk about your organisation accurately.")}
+            </p>
+          </div>
+          <ArrowRight className="size-4 text-accent shrink-0" />
+        </button>
+      )}
+
       {/* Tabs */}
       <div className="flex gap-1 bg-ink-100 rounded-xl p-1 w-fit">
-        {TABS.map(({ id, label, count }) => (
+        {TABS.map(({ id, label, icon, count }) => (
           <button
             key={id}
             onClick={() => {
@@ -564,11 +632,18 @@ export default function AdminPage() {
               tab === id ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-700'
             }`}
           >
+            {icon}
             {label}
             {count !== undefined && count > 0 && (
               <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
                 tab === id ? 'bg-accent-100 text-accent' : 'bg-ink-200 text-ink-500'
               }`}>{count}</span>
+            )}
+            {id === 'organisation' && orgProfileUnset && (
+              <span
+                className="size-1.5 rounded-full bg-amber-500 shrink-0"
+                title={t('admin.organisation.unsetBadge', 'Not set up yet')}
+              />
             )}
           </button>
         ))}
@@ -699,7 +774,7 @@ export default function AdminPage() {
       {tab === 'audit' && <AuditLogTab users={users} />}
 
       {/* ── Organisation profile tab ── */}
-      {tab === 'organisation' && <OrganisationTab />}
+      {tab === 'organisation' && <OrganisationTab onProfileStatus={setOrgProfileUnset} />}
 
       {showInvite && <InviteUserModal onInvited={loadUsers} onClose={() => setShowInvite(false)} />}
     </div>

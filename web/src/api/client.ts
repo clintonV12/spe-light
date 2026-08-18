@@ -7,9 +7,18 @@
  *   3. If refresh also fails: clear tokens and redirect to /login.
  *
  * Token storage:
- *   Tokens live in localStorage under the keys below. The auth Zustand store
- *   calls tokenStore.setTokens() on login/refresh and tokenStore.clear() on
- *   logout so everything stays in sync without circular imports.
+ *   Tokens live in sessionStorage under the keys below — deliberately NOT
+ *   localStorage. sessionStorage is cleared the moment the tab/browser is
+ *   closed, which is what actually kills the session client-side; a
+ *   localStorage-backed token survives indefinitely and silently
+ *   re-authenticates whoever opens the browser next. The trade-off: each
+ *   tab gets its own session (sessionStorage isn't shared across tabs),
+ *   so opening the app in a second tab means signing in again there too.
+ *   That's intentional, not a bug — see store/auth.ts, which persists its
+ *   own user/org/isAuthenticated snapshot the same way for the same reason.
+ *   The auth Zustand store calls tokenStore.setTokens() on login/refresh
+ *   and tokenStore.clear() on logout so everything stays in sync without
+ *   circular imports.
  *
  * Base URL:
  *   /api/v1 — proxied to the Go backend by Vite in dev (vite.config.ts) and
@@ -34,18 +43,18 @@ const REFRESH_KEY = 'stratplan_refresh'
 /**
  * tokenStore is the single place tokens are read/written.
  * Import it in the auth store (store/auth.ts) to set/clear tokens on
- * login, refresh, and logout — do NOT write to localStorage elsewhere.
+ * login, refresh, and logout — do NOT write to sessionStorage elsewhere.
  */
 export const tokenStore = {
-  getAccess:  (): string => localStorage.getItem(TOKEN_KEY)   ?? '',
-  getRefresh: (): string => localStorage.getItem(REFRESH_KEY) ?? '',
+  getAccess:  (): string => sessionStorage.getItem(TOKEN_KEY)   ?? '',
+  getRefresh: (): string => sessionStorage.getItem(REFRESH_KEY) ?? '',
   setTokens: (access: string, refresh: string): void => {
-    localStorage.setItem(TOKEN_KEY,   access)
-    localStorage.setItem(REFRESH_KEY, refresh)
+    sessionStorage.setItem(TOKEN_KEY,   access)
+    sessionStorage.setItem(REFRESH_KEY, refresh)
   },
   clear: (): void => {
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(REFRESH_KEY)
+    sessionStorage.removeItem(TOKEN_KEY)
+    sessionStorage.removeItem(REFRESH_KEY)
   },
 }
 

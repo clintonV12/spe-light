@@ -77,7 +77,7 @@ function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
 
   // "Progress" means KPI achievement now (actual vs. target), not "% of
   // activities marked complete" — the ring and the "on track" line below
-  // are both KPI-based, matching TrackingModule.tsx and ProgressPage.tsx.
+  // are both KPI-based, matching TrackingModule.tsx.
   // Falls back to activity-status percent_complete only for a plan with no
   // KPIs scored yet, so a brand-new plan doesn't just show an empty ring.
   const kpiPct = plan.kpi_achievement
@@ -385,11 +385,9 @@ export default function DashboardPage() {
       // backend field on Plan (see the type's own doc comment); it only
       // comes back from GET /plans/{id}/progress. Without this extra
       // fetch-and-merge step every PlanCard's ring and this page's own
-      // avg-progress/overdue stats always read as zero, even though
-      // ProgressPage.tsx (which does fetch it per plan) shows the real
-      // numbers for the same plans. kpi_achievement/kpi_on_track/kpi_scored
-      // are fetched the same way, from each plan's activities — see
-      // fetchPlanKpiSummary.
+      // avg-progress/overdue stats always read as zero.
+      // kpi_achievement/kpi_on_track/kpi_scored are fetched the same way,
+      // from each plan's activities — see fetchPlanKpiSummary.
       const withProgress = await Promise.all(
         data.map(async (p) => {
           const [progress, kpiSummary] = await Promise.all([
