@@ -616,11 +616,40 @@ func (d *pdfDoc) buildCover() {
 
 func (d *pdfDoc) heading(text string) {
 	text = asciiFold(text)
-	d.ensureSpace(36)
+	const fontSize = 12.5
+	const lineH = 15.0
+
+	// Headings are built from user-entered pillar/objective titles
+	// concatenated together (see report_service.go's "%s — %s" heading),
+	// so unlike a hardcoded section title ("SWOT Analysis") they can run
+	// arbitrarily long. pdfText draws exactly what it's given on a single
+	// line with no wrapping or clipping of its own — that's what let long
+	// headings run straight off the right edge of the page instead of
+	// moving to a second line, the way paragraph()/table() already do via
+	// wrapText.
+	lines := wrapText(text, charsForWidth(pdfContentW-10, fontSize))
+	// Cap how many lines a heading can wrap to, same rationale as the
+	// table's maxCellLines below — a pathologically long title shouldn't
+	// be able to eat half a page.
+	const maxHeadingLines = 3
+	if len(lines) > maxHeadingLines {
+		lines = lines[:maxHeadingLines]
+		last := strings.TrimRight(lines[maxHeadingLines-1], " ")
+		lines[maxHeadingLines-1] = last + " .."
+	}
+
+	blockH := float64(len(lines)) * lineH
+	d.ensureSpace(blockH + 27)
 	d.y -= 4
-	pdfRect(d.cur, pdfMarginL, d.y-3, 3, 15, brandAccent)
-	pdfText(d.cur, "F2", 12.5, pdfMarginL+10, d.y, brandPrimary, text)
-	d.y -= 7
+	y0 := d.y
+	// Accent bar spans the full height of the wrapped heading, not just
+	// one line's worth.
+	pdfRect(d.cur, pdfMarginL, y0-float64(len(lines)-1)*lineH-3, 3, blockH, brandAccent)
+	for _, ln := range lines {
+		pdfText(d.cur, "F2", fontSize, pdfMarginL+10, d.y, brandPrimary, ln)
+		d.y -= lineH
+	}
+	d.y += lineH - 7
 	pdfLine(d.cur, pdfMarginL, d.y, pdfPageWidth-pdfMarginR, d.y, borderGray, 0.5)
 	d.y -= 16
 }
