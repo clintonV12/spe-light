@@ -19,7 +19,6 @@ const DEFAULT_CUSTOM_SECTIONS: ReportSectionConfig = {
   progress_status:       true,
   monitoring_evaluation: true,
   milestones:            true,
-  dependency_links:      false,
   ai_summary:            false,
 }
 
@@ -37,7 +36,6 @@ function hasSelectedContent(s: ReportSectionConfig): boolean {
     s.progress_status ||
     s.monitoring_evaluation ||
     s.milestones ||
-    s.dependency_links ||
     s.ai_summary
   )
 }
@@ -55,7 +53,6 @@ function countSections(s: ReportSectionConfig): number {
     s.progress_status,
     s.monitoring_evaluation,
     s.milestones,
-    s.dependency_links,
     s.ai_summary,
   ].filter(Boolean).length
 }
@@ -426,16 +423,6 @@ export default function ReportsPage() {
                   className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
                 />
                 <span className="text-sm text-ink-800">{t('reportsPage.sections.milestones')}</span>
-              </label>
-
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={customSections.dependency_links}
-                  onChange={(e) => toggleSection('dependency_links', e.target.checked)}
-                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
-                />
-                <span className="text-sm text-ink-800">{t('reportsPage.sections.dependencyLinks')}</span>
               </label>
 
               <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">

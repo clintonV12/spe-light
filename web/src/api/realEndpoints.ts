@@ -486,7 +486,6 @@ export const reportsApi = {
   generate: (planId: string, payload: {
     type:         ReportType
     format:       ReportFormat
-    date_range?:  { from: string; to: string }
     /** Required (and only used) when type === 'custom' */
     sections?:    ReportSectionConfig
   }) => apiClient.post<{ job_id: string }>(`/plans/${planId}/reports`, payload, { timeout: 120_000 }).then((r) => r.data),

@@ -95,7 +95,6 @@ export interface ReportSectionConfig {
   progress_status:       boolean
   monitoring_evaluation: boolean
   milestones:            boolean
-  dependency_links:      boolean
   ai_summary:            boolean
 }
 

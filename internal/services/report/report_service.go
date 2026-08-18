@@ -105,14 +105,6 @@ func New(db *pgxpool.Pool, planSvc *plansvc.Service, milestoneSvc *milestonesvc.
 
 // ── Request/response DTOs ────────────────────────────────────────────────
 
-// DateRange is accepted on the request for API-shape compatibility with the
-// frontend but is not yet applied as a filter — every section currently
-// reports the plan's full current state rather than a windowed slice.
-type DateRange struct {
-	From string `json:"from"`
-	To   string `json:"to"`
-}
-
 // SectionConfig mirrors the frontend's ReportSectionConfig exactly — field
 // names must match its JSON keys.
 //
@@ -135,7 +127,6 @@ type SectionConfig struct {
 	ProgressStatus      bool `json:"progress_status"`
 	MonitoringEval      bool `json:"monitoring_evaluation"`
 	Milestones          bool `json:"milestones"`
-	DependencyLinks     bool `json:"dependency_links"`
 	AISummary           bool `json:"ai_summary"`
 }
 
@@ -144,7 +135,7 @@ func (s SectionConfig) hasContent() bool {
 		s.ObjectiveActivities || s.AdvancedResearch ||
 		s.Scorecard || s.OrgStructure ||
 		s.ProgressStatus || s.MonitoringEval ||
-		s.Milestones || s.DependencyLinks || s.AISummary
+		s.Milestones || s.AISummary
 }
 
 // defaultSections maps the five fixed report types onto an equivalent
@@ -158,7 +149,7 @@ func defaultSections(t models.ReportType) SectionConfig {
 			ObjectiveActivities: true, AdvancedResearch: true,
 			Scorecard: true, OrgStructure: true,
 			ProgressStatus: true, MonitoringEval: true,
-			Milestones: true, DependencyLinks: true, AISummary: true,
+			Milestones: true, AISummary: true,
 		}
 	case models.ReportExecutiveSummary:
 		return SectionConfig{ExecutiveSummary: true, VisionMission: true, Scorecard: true, ProgressStatus: true}
@@ -179,9 +170,8 @@ func defaultSections(t models.ReportType) SectionConfig {
 
 // GenerateRequest is the decoded POST /api/v1/plans/{planID}/reports body.
 type GenerateRequest struct {
-	Type      models.ReportType   `json:"type"`
-	Format    models.ReportFormat `json:"format"`
-	DateRange *DateRange          `json:"date_range,omitempty"`
+	Type   models.ReportType   `json:"type"`
+	Format models.ReportFormat `json:"format"`
 	// Sections is required (and only used) when Type == "custom".
 	Sections *SectionConfig `json:"sections,omitempty"`
 }
@@ -1100,25 +1090,6 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 		rc.Sections = append(rc.Sections, contentSection{Heading: "Milestones", Table: t})
 	}
 
-	if sec.DependencyLinks {
-		links, err := s.planSvc.ListLinks(ctx, plan.ID, orgID, nil)
-		if err != nil {
-			return nil, coverStats{}, err
-		}
-		// Resolve activity IDs to titles for a readable table instead of raw UUIDs.
-		titles, err := s.activityTitleIndex(ctx, plan.ID, orgID)
-		if err != nil {
-			return nil, coverStats{}, err
-		}
-		t := &contentTable{Headers: []string{"Source", "Target", "Type"}}
-		for _, l := range links {
-			t.Rows = append(t.Rows, []string{
-				titleOr(titles, l.SourceID), titleOr(titles, l.TargetID), string(l.LinkType),
-			})
-		}
-		rc.Sections = append(rc.Sections, contentSection{Heading: "Dependency Links", Table: t})
-	}
-
 	if sec.AISummary {
 		text := "A summary is unavailable — the AI service could not be reached."
 		if summary, ok := aiSummary(); ok {
@@ -1128,25 +1099,4 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 	}
 
 	return rc, stats, nil
-}
-
-// activityTitleIndex builds an id -> title lookup for the whole plan, used
-// to make the dependency-links table human-readable.
-func (s *Service) activityTitleIndex(ctx context.Context, planID, orgID uuid.UUID) (map[uuid.UUID]string, error) {
-	activities, err := s.planSvc.ListActivities(ctx, planID, orgID, nil, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	idx := make(map[uuid.UUID]string, len(activities))
-	for _, a := range activities {
-		idx[a.ID] = a.Title
-	}
-	return idx, nil
-}
-
-func titleOr(idx map[uuid.UUID]string, id uuid.UUID) string {
-	if t, ok := idx[id]; ok {
-		return t
-	}
-	return id.String()
 }
