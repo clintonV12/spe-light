@@ -1,6 +1,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FileOutput, FileText, FileSpreadsheet, Clock, CheckCircle2, Loader, Plus, Download, SlidersHorizontal } from 'lucide-react'
+import {
+  FileOutput, FileText, FileSpreadsheet, Clock, CheckCircle2, Loader, Plus, Download,
+  SlidersHorizontal, Sparkles, Layers, TrendingUp, ListChecks, Check, History as HistoryIcon,
+} from 'lucide-react'
 import { plansApi, reportsApi } from '../api/endpoints'
 import { useToast } from '../hooks'
 import type { Plan, Report, ReportType, ReportFormat, ReportSectionConfig } from '../types'
@@ -65,6 +68,18 @@ const FORMAT_META: Record<ReportFormat, { label: string; icon: React.ReactNode; 
   xlsx: { label: 'Excel', icon: <FileSpreadsheet className="size-4" />, ext: '.xlsx' },
 }
 
+// Purely decorative — a small icon per report type so the picker reads at
+// a glance instead of as a wall of text. Doesn't affect which types exist
+// or what they're called; that list (REPORT_TYPES, below) is unchanged.
+const REPORT_TYPE_ICON: Record<ReportType, React.ReactNode> = {
+  full_plan:         <FileText className="size-4" />,
+  executive_summary: <Sparkles className="size-4" />,
+  per_phase:         <Layers className="size-4" />,
+  progress_status:   <TrendingUp className="size-4" />,
+  activity_detail:   <ListChecks className="size-4" />,
+  custom:            <SlidersHorizontal className="size-4" />,
+}
+
 interface Job {
   jobId: string
   planTitle: string
@@ -80,20 +95,24 @@ export default function ReportsPage() {
   const { t, i18n } = useTranslation()
   const { success, error: toastError } = useToast()
 
+  // Only these two are offered now — Full Report (everything) and Custom
+  // (pick exactly what you want) between them cover every case the other
+  // four previously-separate types (Executive Summary, Per-Phase, Progress
+  // Status, Activity Detail) existed for: each of those was really just a
+  // fixed subset of sections, which Custom can already produce directly.
+  // Old reports generated under one of the retired types still show up
+  // fine in history below — REPORT_TYPE_ICON/FORMAT_META still cover every
+  // ReportType value, only this picker list shrank.
   const REPORT_TYPES: { value: ReportType; label: string; desc: string }[] = [
-    { value: 'full_plan',         label: t('reportsPage.types.fullPlan.label'),         desc: t('reportsPage.types.fullPlan.desc') },
-    { value: 'executive_summary', label: t('reportsPage.types.executiveSummary.label'), desc: t('reportsPage.types.executiveSummary.desc') },
-    { value: 'per_phase',         label: t('reportsPage.types.perPhase.label'),         desc: t('reportsPage.types.perPhase.desc') },
-    { value: 'progress_status',   label: t('reportsPage.types.progressStatus.label'),   desc: t('reportsPage.types.progressStatus.desc') },
-    { value: 'activity_detail',   label: t('reportsPage.types.activityDetail.label'),   desc: t('reportsPage.types.activityDetail.desc') },
-    { value: 'custom',            label: t('reportsPage.types.custom.label'),           desc: t('reportsPage.types.custom.desc') },
+    { value: 'full_plan', label: t('reportsPage.types.fullPlan.label'), desc: t('reportsPage.types.fullPlan.desc') },
+    { value: 'custom',    label: t('reportsPage.types.custom.label'),   desc: t('reportsPage.types.custom.desc') },
   ]
 
   const [plans, setPlans] = useState<Plan[]>([])
   const [history, setHistory] = useState<Report[]>([])
   const [loadingPlans, setLoadingPlans] = useState(true)
   const [selectedPlan, setSelectedPlan] = useState('')
-  const [selectedType, setSelectedType] = useState<ReportType>('executive_summary')
+  const [selectedType, setSelectedType] = useState<ReportType>('full_plan')
   const [selectedFormat, setSelectedFormat] = useState<ReportFormat>('pdf')
   const [customSections, setCustomSections] = useState<ReportSectionConfig>(DEFAULT_CUSTOM_SECTIONS)
   const [generating, setGenerating] = useState(false)
@@ -213,14 +232,23 @@ export default function ReportsPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-8">
-      <div>
-        <h1 className="font-display text-2xl font-bold text-ink-900">{t('reportsPage.title')}</h1>
-        <p className="text-ink-500 text-sm mt-0.5">{t('reportsPage.subtitle')}</p>
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <div className="size-11 rounded-2xl bg-gradient-to-br from-accent to-accent-600 flex items-center justify-center text-white shrink-0 shadow-sm shadow-accent/25">
+          <FileOutput className="size-5" />
+        </div>
+        <div>
+          <h1 className="font-display text-2xl font-bold text-ink-900">{t('reportsPage.title')}</h1>
+          <p className="text-ink-500 text-sm mt-0.5">{t('reportsPage.subtitle')}</p>
+        </div>
       </div>
 
       {/* Generator card */}
-      <div className="bg-white rounded-2xl border border-ink-100 p-6 space-y-6">
-        <h2 className="font-display text-base font-bold text-ink-800">{t('reportsPage.generateNew')}</h2>
+      <div className="relative overflow-hidden bg-white rounded-2xl border border-ink-100 p-6 space-y-6">
+        <span className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-accent to-accent-600" />
+        <h2 className="font-display text-base font-bold text-ink-800 flex items-center gap-2">
+          <Plus className="size-4 text-accent" /> {t('reportsPage.generateNew')}
+        </h2>
 
         {/* Plan selector */}
         <div className="space-y-1.5">
@@ -243,34 +271,50 @@ export default function ReportsPage() {
         {/* Report type */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-ink-700">{t('reportsPage.reportType')}</label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {REPORT_TYPES.map((rt) => (
-              <button
-                key={rt.value}
-                onClick={() => setSelectedType(rt.value)}
-                className={`text-left rounded-xl border p-3 transition-colors ${
-                  selectedType === rt.value
-                    ? 'border-accent bg-accent-50'
-                    : 'border-ink-100 hover:border-ink-200 hover:bg-ink-50'
-                }`}
-              >
-                <p className={`text-sm font-semibold ${selectedType === rt.value ? 'text-accent' : 'text-ink-800'}`}>
-                  {rt.label}
-                </p>
-                <p className="text-xs text-ink-400 mt-0.5">{rt.desc}</p>
-              </button>
-            ))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {REPORT_TYPES.map((rt) => {
+              const selected = selectedType === rt.value
+              return (
+                <button
+                  key={rt.value}
+                  onClick={() => setSelectedType(rt.value)}
+                  className={`relative text-left rounded-xl border p-4 transition-all duration-150 ${
+                    selected
+                      ? 'border-accent bg-accent-50 shadow-[0_4px_16px_rgba(75,107,251,0.12)]'
+                      : 'border-ink-100 hover:border-ink-200 hover:bg-ink-50 hover:-translate-y-0.5'
+                  }`}
+                >
+                  {selected && (
+                    <span className="absolute top-3 right-3 size-4 rounded-full bg-accent flex items-center justify-center">
+                      <Check className="size-2.5 text-white" strokeWidth={3} />
+                    </span>
+                  )}
+                  <div className={`size-8 rounded-lg flex items-center justify-center mb-2.5 ${selected ? 'bg-accent text-white' : 'bg-ink-100 text-ink-500'}`}>
+                    {REPORT_TYPE_ICON[rt.value]}
+                  </div>
+                  <p className={`text-sm font-semibold ${selected ? 'text-accent' : 'text-ink-800'}`}>
+                    {rt.label}
+                  </p>
+                  <p className="text-xs text-ink-400 mt-0.5 leading-relaxed">{rt.desc}</p>
+                </button>
+              )
+            })}
           </div>
         </div>
 
         {/* Custom section picker — only shown when the custom report type is selected */}
         {selectedType === 'custom' && (
           <div className="space-y-2">
-            <label className="flex items-center gap-1.5 text-sm font-medium text-ink-700">
-              <SlidersHorizontal className="size-3.5" /> {t('reportsPage.customSections')}
-            </label>
-            <div className="rounded-xl border border-ink-200 divide-y divide-ink-50">
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-1.5 text-sm font-medium text-ink-700">
+                <SlidersHorizontal className="size-3.5" /> {t('reportsPage.customSections')}
+              </label>
+              <span className="text-xs font-medium text-ink-400">
+                {t('reportsPage.sectionsCount', { count: countSections(customSections) })}
+              </span>
+            </div>
+            <div className="rounded-xl border border-ink-200 divide-y divide-ink-50 overflow-hidden">
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={customSections.executive_summary}
@@ -280,7 +324,7 @@ export default function ReportsPage() {
                 <span className="text-sm text-ink-800">{t('reportsPage.sections.executiveSummary')}</span>
               </label>
 
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={customSections.vision_mission}
@@ -292,7 +336,7 @@ export default function ReportsPage() {
                 </span>
               </label>
 
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={customSections.situational_analysis}
@@ -304,7 +348,7 @@ export default function ReportsPage() {
                 </span>
               </label>
 
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={customSections.scorecard}
@@ -316,7 +360,7 @@ export default function ReportsPage() {
                 </span>
               </label>
 
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={customSections.objective_activities}
@@ -328,7 +372,7 @@ export default function ReportsPage() {
                 </span>
               </label>
 
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={customSections.advanced_research}
@@ -340,7 +384,7 @@ export default function ReportsPage() {
                 </span>
               </label>
 
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={customSections.org_structure}
@@ -352,7 +396,7 @@ export default function ReportsPage() {
                 </span>
               </label>
 
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={customSections.progress_status}
@@ -362,7 +406,7 @@ export default function ReportsPage() {
                 <span className="text-sm text-ink-800">{t('reportsPage.sections.progressStatus')}</span>
               </label>
 
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={customSections.monitoring_evaluation}
@@ -374,7 +418,7 @@ export default function ReportsPage() {
                 </span>
               </label>
 
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={customSections.milestones}
@@ -384,7 +428,7 @@ export default function ReportsPage() {
                 <span className="text-sm text-ink-800">{t('reportsPage.sections.milestones')}</span>
               </label>
 
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={customSections.dependency_links}
@@ -394,7 +438,7 @@ export default function ReportsPage() {
                 <span className="text-sm text-ink-800">{t('reportsPage.sections.dependencyLinks')}</span>
               </label>
 
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-ink-50">
+              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
                 <input
                   type="checkbox"
                   checked={customSections.ai_summary}
@@ -405,7 +449,10 @@ export default function ReportsPage() {
               </label>
             </div>
             {!hasSelectedContent(customSections) && (
-              <p className="text-xs text-red-500">{t('reportsPage.toastNoSectionsSelected')}</p>
+              <p className="flex items-center gap-1.5 text-xs text-red-500 font-medium">
+                <span className="size-1.5 rounded-full bg-red-500 shrink-0" />
+                {t('reportsPage.toastNoSectionsSelected')}
+              </p>
             )}
           </div>
         )}
@@ -413,15 +460,15 @@ export default function ReportsPage() {
         {/* Format picker */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-ink-700">{t('reportsPage.format')}</label>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {(Object.entries(FORMAT_META) as [ReportFormat, typeof FORMAT_META[ReportFormat]][]).map(([fmt, meta]) => (
               <button
                 key={fmt}
                 onClick={() => setSelectedFormat(fmt)}
-                className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all duration-150 ${
                   selectedFormat === fmt
-                    ? 'border-accent bg-accent-50 text-accent'
-                    : 'border-ink-200 text-ink-600 hover:bg-ink-50'
+                    ? 'border-accent bg-accent-50 text-accent shadow-[0_2px_10px_rgba(75,107,251,0.12)]'
+                    : 'border-ink-200 text-ink-600 hover:bg-ink-50 hover:-translate-y-0.5'
                 }`}
               >
                 {meta.icon} {meta.label}
@@ -433,7 +480,7 @@ export default function ReportsPage() {
         <button
           onClick={handleGenerate}
           disabled={generating || !selectedPlan || (selectedType === 'custom' && !hasSelectedContent(customSections))}
-          className="flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-accent/20 hover:bg-accent-600 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
         >
           {generating
             ? <><span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> {t('reportsPage.queuing')}</>
@@ -444,14 +491,17 @@ export default function ReportsPage() {
       {/* Active jobs */}
       {jobs.length > 0 && (
         <div className="space-y-3">
-          <h2 className="font-display text-sm font-bold text-ink-800">{t('reportsPage.inProgress')}</h2>
+          <h2 className="font-display text-sm font-bold text-ink-800 flex items-center gap-2">
+            <Loader className="size-3.5 text-accent" /> {t('reportsPage.inProgress')}
+          </h2>
           {jobs.map((job) => {
             const fmtMeta = FORMAT_META[job.format]
             const rtLabel = REPORT_TYPES.find((r) => r.value === job.type)?.label ?? job.type
             return (
-              <div key={job.jobId} className={`flex items-center gap-4 bg-white rounded-2xl border p-4 ${
-                job.status === 'complete' ? 'border-p2' : 'border-ink-100'
+              <div key={job.jobId} className={`relative overflow-hidden flex items-center gap-4 bg-white rounded-2xl border p-4 transition-colors ${
+                job.status === 'complete' ? 'border-p2/40' : 'border-ink-100'
               }`}>
+                <span className={`absolute left-0 top-0 bottom-0 w-1 ${job.status === 'complete' ? 'bg-p2' : 'bg-ink-200'}`} />
                 <div className={`size-10 rounded-xl flex items-center justify-center shrink-0 ${
                   job.status === 'complete' ? 'bg-p2-light' : 'bg-ink-50'
                 }`}>
@@ -461,9 +511,11 @@ export default function ReportsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-ink-900 truncate">{job.planTitle}</p>
-                  <p className="text-xs text-ink-400">
-                    {rtLabel} · {fmtMeta.label}
-                    {job.sections && ` · ${t('reportsPage.sectionsCount', { count: countSections(job.sections) })}`}
+                  <p className="text-xs text-ink-400 flex items-center gap-1.5 mt-0.5">
+                    <span className="inline-flex items-center gap-1">{REPORT_TYPE_ICON[job.type]} {rtLabel}</span>
+                    <span className="text-ink-200">·</span>
+                    <span className="inline-flex items-center gap-1">{fmtMeta.icon} {fmtMeta.label}</span>
+                    {job.sections && <><span className="text-ink-200">·</span> {t('reportsPage.sectionsCount', { count: countSections(job.sections) })}</>}
                   </p>
                 </div>
                 <div className="text-right shrink-0">
@@ -475,10 +527,10 @@ export default function ReportsPage() {
                     <button
                       onClick={() => handleDownload(job.jobId, job.fileUrl, `${rtLabel.replace(/\s+/g, '-').toLowerCase()}${fmtMeta.ext}`)}
                       disabled={downloadingId === job.jobId}
-                      className="flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent-700 disabled:opacity-50 disabled:cursor-wait"
+                      className="flex items-center gap-1.5 rounded-lg bg-p2-light px-3 py-1.5 text-xs font-semibold text-p2-dark hover:bg-p2/20 transition-colors disabled:opacity-50 disabled:cursor-wait"
                     >
                       {downloadingId === job.jobId
-                        ? <span className="size-3.5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                        ? <span className="size-3.5 animate-spin rounded-full border-2 border-p2-dark border-t-transparent" />
                         : <Download className="size-3.5" />}
                       {' '}{t('reportsPage.download')}{fmtMeta.ext}
                     </button>
@@ -492,20 +544,23 @@ export default function ReportsPage() {
 
       {/* History */}
       <div className="space-y-3">
-        <h2 className="font-display text-sm font-bold text-ink-800">
+        <h2 className="font-display text-sm font-bold text-ink-800 flex items-center gap-2">
+          <HistoryIcon className="size-3.5 text-ink-400" />
           {t('reportsPage.previousReports')} {selectedPlan && plans.find((p) => p.id === selectedPlan)
             ? `— ${plans.find((p) => p.id === selectedPlan)?.title}`
             : ''}
         </h2>
         {history.length === 0 ? (
-          <div className="text-center py-10 bg-white rounded-2xl border border-ink-100">
-            <FileOutput className="size-8 text-ink-200 mx-auto mb-2" />
+          <div className="text-center py-14 bg-white rounded-2xl border border-ink-100 border-dashed">
+            <div className="size-12 rounded-2xl bg-ink-50 flex items-center justify-center mx-auto mb-3">
+              <FileOutput className="size-6 text-ink-300" />
+            </div>
             <p className="text-sm text-ink-500">{t('reportsPage.noReports')}</p>
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-ink-100 overflow-hidden">
             <table className="w-full">
-              <thead className="border-b border-ink-100 bg-ink-50">
+              <thead className="border-b border-ink-100 bg-ink-50/70">
                 <tr>
                   {[t('reportsPage.colType'), t('reportsPage.colFormat'), t('reportsPage.colGenerated'), ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide">{h}</th>
@@ -517,9 +572,14 @@ export default function ReportsPage() {
                   const fmtMeta = FORMAT_META[r.format]
                   const rtLabel = REPORT_TYPES.find((rt) => rt.value === r.type)?.label ?? r.type
                   return (
-                    <tr key={r.id} className="hover:bg-ink-50 transition-colors">
+                    <tr key={r.id} className="hover:bg-accent-50/40 transition-colors">
                       <td className="px-4 py-3">
-                        <p className="text-sm font-medium text-ink-800">{rtLabel}</p>
+                        <span className="flex items-center gap-2">
+                          <span className="size-7 rounded-lg bg-ink-50 flex items-center justify-center text-ink-400 shrink-0">
+                            {REPORT_TYPE_ICON[r.type as ReportType] ?? <FileOutput className="size-3.5" />}
+                          </span>
+                          <p className="text-sm font-medium text-ink-800">{rtLabel}</p>
+                        </span>
                       </td>
                       <td className="px-4 py-3">
                         <span className="flex items-center gap-1.5 text-sm text-ink-600">

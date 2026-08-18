@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Plus, Search, SlidersHorizontal, ChevronUp, ChevronDown,
   MoreHorizontal, Archive, Copy, Trash2, AlertTriangle, CheckSquare,
-  Square, X, ChevronLeft, ChevronRight,
+  Square, X, ChevronLeft, ChevronRight, FolderKanban, Target,
 } from 'lucide-react'
 import { plansApi } from '../api/endpoints'
 import { usePermission } from '../hooks'
@@ -22,6 +22,27 @@ const STATUS_VARIANT: Record<PlanStatus, 'neutral' | 'p1' | 'p2' | 'p3' | 'succe
   completed: 'success',
   archived:  'neutral',
 }
+
+// Same colored-dot vocabulary as PlanDetailPage's status picker and
+// DashboardPage's card rail — a status reads the same way everywhere it
+// shows up in the app instead of each page inventing its own palette.
+const STATUS_DOT: Record<PlanStatus, string> = {
+  draft:     'bg-ink-300',
+  active:    'bg-emerald-400',
+  review:    'bg-amber-400',
+  completed: 'bg-blue-400',
+  archived:  'bg-ink-200',
+}
+
+// A small set of tinted "avatar" backgrounds cycled by plan index, purely
+// so the plan-name cell in a long table isn't just plain text — every
+// enterprise table sample view (Linear, Notion tables, etc.) anchors each
+// row with a small colored glyph. Cycling by index keeps it deterministic
+// per render without needing to hash the plan id.
+const AVATAR_PALETTE = [
+  'bg-blue-50 text-blue-600', 'bg-violet-50 text-violet-600', 'bg-emerald-50 text-emerald-600',
+  'bg-amber-50 text-amber-600', 'bg-pink-50 text-pink-600', 'bg-cyan-50 text-cyan-600',
+]
 
 type SortKey = 'title' | 'status' | 'progress' | 'updated_at'
 type SortDir = 'asc' | 'desc'
@@ -121,7 +142,10 @@ function BulkActionBar({
 }) {
   const { t } = useTranslation()
   return (
-    <div className="flex items-center gap-3 px-4 py-3 bg-accent-50 border border-accent-200 rounded-xl">
+    <div className="flex items-center gap-3 px-4 py-3 bg-accent-50 border border-accent-200 rounded-xl shadow-sm shadow-accent/10">
+      <span className="flex items-center justify-center size-6 rounded-full bg-accent text-white text-xs font-bold shrink-0 tabular-nums">
+        {count}
+      </span>
       <span className="text-sm font-semibold text-accent">
         {t('plansPage.selectedCount', { count })}
       </span>
@@ -129,14 +153,14 @@ function BulkActionBar({
         <button
           onClick={onArchive}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ink-200 bg-white text-sm text-ink-700 hover:bg-ink-50 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ink-200 bg-white text-sm text-ink-700 hover:bg-ink-50 hover:-translate-y-0.5 transition-all disabled:opacity-50"
         >
           <Archive className="size-3.5" /> {t('plansPage.archiveAll')}
         </button>
         <button
           onClick={onDelete}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 bg-white text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 bg-white text-sm text-red-600 hover:bg-red-50 hover:-translate-y-0.5 transition-all disabled:opacity-50"
         >
           <Trash2 className="size-3.5" /> {t('plansPage.deleteAll')}
         </button>
@@ -334,17 +358,22 @@ export default function PlansPage() {
   const thClass = 'px-4 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wide'
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-5">
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-ink-900">{t('plansPage.title')}</h1>
-          <p className="text-ink-500 text-sm mt-0.5">{t('plansPage.countSub', { count: plans.length })}</p>
+        <div className="flex items-center gap-4">
+          <div className="size-11 rounded-2xl bg-gradient-to-br from-accent to-accent-600 flex items-center justify-center text-white shrink-0 shadow-sm shadow-accent/25">
+            <FolderKanban className="size-5" />
+          </div>
+          <div>
+            <h1 className="font-display text-2xl font-bold text-ink-900">{t('plansPage.title')}</h1>
+            <p className="text-ink-500 text-sm mt-0.5">{t('plansPage.countSub', { count: plans.length })}</p>
+          </div>
         </div>
         {can.createPlan && (
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-600 transition-colors"
+            className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-accent/20 hover:bg-accent-600 hover:shadow-md transition-all shrink-0"
           >
             <Plus className="size-4" /> {t('plansPage.newPlan')}
           </button>
@@ -363,13 +392,13 @@ export default function PlansPage() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-3 bg-white border border-ink-100 rounded-2xl p-3">
         <div className="relative flex-1 min-w-52">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-ink-400" />
           <input
             type="text" placeholder={t('plansPage.searchPlaceholder')} value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-ink-200 bg-white pl-9 pr-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent"
+            className="w-full rounded-xl border border-ink-200 bg-ink-50/60 pl-9 pr-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent focus:bg-white transition-colors"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -377,7 +406,7 @@ export default function PlansPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as PlanStatus | 'all')}
-            className="rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-700 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent"
+            className="rounded-xl border border-ink-200 bg-ink-50/60 px-3 py-2.5 text-sm text-ink-700 outline-none focus:ring-2 focus:ring-accent-400 focus:border-transparent focus:bg-white transition-colors"
           >
             {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
@@ -386,8 +415,23 @@ export default function PlansPage() {
 
       {/* Table */}
       {loading ? (
-        <div className="space-y-2">
-          {[1,2,3,4].map((i) => <div key={i} className="h-16 bg-white rounded-xl border border-ink-100 animate-pulse" />)}
+        <div className="bg-white rounded-2xl border border-ink-100 overflow-hidden">
+          <div className="h-11 bg-ink-50/70 border-b border-ink-100" />
+          <div className="divide-y divide-ink-50">
+            {[1,2,3,4,5].map((i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-4">
+                <div className="size-4 rounded bg-ink-100 animate-pulse shrink-0" />
+                <div className="size-8 rounded-lg bg-ink-100 animate-pulse shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 w-1/3 bg-ink-100 rounded animate-pulse" />
+                  <div className="h-2.5 w-1/5 bg-ink-50 rounded animate-pulse" />
+                </div>
+                <div className="h-5 w-16 bg-ink-100 rounded-full animate-pulse shrink-0" />
+                <div className="h-2 w-32 bg-ink-100 rounded-full animate-pulse shrink-0" />
+                <div className="h-3 w-20 bg-ink-100 rounded animate-pulse shrink-0" />
+              </div>
+            ))}
+          </div>
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
@@ -400,9 +444,9 @@ export default function PlansPage() {
           ) : undefined}
         />
       ) : (
-        <div className="bg-white rounded-2xl border border-ink-100 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-ink-100 overflow-hidden shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
           <table className="w-full">
-            <thead className="border-b border-ink-100 bg-ink-50">
+            <thead className="border-b border-ink-100 bg-ink-50/70">
               <tr>
                 {/* Select-all checkbox */}
                 <th className="px-4 py-3 w-10">
@@ -428,7 +472,7 @@ export default function PlansPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-50">
-              {paginated.map((plan) => {
+              {paginated.map((plan, idx) => {
                 const statusLabel = t(`plan.status.${plan.status}`)
                 const statusVariant = STATUS_VARIANT[plan.status]
                 // KPI achievement is what "progress" means now — falls
@@ -437,12 +481,13 @@ export default function PlansPage() {
                 const overallPct = plan.kpi_achievement ?? plan.progress?.overall.percent_complete ?? 0
                 const overdue = plan.progress?.overall.overdue ?? 0
                 const isSelected = selected.has(plan.id)
+                const avatarCls = AVATAR_PALETTE[idx % AVATAR_PALETTE.length]
 
                 return (
                   <tr
                     key={plan.id}
                     onClick={() => navigate(`/plans/${plan.id}`)}
-                    className={`cursor-pointer transition-colors group ${isSelected ? 'bg-accent-50 hover:bg-accent-50' : 'hover:bg-ink-50'}`}
+                    className={`cursor-pointer transition-colors group ${isSelected ? 'bg-accent-50 hover:bg-accent-50' : 'hover:bg-ink-50/70'}`}
                   >
                     {/* Checkbox */}
                     <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
@@ -456,20 +501,34 @@ export default function PlansPage() {
                       </button>
                     </td>
                     <td className="px-4 py-4">
-                      <p className={`font-medium text-sm transition-colors ${isSelected ? 'text-accent' : 'text-ink-900 group-hover:text-accent'}`}>{plan.title}</p>
-                      {plan.description && <p className="text-xs text-ink-400 mt-0.5 line-clamp-1">{plan.description}</p>}
-                      {overdue > 0 && (
-                        <span className="inline-flex items-center gap-1 text-xs text-red-500 mt-1">
-                          <AlertTriangle className="size-3" /> {t('plansPage.overdueCount', { count: overdue })}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-3">
+                        <div className={`size-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${avatarCls}`}>
+                          {plan.title.trim().charAt(0).toUpperCase() || '?'}
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`font-medium text-sm transition-colors ${isSelected ? 'text-accent' : 'text-ink-900 group-hover:text-accent'}`}>{plan.title}</p>
+                          {plan.description && <p className="text-xs text-ink-400 mt-0.5 line-clamp-1">{plan.description}</p>}
+                          {overdue > 0 && (
+                            <span className="inline-flex items-center gap-1 text-xs text-red-500 mt-1">
+                              <AlertTriangle className="size-3" /> {t('plansPage.overdueCount', { count: overdue })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-4">
-                      <Badge variant={statusVariant}>{statusLabel}</Badge>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className={`size-1.5 rounded-full shrink-0 ${STATUS_DOT[plan.status]}`} />
+                        <Badge variant={statusVariant}>{statusLabel}</Badge>
+                      </span>
                     </td>
                     <td className="px-4 py-4 w-52">
-                      <ProgressBar value={overallPct} className="w-full" />
-                      <p className="text-xs text-ink-400 mt-0.5">{Math.round(overallPct)}%</p>
+                      <div className="flex items-center gap-2">
+                        <ProgressBar value={overallPct} className="w-full" />
+                        <span className="flex items-center gap-1 text-xs font-semibold text-ink-500 tabular-nums shrink-0 w-16">
+                          <Target className="size-3 text-ink-300" /> {Math.round(overallPct)}%
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-4">
                       <p className="text-xs text-ink-500">
