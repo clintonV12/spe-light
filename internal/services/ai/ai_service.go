@@ -384,14 +384,24 @@ func (s *Service) Summary(ctx context.Context, orgID uuid.UUID, req SummaryReque
 		return nil, fmt.Errorf("plan not found")
 	}
 
-	query := `SELECT phase, type, title, status FROM activities
-	          WHERE plan_id = $1 AND org_id = $2 AND deleted_at IS NULL`
+	// activities no longer carry a `phase` column as of migration
+	// 014_collapse_plan_types — every activity now attaches to an objective
+	// (or, for Advanced Research, sits at the plan level with no objective
+	// at all; see models.Activity.ObjectiveID / Category). We still want a
+	// short grouping label per activity for the summary prompt, so derive
+	// one from whichever of those applies rather than querying a column
+	// that no longer exists.
+	query := `SELECT COALESCE(so.title, CASE WHEN a.category = 'advanced_research' THEN 'Advanced Research' ELSE '' END) AS phase,
+	                 a.type, a.title, a.status
+	          FROM activities a
+	          LEFT JOIN strategic_objectives so ON so.id = a.objective_id
+	          WHERE a.plan_id = $1 AND a.org_id = $2 AND a.deleted_at IS NULL`
 	args := []any{req.PlanID, orgID}
 	if req.Phase != "" {
-		query += ` AND phase = $3`
+		query += ` AND COALESCE(so.title, CASE WHEN a.category = 'advanced_research' THEN 'Advanced Research' ELSE '' END) = $3`
 		args = append(args, req.Phase)
 	}
-	query += ` ORDER BY phase, user_order`
+	query += ` ORDER BY so.user_order NULLS LAST, a.user_order`
 
 	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {

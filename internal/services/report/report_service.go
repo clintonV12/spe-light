@@ -27,6 +27,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -883,10 +884,19 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 		}
 		aiSummaryTried = true
 		if s.aiSummaryFn == nil {
+			slog.WarnContext(ctx, "report AI summary skipped: no aiSummaryFn configured",
+				"plan_id", plan.ID, "org_id", orgID)
 			return "", false
 		}
 		summary, err := s.aiSummaryFn(ctx, orgID, plan.ID)
-		if err != nil || summary == "" {
+		if err != nil {
+			slog.WarnContext(ctx, "report AI summary failed",
+				"plan_id", plan.ID, "org_id", orgID, "error", err)
+			return "", false
+		}
+		if summary == "" {
+			slog.WarnContext(ctx, "report AI summary returned empty result",
+				"plan_id", plan.ID, "org_id", orgID)
 			return "", false
 		}
 		aiSummaryText = summary

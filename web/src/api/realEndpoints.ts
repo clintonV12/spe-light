@@ -470,6 +470,18 @@ export const reportsApi = {
   /**
    * POST /api/v1/plans/{planID}/reports — requires planner or org_admin.
    * Starts an async job; poll reportsApi.poll(jobId) for completion.
+   *
+   * Overrides apiClient's default 15s timeout. Generation runs synchronously
+   * on the backend (see reportsvc's package doc) — the request blocks for the
+   * full duration of building every requested section AND, when an AI
+   * Summary section is included, an embedded call into the AI service, which
+   * the backend itself allows up to 90s for (see aisvc's requestTimeout).
+   * At the default 15s, that embedded call routinely got cut off mid-flight
+   * on anything but a trivially small plan, and reportsvc's graceful
+   * degradation (an unreachable/canceled AI call renders as "A summary is
+   * unavailable..." rather than failing the whole report) silently masked
+   * it as an AI-service problem. 120s gives the full backend budget
+   * (section assembly + up to 90s of AI generation) room to complete.
    */
   generate: (planId: string, payload: {
     type:         ReportType
@@ -477,7 +489,7 @@ export const reportsApi = {
     date_range?:  { from: string; to: string }
     /** Required (and only used) when type === 'custom' */
     sections?:    ReportSectionConfig
-  }) => apiClient.post<{ job_id: string }>(`/plans/${planId}/reports`, payload).then((r) => r.data),
+  }) => apiClient.post<{ job_id: string }>(`/plans/${planId}/reports`, payload, { timeout: 120_000 }).then((r) => r.data),
 
   /**
    * GET /api/v1/reports/{jobID}

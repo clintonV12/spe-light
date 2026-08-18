@@ -246,10 +246,19 @@ func (s *Service) loadObjectiveOptions(ctx context.Context, orgID, planID uuid.U
 // Returns nil slices (not an error) when the plan simply has no activities
 // or links yet — an error return means the query itself failed.
 func (s *Service) loadPlanContext(ctx context.Context, orgID, planID uuid.UUID) ([]activitySynopsis, []activityLink, error) {
+	// See ai_service.go's Summary query for why this isn't a plain
+	// `SELECT ... phase ...` — that column was dropped by migration
+	// 014_collapse_plan_types. Derive the same grouping label here so
+	// Draft()/SuggestLinks() (which both go through loadPlanContext) don't
+	// hit the same "column \"phase\" does not exist" error.
 	rows, err := s.db.Query(ctx,
-		`SELECT id, phase, type, title, status, content FROM activities
-		 WHERE plan_id = $1 AND org_id = $2 AND deleted_at IS NULL
-		 ORDER BY phase, user_order`,
+		`SELECT a.id,
+		        COALESCE(so.title, CASE WHEN a.category = 'advanced_research' THEN 'Advanced Research' ELSE '' END) AS phase,
+		        a.type, a.title, a.status, a.content
+		 FROM activities a
+		 LEFT JOIN strategic_objectives so ON so.id = a.objective_id
+		 WHERE a.plan_id = $1 AND a.org_id = $2 AND a.deleted_at IS NULL
+		 ORDER BY so.user_order NULLS LAST, a.user_order`,
 		planID, orgID,
 	)
 	if err != nil {
