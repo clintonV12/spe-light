@@ -471,11 +471,12 @@ type contentSection struct {
 	Chart *contentChart
 	// Diagram is optional and independent of Table/Chart — set on the
 	// sections that have a dedicated visual editor on screen (SWOT,
-	// PESTEL, the Business Model Canvas) so the report shows the same
-	// shape a reader who has seen the plan in the app would recognise,
-	// alongside (not instead of) the plain data table. A rendering path
-	// that can't draw diagrams (XLSX) simply ignores this field — the
-	// Table on the same section already carries the same data.
+	// PESTEL, the Business Model Canvas, Competitive Analysis, the
+	// Operational Roadmap) so the report shows the same shape a reader
+	// who has seen the plan in the app would recognise, alongside (not
+	// instead of) the plain data table. A rendering path that can't draw
+	// diagrams (XLSX) simply ignores this field — the Table on the same
+	// section already carries the same data.
 	Diagram *contentDiagram
 }
 
@@ -731,6 +732,206 @@ func bmcDiagram(content map[string]any) *contentDiagram {
 			mk("revenue_streams", "Revenue Streams", 2, 2, 3, 1, "green"),
 		},
 	}
+}
+
+// competitiveAnalysisDiagram lays a Competitive Analysis activity's content
+// out on the same left-to-right flow CompetitiveAnalysisEditor.tsx shows on
+// screen (competitors -> market positioning -> differentiators), one wide
+// cell per stage. Returns nil if none of the three fields have been filled
+// in yet.
+func competitiveAnalysisDiagram(content map[string]any) *contentDiagram {
+	get := func(k string) string {
+		if v, ok := content[k].(string); ok {
+			return v
+		}
+		return ""
+	}
+	if get("competitors") == "" && get("positioning") == "" && get("differentiators") == "" {
+		return nil
+	}
+	mk := func(key, label string, col int, hint string) diagramCell {
+		return diagramCell{Label: label, Text: get(key), Col: col, Row: 0, ColorHint: hint}
+	}
+	return &contentDiagram{
+		Kind: "competitive_analysis", Cols: 3, Rows: 1,
+		Cells: []diagramCell{
+			mk("competitors", "Competitors", 0, "neutral"),
+			mk("positioning", "Market Positioning", 1, "blue"),
+			mk("differentiators", "Differentiators", 2, "gold"),
+		},
+	}
+}
+
+// roadmapDiagram lays an Operational Roadmap activity's content out on the
+// same four-quarter timeline RoadmapEditor.tsx shows on screen, one cell per
+// quarter in the same left-to-right order. Returns nil if every quarter is
+// empty.
+func roadmapDiagram(content map[string]any) *contentDiagram {
+	get := func(k string) string {
+		if v, ok := content[k].(string); ok {
+			return v
+		}
+		return ""
+	}
+	quarters := []string{"q1", "q2", "q3", "q4"}
+	hints := []string{"blue", "green", "purple", "gold"}
+	hasContent := false
+	for _, q := range quarters {
+		if get(q) != "" {
+			hasContent = true
+			break
+		}
+	}
+	if !hasContent {
+		return nil
+	}
+	cells := make([]diagramCell, len(quarters))
+	for i, q := range quarters {
+		cells[i] = diagramCell{Label: "Q" + fmt.Sprint(i+1), Text: get(q), Col: i, Row: 0, ColorHint: hints[i]}
+	}
+	return &contentDiagram{Kind: "roadmap", Cols: len(quarters), Rows: 1, Cells: cells}
+}
+
+// riskRegisterChart mirrors the "Bar" view RiskRegisterEditor.tsx offers on
+// screen — one bar per named risk, highest score first, coloured with the
+// same thresholds as the editor's scoreColor/scoreHex (>=15 red, >=8 amber,
+// else green). Capped to the 10 highest-scoring risks so the chart stays
+// readable in a report; the full list is still in the activity's own table.
+// Returns nil if there are no named risks to chart.
+func riskRegisterChart(content map[string]any) *contentChart {
+	rows, _ := content["rows"].([]any)
+	type namedRisk struct {
+		label string
+		score float64
+	}
+	var risks []namedRisk
+	for _, raw := range rows {
+		row, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := row["risk"].(string)
+		if name == "" {
+			continue
+		}
+		score, _ := row["score"].(float64)
+		risks = append(risks, namedRisk{label: name, score: score})
+	}
+	if len(risks) == 0 {
+		return nil
+	}
+	sort.Slice(risks, func(i, j int) bool { return risks[i].score > risks[j].score })
+	if len(risks) > 10 {
+		risks = risks[:10]
+	}
+	bars := make([]chartBar, len(risks))
+	for i, r := range risks {
+		hint := "good"
+		switch {
+		case r.score >= 15:
+			hint = "bad"
+		case r.score >= 8:
+			hint = "warn"
+		}
+		bars[i] = chartBar{Label: r.label, Value: r.score, ColorHint: hint}
+	}
+	return &contentChart{Title: "Risk Score (Likelihood x Impact)", Max: 25, Bars: bars}
+}
+
+// numFromAny reads a float64 out of a decoded-JSON value that might be a
+// number or a numeric string — activity content round-trips through
+// map[string]any, and a couple of frontend editors (FinancialProjections'
+// line-item cells) store amounts as raw strings rather than JSON numbers.
+func numFromAny(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case string:
+		var f float64
+		fmt.Sscanf(n, "%f", &f)
+		return f
+	default:
+		return 0
+	}
+}
+
+// financialProjectionsChart mirrors the revenue bars in
+// FinancialProjectionsEditor.tsx's chart view — one bar per period, valued
+// at that period's total revenue (summed across every revenue line item,
+// the same as the editor's sumSection). Returns nil if there are no periods
+// with any revenue entered yet.
+func financialProjectionsChart(content map[string]any) *contentChart {
+	periodsRaw, _ := content["periods"].([]any)
+	if len(periodsRaw) == 0 {
+		return nil
+	}
+	lineItems, _ := content["lineItems"].(map[string]any)
+	revenueRaw, _ := lineItems["revenue"].([]any)
+
+	var bars []chartBar
+	maxVal := 0.0
+	for _, praw := range periodsRaw {
+		p, ok := praw.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := p["id"].(string)
+		label, _ := p["label"].(string)
+		if label == "" {
+			label = id
+		}
+		var total float64
+		for _, iraw := range revenueRaw {
+			item, ok := iraw.(map[string]any)
+			if !ok {
+				continue
+			}
+			values, _ := item["values"].(map[string]any)
+			if values == nil {
+				continue
+			}
+			total += numFromAny(values[id])
+		}
+		bars = append(bars, chartBar{Label: label, Value: total})
+		if total > maxVal {
+			maxVal = total
+		}
+	}
+	if maxVal <= 0 {
+		return nil
+	}
+	return &contentChart{Title: "Revenue by Period", Max: maxVal, Bars: bars}
+}
+
+// tableRowsChart builds a simple bar chart from a "rows" array where each
+// row has both a text label field and a numeric value field — the shape
+// resource_plan (resource/allocation_pct) and budget_allocation
+// (category/amount) store via TableEditor.tsx, which offers the same kind
+// of bar chart as a frontend-only view over those rows. Returns nil if
+// there's nothing chartable yet.
+func tableRowsChart(content map[string]any, labelKey, valueKey, title, unit string) *contentChart {
+	rows, _ := content["rows"].([]any)
+	var bars []chartBar
+	maxVal := 0.0
+	for _, raw := range rows {
+		row, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		label, _ := row[labelKey].(string)
+		if label == "" {
+			continue
+		}
+		val := numFromAny(row[valueKey])
+		bars = append(bars, chartBar{Label: label, Value: val})
+		if val > maxVal {
+			maxVal = val
+		}
+	}
+	if len(bars) == 0 || maxVal <= 0 {
+		return nil
+	}
+	return &contentChart{Title: title, Unit: unit, Max: maxVal, Bars: bars}
 }
 
 // kpiAchievement computes a KPI's achievement percentage from its Target/
@@ -1332,22 +1533,39 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 			// depends on which of the 7 Advanced Research types it is (see
 			// models.AdvancedResearchType) — buildGenericContentSection
 			// renders whatever's there without this package needing to
-			// know each editor's exact shape. Business Model Canvas is the
-			// one exception: it's the only Advanced Research type with a
-			// dedicated grid editor (BusinessModelCanvasEditor.tsx) rather
-			// than free text, so it additionally gets a matching diagram —
-			// same nine-block layout, drawn alongside (not instead of) the
-			// generic paragraph rendering of the same fields.
+			// know each editor's exact shape. Every type that has its own
+			// dedicated visual on screen (rather than plain free-text
+			// fields) additionally gets a matching Diagram or Chart here,
+			// drawn alongside — not instead of — the generic
+			// paragraph/table rendering of the same fields, so a reader
+			// who has seen the plan in the app recognises the same shape
+			// in the report.
 			for _, a := range activities {
 				detail := buildGenericContentSection(a.Title, a.Content)
-				if a.Type == string(models.ARTypeBusinessModelCanvas) {
-					dg := bmcDiagram(a.Content)
-					if dg != nil {
-						if detail == nil {
-							detail = &contentSection{Heading: a.Title}
-						}
-						detail.Diagram = dg
+				var dg *contentDiagram
+				var ch *contentChart
+				switch a.Type {
+				case string(models.ARTypeBusinessModelCanvas):
+					dg = bmcDiagram(a.Content)
+				case string(models.ARTypeCompetitiveAnalysis):
+					dg = competitiveAnalysisDiagram(a.Content)
+				case string(models.ARTypeOperationalRoadmap):
+					dg = roadmapDiagram(a.Content)
+				case string(models.ARTypeRiskRegister):
+					ch = riskRegisterChart(a.Content)
+				case string(models.ARTypeFinancialProjections):
+					ch = financialProjectionsChart(a.Content)
+				case string(models.ARTypeResourcePlan):
+					ch = tableRowsChart(a.Content, "resource", "allocation_pct", "Resource Allocation", "%")
+				case string(models.ARTypeBudgetAllocation):
+					ch = tableRowsChart(a.Content, "category", "amount", "Budget Allocation", "")
+				}
+				if dg != nil || ch != nil {
+					if detail == nil {
+						detail = &contentSection{Heading: a.Title}
 					}
+					detail.Diagram = dg
+					detail.Chart = ch
 				}
 				if detail != nil {
 					rc.Sections = append(rc.Sections, *detail)

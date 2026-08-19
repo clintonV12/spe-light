@@ -14,7 +14,6 @@ const DEFAULT_CUSTOM_SECTIONS: ReportSectionConfig = {
   situational_analysis:  true,
   objective_activities:  true,
   advanced_research:     true,
-  scorecard:             true,
   org_structure:         true,
   progress_status:       true,
   monitoring_evaluation: true,
@@ -31,7 +30,6 @@ function hasSelectedContent(s: ReportSectionConfig): boolean {
     s.situational_analysis ||
     s.objective_activities ||
     s.advanced_research ||
-    s.scorecard ||
     s.org_structure ||
     s.progress_status ||
     s.monitoring_evaluation ||
@@ -48,7 +46,6 @@ function countSections(s: ReportSectionConfig): number {
     s.situational_analysis,
     s.objective_activities,
     s.advanced_research,
-    s.scorecard,
     s.org_structure,
     s.progress_status,
     s.monitoring_evaluation,
@@ -342,18 +339,6 @@ export default function ReportsPage() {
                 />
                 <span className="text-sm text-ink-800">
                   {t('reportsPage.sections.situationalAnalysis', { defaultValue: 'Situational Analysis (SWOT, PESTEL, Stakeholders)' })}
-                </span>
-              </label>
-
-              <label className="flex items-center gap-2.5 px-4 py-3 cursor-pointer hover:bg-accent-50/50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={customSections.scorecard}
-                  onChange={(e) => toggleSection('scorecard', e.target.checked)}
-                  className="size-4 rounded border-ink-300 text-accent focus:ring-accent-400"
-                />
-                <span className="text-sm text-ink-800">
-                  {t('reportsPage.sections.scorecard', { defaultValue: 'Strategic Scorecard (KPIs + achievement chart)' })}
                 </span>
               </label>
 

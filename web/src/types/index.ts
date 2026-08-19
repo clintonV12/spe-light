@@ -90,7 +90,6 @@ export interface ReportSectionConfig {
   situational_analysis: boolean
   objective_activities: boolean
   advanced_research:    boolean
-  scorecard:             boolean
   org_structure:         boolean
   progress_status:       boolean
   monitoring_evaluation: boolean
