@@ -1,38 +1,43 @@
 import React, { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, Table2, BarChart3 } from 'lucide-react'
+import { Plus, X, Table2, BarChart3 } from 'lucide-react'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
-import { Button } from '../../ui'
 
 // ── Financial Projections ───────────────────────────────────────────────────
 //
-// Previously this activity type had no dedicated editor and fell back to
-// GenericEditor — a handful of plain textareas with no numbers, no
-// computation, nothing that actually projected anything. That defeats the
-// point of putting it in Advanced Research alongside things like the Risk
-// Register and KPI tracker, which are genuinely structured tools.
+// v1 of this editor still laid out periods as rows with a handful of flat
+// columns (Period / Revenue / Costs / Profit) — the same shape a plain
+// TableEditor config already gave you, just with a couple of extra derived
+// columns. That's not what a financial projection actually looks like.
 //
-// This is a real multi-period P&L: one row per period (year/quarter/etc.),
-// four inputs (Revenue, COGS, OpEx, Other Income), with Gross Profit, Net
-// Profit, and both margins computed live — plus plan-level summary metrics
-// (total revenue, revenue CAGR, break-even period) and a chart view, the
-// same table/chart split pattern RiskRegisterEditor and KpiEditor already
-// use elsewhere in Advanced Research.
+// Real P&L statements run line items DOWN the side and periods ACROSS the
+// top: a Revenue section you can break into multiple streams, Cost of
+// Sales and Operating Expenses as separate sections (not lumped into one
+// "Costs" number), and computed subtotal rows — Gross Profit, Net Profit,
+// margins, a running cash position — the same shape an investor deck or a
+// finance team's spreadsheet uses. This rebuild is that shape.
 
-export interface FinancialPeriodRow {
+export interface FPPeriod {
   id: string
-  /** Free text — "Year 1", "FY26", "Q3 2027", whatever cadence the plan uses. */
+  /** Free text — "Year 1", "FY26", "Q3 2027" — whatever cadence the plan uses. */
   label: string
-  revenue: string
-  cogs: string
-  opex: string
-  other_income: string
 }
 
+export interface FPLineItem {
+  id: string
+  label: string
+  /** periodId → raw numeric string. */
+  values: Record<string, string>
+}
+
+export type FPSection = 'revenue' | 'cogs' | 'opex' | 'other_income'
+
 export interface FinancialProjectionsContent {
-  periods: FinancialPeriodRow[]
+  currency: string
+  periods: FPPeriod[]
+  lineItems: Record<FPSection, FPLineItem[]>
   /** Growth drivers, pricing basis, cost assumptions — the "why" behind the numbers above. */
   assumptions: string
 }
@@ -43,17 +48,50 @@ interface FinancialProjectionsEditorProps {
   readOnly?: boolean
 }
 
-const EMPTY_CONTENT: FinancialProjectionsContent = { periods: [], assumptions: '' }
-
-function emptyPeriod(label: string): FinancialPeriodRow {
-  return { id: crypto.randomUUID(), label, revenue: '', cogs: '', opex: '', other_income: '' }
+const EMPTY_CONTENT: FinancialProjectionsContent = {
+  currency: 'SZL',
+  periods: [],
+  lineItems: { revenue: [], cogs: [], opex: [], other_income: [] },
+  assumptions: '',
 }
 
-function num(v: string): number {
+const CURRENCIES: { code: string; symbol: string }[] = [
+  { code: 'SZL', symbol: 'E' },
+  { code: 'ZAR', symbol: 'R' },
+  { code: 'USD', symbol: '$' },
+  { code: 'EUR', symbol: '€' },
+  { code: 'GBP', symbol: '£' },
+  { code: 'KES', symbol: 'KSh' },
+  { code: 'NGN', symbol: '₦' },
+]
+
+function symbolFor(code: string): string {
+  return CURRENCIES.find((c) => c.code === code)?.symbol ?? code
+}
+
+function num(v: string | undefined): number {
   return Number(v) || 0
 }
 
-interface Computed {
+// Accounting-style formatting: negatives in parentheses, not a leading
+// minus — how every real financial statement shows a loss.
+function fmtMoney(n: number, currency: string): string {
+  const abs = Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 })
+  return n < 0 ? `(${symbolFor(currency)}${abs})` : `${symbolFor(currency)}${abs}`
+}
+
+function fmtPct(n: number | null): string {
+  if (n === null) return '—'
+  const abs = Math.abs(n).toFixed(1)
+  return n < 0 ? `(${abs}%)` : `${abs}%`
+}
+
+function sumSection(items: FPLineItem[], periodId: string): number {
+  return items.reduce((s, item) => s + num(item.values[periodId]), 0)
+}
+
+interface PeriodStats {
+  periodId: string
   revenue: number
   cogs: number
   grossProfit: number
@@ -62,33 +100,8 @@ interface Computed {
   otherIncome: number
   netProfit: number
   netMargin: number | null
-}
-
-// Standard P&L waterfall: Revenue − COGS = Gross Profit; Gross Profit − OpEx
-// + Other Income = Net Profit. Margins are null (not 0) when revenue is 0 —
-// "0% margin" and "no revenue to measure a margin against" are different
-// things and shouldn't render the same.
-function computeRow(r: FinancialPeriodRow): Computed {
-  const revenue = num(r.revenue)
-  const cogs = num(r.cogs)
-  const opex = num(r.opex)
-  const otherIncome = num(r.other_income)
-  const grossProfit = revenue - cogs
-  const netProfit = grossProfit - opex + otherIncome
-  return {
-    revenue, cogs, grossProfit,
-    grossMargin: revenue !== 0 ? (grossProfit / revenue) * 100 : null,
-    opex, otherIncome, netProfit,
-    netMargin: revenue !== 0 ? (netProfit / revenue) * 100 : null,
-  }
-}
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { maximumFractionDigits: 0 })
-}
-
-function formatPct(n: number | null): string {
-  return n === null ? '—' : `${n.toFixed(1)}%`
+  yoyGrowth: number | null
+  cumulativeCash: number
 }
 
 type ViewMode = 'table' | 'chart'
@@ -97,112 +110,238 @@ export const FinancialProjectionsEditor: React.FC<FinancialProjectionsEditorProp
   const { t } = useTranslation()
   const [view, setView] = useState<ViewMode>('table')
 
-  const content: FinancialProjectionsContent = { ...EMPTY_CONTENT, ...value, periods: value.periods ?? [] }
-  const periods = content.periods
+  const content: FinancialProjectionsContent = {
+    ...EMPTY_CONTENT,
+    ...value,
+    periods: value.periods ?? [],
+    lineItems: {
+      revenue: value.lineItems?.revenue ?? [],
+      cogs: value.lineItems?.cogs ?? [],
+      opex: value.lineItems?.opex ?? [],
+      other_income: value.lineItems?.other_income ?? [],
+    },
+  }
+  const { periods, lineItems, currency } = content
 
-  const setPeriods = (rows: FinancialPeriodRow[]) => onChange({ ...content, periods: rows })
+  const setCurrency = (c: string) => onChange({ ...content, currency: c })
   const setAssumptions = (text: string) => onChange({ ...content, assumptions: text })
 
   const addPeriod = () => {
     const label = `${t('editors.financialProjections.yearPrefix', { defaultValue: 'Year' })} ${periods.length + 1}`
-    setPeriods([...periods, emptyPeriod(label)])
+    onChange({ ...content, periods: [...periods, { id: crypto.randomUUID(), label }] })
+  }
+  const updatePeriodLabel = (id: string, label: string) => {
+    onChange({ ...content, periods: periods.map((p) => (p.id === id ? { ...p, label } : p)) })
+  }
+  const removePeriod = (id: string) => {
+    onChange({ ...content, periods: periods.filter((p) => p.id !== id) })
   }
 
-  const updatePeriod = (id: string, field: keyof FinancialPeriodRow, val: string) => {
-    setPeriods(periods.map((r) => (r.id === id ? { ...r, [field]: val } : r)))
+  const addLineItem = (section: FPSection) => {
+    const row: FPLineItem = { id: crypto.randomUUID(), label: '', values: {} }
+    onChange({ ...content, lineItems: { ...lineItems, [section]: [...lineItems[section], row] } })
+  }
+  const updateLineItemLabel = (section: FPSection, id: string, label: string) => {
+    onChange({
+      ...content,
+      lineItems: { ...lineItems, [section]: lineItems[section].map((r) => (r.id === id ? { ...r, label } : r)) },
+    })
+  }
+  const updateCell = (section: FPSection, id: string, periodId: string, val: string) => {
+    onChange({
+      ...content,
+      lineItems: {
+        ...lineItems,
+        [section]: lineItems[section].map((r) => (r.id === id ? { ...r, values: { ...r.values, [periodId]: val } } : r)),
+      },
+    })
+  }
+  const removeLineItem = (section: FPSection, id: string) => {
+    onChange({ ...content, lineItems: { ...lineItems, [section]: lineItems[section].filter((r) => r.id !== id) } })
   }
 
-  const removePeriod = (id: string) => setPeriods(periods.filter((r) => r.id !== id))
+  // ── Computed stats, one entry per period, in table order ──────────────────
+  const periodStats: PeriodStats[] = useMemo(() => {
+    let cumulativeCash = 0
+    let prevRevenue: number | null = null
+    return periods.map((p) => {
+      const revenue = sumSection(lineItems.revenue, p.id)
+      const cogs = sumSection(lineItems.cogs, p.id)
+      const opex = sumSection(lineItems.opex, p.id)
+      const otherIncome = sumSection(lineItems.other_income, p.id)
+      const grossProfit = revenue - cogs
+      const netProfit = grossProfit - opex + otherIncome
+      cumulativeCash += netProfit
+      const yoyGrowth = prevRevenue !== null && prevRevenue > 0 ? ((revenue - prevRevenue) / prevRevenue) * 100 : null
+      prevRevenue = revenue
+      return {
+        periodId: p.id, revenue, cogs, grossProfit,
+        grossMargin: revenue !== 0 ? (grossProfit / revenue) * 100 : null,
+        opex, otherIncome, netProfit,
+        netMargin: revenue !== 0 ? (netProfit / revenue) * 100 : null,
+        yoyGrowth, cumulativeCash,
+      }
+    })
+  }, [periods, lineItems])
 
-  const computedRows = useMemo(() => periods.map((row) => ({ row, c: computeRow(row) })), [periods])
-  const namedRows = useMemo(() => computedRows.filter(({ row }) => row.label.trim() !== ''), [computedRows])
+  const statsByPeriod = useMemo(() => new Map(periodStats.map((s) => [s.periodId, s])), [periodStats])
 
   // ── Summary metrics ───────────────────────────────────────────────────────
-
-  const totalRevenue = namedRows.reduce((s, { c }) => s + c.revenue, 0)
-  const totalNetProfit = namedRows.reduce((s, { c }) => s + c.netProfit, 0)
+  const totalRevenue = periodStats.reduce((s, p) => s + p.revenue, 0)
+  const totalNetProfit = periodStats.reduce((s, p) => s + p.netProfit, 0)
   const avgNetMargin = totalRevenue !== 0 ? (totalNetProfit / totalRevenue) * 100 : null
 
-  // CAGR needs at least two named periods, taken in table order (first row =
-  // earliest period), and both endpoints must be positive revenue — a CAGR
-  // off a zero or negative base isn't meaningful.
   const cagr = useMemo(() => {
-    if (namedRows.length < 2) return null
-    const first = namedRows[0].c.revenue
-    const last = namedRows[namedRows.length - 1].c.revenue
+    if (periodStats.length < 2) return null
+    const first = periodStats[0].revenue
+    const last = periodStats[periodStats.length - 1].revenue
     if (first <= 0 || last <= 0) return null
-    const n = namedRows.length - 1
-    return (Math.pow(last / first, 1 / n) - 1) * 100
-  }, [namedRows])
+    return (Math.pow(last / first, 1 / (periodStats.length - 1)) - 1) * 100
+  }, [periodStats])
 
-  // First period where *cumulative* net profit crosses zero — a simple,
-  // table-order break-even signal. Not a discounted cash-flow model, just a
-  // running total, which is the right level of sophistication for a plan's
-  // Advanced Research tab rather than a full finance model.
   const breakEvenLabel = useMemo(() => {
-    let cumulative = 0
-    for (const { row, c } of namedRows) {
-      cumulative += c.netProfit
-      if (cumulative >= 0) return row.label
-    }
-    return null
-  }, [namedRows])
+    const hit = periodStats.find((s) => s.cumulativeCash >= 0)
+    if (!hit) return null
+    return periods.find((p) => p.id === hit.periodId)?.label ?? null
+  }, [periodStats, periods])
 
+  // ── Chart data ─────────────────────────────────────────────────────────────
   const revenueLabel = t('editors.financialProjections.seriesRevenue', { defaultValue: 'Revenue' })
   const netProfitLabel = t('editors.financialProjections.seriesNetProfit', { defaultValue: 'Net Profit' })
   const netMarginLabel = t('editors.financialProjections.seriesNetMargin', { defaultValue: 'Net Margin' })
+  const cashLabel = t('editors.financialProjections.seriesCumulativeCash', { defaultValue: 'Cumulative Cash Position' })
 
-  const chartData = useMemo(() => namedRows.map(({ row, c }) => ({
-    name: row.label,
-    [revenueLabel]: c.revenue,
-    [netProfitLabel]: c.netProfit,
-    margin: c.netMargin,
-  })), [namedRows, revenueLabel, netProfitLabel])
+  const chartData = useMemo(() => periods.map((p) => {
+    const s = statsByPeriod.get(p.id)!
+    return {
+      name: p.label || t('editors.financialProjections.untitled', { defaultValue: 'Untitled' }),
+      [revenueLabel]: s.revenue,
+      [netProfitLabel]: s.netProfit,
+      margin: s.netMargin,
+      cash: s.cumulativeCash,
+    }
+  }), [periods, statsByPeriod, revenueLabel, netProfitLabel, t])
+
+  const hasData = periods.length > 0
+
+  // ── Row/section rendering helpers ───────────────────────────────────────────
+
+  const colCount = periods.length + 2 // label col + trailing actions col
+
+  const SectionTitle: React.FC<{ label: string; onAdd: () => void; addLabel: string }> = ({ label, onAdd, addLabel }) => (
+    <tr className="bg-ink-50">
+      <td className="sticky left-0 z-10 bg-ink-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink-500">
+        {label}
+      </td>
+      {periods.map((p) => <td key={p.id} />)}
+      <td className="px-2 py-1.5">
+        {!readOnly && (
+          <button
+            onClick={onAdd}
+            className="flex items-center gap-1 whitespace-nowrap text-[11px] font-medium text-accent hover:text-accent-600"
+          >
+            <Plus className="size-3" /> {addLabel}
+          </button>
+        )}
+      </td>
+    </tr>
+  )
+
+  const LineItemRow: React.FC<{ section: FPSection; item: FPLineItem; placeholder: string }> = ({ section, item, placeholder }) => (
+    <tr>
+      <td className="sticky left-0 z-10 bg-white px-3 py-1 min-w-40">
+        <input
+          className="w-full bg-transparent px-1 py-1 text-sm text-ink-800 outline-none focus:bg-ink-50 rounded"
+          value={item.label}
+          onChange={(e) => updateLineItemLabel(section, item.id, e.target.value)}
+          readOnly={readOnly}
+          placeholder={placeholder}
+        />
+      </td>
+      {periods.map((p) => (
+        <td key={p.id} className="px-2 py-1">
+          <input
+            type="number"
+            className="w-24 bg-transparent px-1 py-1 text-sm text-ink-800 outline-none focus:bg-ink-50 rounded"
+            value={item.values[p.id] ?? ''}
+            onChange={(e) => updateCell(section, item.id, p.id, e.target.value)}
+            readOnly={readOnly}
+            placeholder="0"
+          />
+        </td>
+      ))}
+      <td className="px-2 py-1">
+        {!readOnly && (
+          <button onClick={() => removeLineItem(section, item.id)} className="text-ink-300 hover:text-red-500">
+            <X className="size-3.5" />
+          </button>
+        )}
+      </td>
+    </tr>
+  )
+
+  const ComputedRow: React.FC<{
+    label: string
+    getValue: (s: PeriodStats) => string
+    tone?: 'default' | 'strong' | 'muted'
+  }> = ({ label, getValue, tone = 'default' }) => {
+    const rowCls = tone === 'strong' ? 'bg-accent-50 font-bold' : tone === 'muted' ? 'text-ink-400 text-xs' : 'font-semibold'
+    return (
+      <tr className={tone === 'strong' ? 'bg-accent-50' : undefined}>
+        <td className={`sticky left-0 z-10 px-3 py-1.5 ${tone === 'strong' ? 'bg-accent-50' : 'bg-white'} ${rowCls}`}>
+          {label}
+        </td>
+        {periods.map((p) => (
+          <td key={p.id} className={`px-2 py-1.5 tabular-nums ${rowCls}`}>
+            {getValue(statsByPeriod.get(p.id)!)}
+          </td>
+        ))}
+        <td />
+      </tr>
+    )
+  }
 
   return (
     <div className="space-y-4">
       {/* Summary cards */}
-      {namedRows.length > 0 && (
+      {hasData && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <SummaryCard
-            label={t('editors.financialProjections.totalRevenue', { defaultValue: 'Total Revenue' })}
-            value={formatCurrency(totalRevenue)}
-          />
-          <SummaryCard
-            label={t('editors.financialProjections.totalNetProfit', { defaultValue: 'Total Net Profit' })}
-            value={formatCurrency(totalNetProfit)}
-            tone={totalNetProfit >= 0 ? 'positive' : 'negative'}
-          />
-          <SummaryCard
-            label={t('editors.financialProjections.avgNetMargin', { defaultValue: 'Avg Net Margin' })}
-            value={formatPct(avgNetMargin)}
-            tone={avgNetMargin === null ? undefined : avgNetMargin >= 0 ? 'positive' : 'negative'}
-          />
-          <SummaryCard
-            label={t('editors.financialProjections.revenueCagr', { defaultValue: 'Revenue CAGR' })}
-            value={cagr === null ? '—' : formatPct(cagr)}
-            tone={cagr === null ? undefined : cagr >= 0 ? 'positive' : 'negative'}
-          />
-          <SummaryCard
-            label={t('editors.financialProjections.breakEven', { defaultValue: 'Break-even' })}
-            value={breakEvenLabel ?? t('editors.financialProjections.notYet', { defaultValue: 'Not reached' })}
-          />
+          <SummaryCard label={t('editors.financialProjections.totalRevenue', { defaultValue: 'Total Revenue' })} value={fmtMoney(totalRevenue, currency)} />
+          <SummaryCard label={t('editors.financialProjections.totalNetProfit', { defaultValue: 'Total Net Profit' })} value={fmtMoney(totalNetProfit, currency)} tone={totalNetProfit >= 0 ? 'positive' : 'negative'} />
+          <SummaryCard label={t('editors.financialProjections.avgNetMargin', { defaultValue: 'Avg Net Margin' })} value={fmtPct(avgNetMargin)} tone={avgNetMargin === null ? undefined : avgNetMargin >= 0 ? 'positive' : 'negative'} />
+          <SummaryCard label={t('editors.financialProjections.revenueCagr', { defaultValue: 'Revenue CAGR' })} value={cagr === null ? '—' : fmtPct(cagr)} tone={cagr === null ? undefined : cagr >= 0 ? 'positive' : 'negative'} />
+          <SummaryCard label={t('editors.financialProjections.breakEven', { defaultValue: 'Break-even' })} value={breakEvenLabel ?? t('editors.financialProjections.notYet', { defaultValue: 'Not reached' })} />
         </div>
       )}
 
-      <div className="flex items-center gap-1 rounded-lg border border-ink-200 bg-white p-1 w-fit">
-        {(['table', 'chart'] as ViewMode[]).map((mode) => (
-          <button
-            key={mode}
-            onClick={() => setView(mode)}
-            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-              view === mode ? 'bg-accent text-white' : 'text-ink-500 hover:bg-ink-50'
-            }`}
+      {/* Controls */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1 rounded-lg border border-ink-200 bg-white p-1 w-fit">
+          {(['table', 'chart'] as ViewMode[]).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setView(mode)}
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                view === mode ? 'bg-accent text-white' : 'text-ink-500 hover:bg-ink-50'
+              }`}
+            >
+              {mode === 'table' ? <Table2 className="size-3.5" /> : <BarChart3 className="size-3.5" />}
+              {mode === 'table' ? t('editorsCommon.table') : t('editorsCommon.chart', { defaultValue: 'Chart' })}
+            </button>
+          ))}
+        </div>
+
+        <label className="flex items-center gap-1.5 text-xs text-ink-500">
+          {t('editors.financialProjections.currency', { defaultValue: 'Currency' })}
+          <select
+            className="rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-xs font-medium text-ink-700 outline-none"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            disabled={readOnly}
           >
-            {mode === 'table' ? <Table2 className="size-3.5" /> : <BarChart3 className="size-3.5" />}
-            {mode === 'table' ? t('editorsCommon.table') : t('editorsCommon.chart', { defaultValue: 'Chart' })}
-          </button>
-        ))}
+            {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code} ({c.symbol})</option>)}
+          </select>
+        </label>
       </div>
 
       {view === 'table' ? (
@@ -211,82 +350,112 @@ export const FinancialProjectionsEditor: React.FC<FinancialProjectionsEditorProp
             <table className="w-full text-sm">
               <thead className="bg-ink-50 text-xs font-semibold text-ink-500 uppercase tracking-wide">
                 <tr>
-                  <th className="px-3 py-2 text-left min-w-28">{t('editors.financialProjections.headers.period', { defaultValue: 'Period' })}</th>
-                  <th className="px-3 py-2 text-left">{t('editors.financialProjections.headers.revenue', { defaultValue: 'Revenue' })}</th>
-                  <th className="px-3 py-2 text-left">{t('editors.financialProjections.headers.cogs', { defaultValue: 'COGS' })}</th>
-                  <th className="px-3 py-2 text-left">{t('editors.financialProjections.headers.grossProfit', { defaultValue: 'Gross Profit' })}</th>
-                  <th className="px-3 py-2 text-left">{t('editors.financialProjections.headers.opex', { defaultValue: 'OpEx' })}</th>
-                  <th className="px-3 py-2 text-left">{t('editors.financialProjections.headers.otherIncome', { defaultValue: 'Other Income' })}</th>
-                  <th className="px-3 py-2 text-left">{t('editors.financialProjections.headers.netProfit', { defaultValue: 'Net Profit' })}</th>
-                  <th className="px-3 py-2 text-left">{t('editors.financialProjections.headers.netMargin', { defaultValue: 'Net Margin' })}</th>
-                  {!readOnly && <th />}
+                  <th className="sticky left-0 z-20 bg-ink-50 px-3 py-2 text-left min-w-40">
+                    {t('editors.financialProjections.headers.lineItem', { defaultValue: 'Line Item' })}
+                  </th>
+                  {periods.map((p) => (
+                    <th key={p.id} className="px-2 py-2 text-left min-w-28">
+                      <div className="flex items-center gap-1">
+                        <input
+                          className="w-full min-w-0 bg-transparent px-1 py-1 text-xs font-bold uppercase tracking-wide text-ink-700 outline-none focus:bg-white rounded"
+                          value={p.label}
+                          onChange={(e) => updatePeriodLabel(p.id, e.target.value)}
+                          readOnly={readOnly}
+                          placeholder={t('editors.financialProjections.periodPlaceholder', { defaultValue: 'e.g. Year 1' })}
+                        />
+                        {!readOnly && (
+                          <button onClick={() => removePeriod(p.id)} className="shrink-0 text-ink-300 hover:text-red-500">
+                            <X className="size-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </th>
+                  ))}
+                  <th className="px-2 py-2">
+                    {!readOnly && (
+                      <button
+                        onClick={addPeriod}
+                        className="flex items-center gap-1 whitespace-nowrap rounded-lg bg-accent px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-accent-600"
+                      >
+                        <Plus className="size-3" /> {t('editors.financialProjections.addPeriod', { defaultValue: 'Period' })}
+                      </button>
+                    )}
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-50">
-                {computedRows.map(({ row, c }) => (
-                  <tr key={row.id}>
-                    <td className="px-2 py-1 min-w-28">
-                      <input
-                        className="w-full bg-transparent px-1 py-1 outline-none focus:bg-ink-50 rounded text-ink-800 font-medium"
-                        value={row.label}
-                        onChange={(e) => updatePeriod(row.id, 'label', e.target.value)}
-                        readOnly={readOnly}
-                        placeholder={t('editors.financialProjections.periodPlaceholder', { defaultValue: 'e.g. Year 1' })}
-                      />
-                    </td>
-                    <td className="px-2 py-1">
-                      <input type="number" className="w-28 bg-transparent px-1 py-1 outline-none focus:bg-ink-50 rounded text-ink-800" value={row.revenue} onChange={(e) => updatePeriod(row.id, 'revenue', e.target.value)} readOnly={readOnly} placeholder="0" />
-                    </td>
-                    <td className="px-2 py-1">
-                      <input type="number" className="w-28 bg-transparent px-1 py-1 outline-none focus:bg-ink-50 rounded text-ink-800" value={row.cogs} onChange={(e) => updatePeriod(row.id, 'cogs', e.target.value)} readOnly={readOnly} placeholder="0" />
-                    </td>
-                    <td className="px-2 py-1 tabular-nums text-ink-500">
-                      {formatCurrency(c.grossProfit)}
-                      <span className="ml-1 text-[10px] text-ink-300">({formatPct(c.grossMargin)})</span>
-                    </td>
-                    <td className="px-2 py-1">
-                      <input type="number" className="w-28 bg-transparent px-1 py-1 outline-none focus:bg-ink-50 rounded text-ink-800" value={row.opex} onChange={(e) => updatePeriod(row.id, 'opex', e.target.value)} readOnly={readOnly} placeholder="0" />
-                    </td>
-                    <td className="px-2 py-1">
-                      <input type="number" className="w-28 bg-transparent px-1 py-1 outline-none focus:bg-ink-50 rounded text-ink-800" value={row.other_income} onChange={(e) => updatePeriod(row.id, 'other_income', e.target.value)} readOnly={readOnly} placeholder="0" />
-                    </td>
-                    <td className={`px-2 py-1 font-semibold tabular-nums ${c.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {formatCurrency(c.netProfit)}
-                    </td>
-                    <td className="px-2 py-1 tabular-nums text-ink-500">
-                      {formatPct(c.netMargin)}
-                    </td>
-                    {!readOnly && (
-                      <td className="px-2 py-1">
-                        <button onClick={() => removePeriod(row.id)} className="text-ink-300 hover:text-red-500">
-                          <Trash2 className="size-4" />
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-                {periods.length === 0 && (
+                {periods.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-3 py-6 text-center text-xs text-ink-300">
-                      {t('editors.financialProjections.noPeriodsYet', { defaultValue: 'No periods yet — add a year or quarter to start projecting.' })}
+                    <td colSpan={colCount} className="px-3 py-8 text-center text-xs text-ink-300">
+                      {t('editors.financialProjections.noPeriodsYet', { defaultValue: 'Add a period (year, quarter, etc.) to start building the model.' })}
                     </td>
                   </tr>
+                ) : (
+                  <>
+                    {/* Revenue */}
+                    <SectionTitle
+                      label={t('editors.financialProjections.sections.revenue', { defaultValue: 'Revenue' })}
+                      onAdd={() => addLineItem('revenue')}
+                      addLabel={t('editors.financialProjections.addRevenueLine', { defaultValue: 'Add revenue stream' })}
+                    />
+                    {lineItems.revenue.map((item) => (
+                      <LineItemRow key={item.id} section="revenue" item={item} placeholder={t('editors.financialProjections.revenuePlaceholder', { defaultValue: 'e.g. Product sales' })} />
+                    ))}
+                    <ComputedRow label={t('editors.financialProjections.totalRevenue', { defaultValue: 'Total Revenue' })} getValue={(s) => fmtMoney(s.revenue, currency)} tone="strong" />
+                    <ComputedRow label={t('editors.financialProjections.yoyGrowth', { defaultValue: 'YoY Growth' })} getValue={(s) => fmtPct(s.yoyGrowth)} tone="muted" />
+
+                    {/* Cost of sales */}
+                    <SectionTitle
+                      label={t('editors.financialProjections.sections.cogs', { defaultValue: 'Cost of Sales' })}
+                      onAdd={() => addLineItem('cogs')}
+                      addLabel={t('editors.financialProjections.addCogsLine', { defaultValue: 'Add cost line' })}
+                    />
+                    {lineItems.cogs.map((item) => (
+                      <LineItemRow key={item.id} section="cogs" item={item} placeholder={t('editors.financialProjections.cogsPlaceholder', { defaultValue: 'e.g. Materials, direct labor' })} />
+                    ))}
+                    <ComputedRow label={t('editors.financialProjections.totalCogs', { defaultValue: 'Total Cost of Sales' })} getValue={(s) => fmtMoney(s.cogs, currency)} tone="strong" />
+
+                    <ComputedRow label={t('editors.financialProjections.grossProfit', { defaultValue: 'Gross Profit' })} getValue={(s) => fmtMoney(s.grossProfit, currency)} tone="strong" />
+                    <ComputedRow label={t('editors.financialProjections.grossMargin', { defaultValue: 'Gross Margin' })} getValue={(s) => fmtPct(s.grossMargin)} tone="muted" />
+
+                    {/* Operating expenses */}
+                    <SectionTitle
+                      label={t('editors.financialProjections.sections.opex', { defaultValue: 'Operating Expenses' })}
+                      onAdd={() => addLineItem('opex')}
+                      addLabel={t('editors.financialProjections.addOpexLine', { defaultValue: 'Add expense line' })}
+                    />
+                    {lineItems.opex.map((item) => (
+                      <LineItemRow key={item.id} section="opex" item={item} placeholder={t('editors.financialProjections.opexPlaceholder', { defaultValue: 'e.g. Salaries, marketing, rent' })} />
+                    ))}
+                    <ComputedRow label={t('editors.financialProjections.totalOpex', { defaultValue: 'Total Operating Expenses' })} getValue={(s) => fmtMoney(s.opex, currency)} tone="strong" />
+
+                    {/* Other income */}
+                    <SectionTitle
+                      label={t('editors.financialProjections.sections.otherIncome', { defaultValue: 'Other Income' })}
+                      onAdd={() => addLineItem('other_income')}
+                      addLabel={t('editors.financialProjections.addOtherIncomeLine', { defaultValue: 'Add income line' })}
+                    />
+                    {lineItems.other_income.map((item) => (
+                      <LineItemRow key={item.id} section="other_income" item={item} placeholder={t('editors.financialProjections.otherIncomePlaceholder', { defaultValue: 'e.g. Grants, interest income' })} />
+                    ))}
+                    <ComputedRow label={t('editors.financialProjections.totalOtherIncome', { defaultValue: 'Total Other Income' })} getValue={(s) => fmtMoney(s.otherIncome, currency)} tone="strong" />
+
+                    {/* Bottom line */}
+                    <ComputedRow label={t('editors.financialProjections.netProfit', { defaultValue: 'Net Profit' })} getValue={(s) => fmtMoney(s.netProfit, currency)} tone="strong" />
+                    <ComputedRow label={t('editors.financialProjections.netMargin', { defaultValue: 'Net Margin' })} getValue={(s) => fmtPct(s.netMargin)} tone="muted" />
+                    <ComputedRow label={t('editors.financialProjections.cumulativeCash', { defaultValue: 'Cumulative Cash Position' })} getValue={(s) => fmtMoney(s.cumulativeCash, currency)} />
+                  </>
                 )}
               </tbody>
             </table>
           </div>
-          {!readOnly && (
-            <Button variant="ghost" size="sm" onClick={addPeriod}>
-              <Plus className="size-4" /> {t('editors.financialProjections.addPeriod', { defaultValue: 'Add period' })}
-            </Button>
-          )}
         </div>
       ) : (
         <div className="space-y-3">
           <div className="rounded-xl border border-ink-100 bg-white p-4">
             {chartData.length === 0 ? (
               <p className="py-16 text-center text-xs text-ink-300">
-                {t('editors.financialProjections.addPeriodsForChart', { defaultValue: 'Add named periods with revenue to see a chart.' })}
+                {t('editors.financialProjections.addPeriodsForChart', { defaultValue: 'Add periods and revenue to see a chart.' })}
               </p>
             ) : (
               <ResponsiveContainer width="100%" height={300}>
@@ -303,19 +472,35 @@ export const FinancialProjectionsEditor: React.FC<FinancialProjectionsEditorProp
             )}
           </div>
           {chartData.length > 0 && (
-            <div className="rounded-xl border border-ink-100 bg-white p-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
-                {t('editors.financialProjections.marginTrend', { defaultValue: 'Net Margin Trend' })}
-              </p>
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} unit="%" />
-                  <Tooltip formatter={(v: number) => `${v.toFixed(1)}%`} />
-                  <Line type="monotone" dataKey="margin" name={netMarginLabel} stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} connectNulls />
-                </LineChart>
-              </ResponsiveContainer>
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <div className="rounded-xl border border-ink-100 bg-white p-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
+                  {t('editors.financialProjections.marginTrend', { defaultValue: 'Net Margin Trend' })}
+                </p>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} unit="%" />
+                    <Tooltip formatter={(v: number) => `${v.toFixed(1)}%`} />
+                    <Line type="monotone" dataKey="margin" name={netMarginLabel} stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="rounded-xl border border-ink-100 bg-white p-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
+                  {t('editors.financialProjections.cashTrend', { defaultValue: 'Cumulative Cash Position' })}
+                </p>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="cash" name={cashLabel} stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           )}
           <p className="text-center text-[11px] text-ink-300">{t('editorsCommon.chartOnlyNotSaved')}</p>

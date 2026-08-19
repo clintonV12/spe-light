@@ -27,6 +27,8 @@ import VisionMissionEditor from '../components/activities/editors/VisionMissionE
 import ObjectivesEditor from '../components/activities/editors/ObjectivesEditor'
 import TheoryOfChangeEditor from '../components/activities/editors/TheoryOfChangeEditor'
 import RoadmapEditor from '../components/activities/editors/RoadmapEditor'
+import FinancialProjectionsEditor from '../components/activities/editors/FinancialProjectionsEditor'
+import type { FinancialProjectionsContent } from '../components/activities/editors/FinancialProjectionsEditor'
 import TableEditor from '../components/activities/editors/TableEditor'
 import type { TableColumn, ChartConfig, TableRow } from '../components/activities/editors/TableEditor'
 import type { Activity, ActivityStatus, ActivityType, StrategicObjective } from '../types'
@@ -74,24 +76,11 @@ const TABLE_CONFIGS: Record<string, { columns: TableColumn[]; chart?: ChartConfi
     ],
     chart: { labelColumn: 'initiative', groupByColumn: 'priority' },
   },
-  financial_projections: {
-    addLabel: 'Add period',
-    columns: [
-      { key: 'period', label: 'Period', type: 'text', placeholder: 'e.g. Q1 2026', width: 'min-w-28' },
-      { key: 'revenue', label: 'Revenue (SZL)', type: 'number', width: 'min-w-28' },
-      { key: 'costs', label: 'Costs (SZL)', type: 'number', width: 'min-w-28' },
-      { key: 'profit', label: 'Profit (SZL)', type: 'number', width: 'min-w-28' },
-    ],
-    chart: {
-      labelColumn: 'period',
-      enableLine: true,
-      series: [
-        { key: 'revenue', label: 'Revenue', color: '#3b82f6' },
-        { key: 'costs', label: 'Costs', color: '#f43f5e' },
-        { key: 'profit', label: 'Profit', color: '#10b981' },
-      ],
-    },
-  },
+  // financial_projections used to live here as a flat Period/Revenue/Costs/
+  // Profit table — moved to its own dedicated FinancialProjectionsEditor
+  // (below, alongside the other content-object editors like PestleEditor)
+  // since a real P&L needs sectioned line items and computed subtotals,
+  // not a handful of flat TableEditor columns.
   budget_allocation: {
     addLabel: 'Add budget line',
     columns: [
@@ -260,6 +249,15 @@ function ActivityEditor({ activity, onChange, readOnly, objectives }: {
     return (
       <RoadmapEditor
         value={content as Parameters<typeof RoadmapEditor>[0]['value']}
+        onChange={(v) => onChange(v as unknown as Record<string, unknown>)}
+        readOnly={readOnly}
+      />
+    )
+  }
+  if (type === 'financial_projections') {
+    return (
+      <FinancialProjectionsEditor
+        value={content as Partial<FinancialProjectionsContent>}
         onChange={(v) => onChange(v as unknown as Record<string, unknown>)}
         readOnly={readOnly}
       />

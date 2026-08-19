@@ -469,6 +469,44 @@ type contentSection struct {
 	// either, both (e.g. the KPI scorecard's detail table plus its
 	// achievement-by-period chart), or neither.
 	Chart *contentChart
+	// Diagram is optional and independent of Table/Chart — set on the
+	// sections that have a dedicated visual editor on screen (SWOT,
+	// PESTEL, the Business Model Canvas) so the report shows the same
+	// shape a reader who has seen the plan in the app would recognise,
+	// alongside (not instead of) the plain data table. A rendering path
+	// that can't draw diagrams (XLSX) simply ignores this field — the
+	// Table on the same section already carries the same data.
+	Diagram *contentDiagram
+}
+
+// contentDiagram is a labelled grid of colour-coded blocks laid out on a
+// Cols x Rows grid — deliberately generic (rather than one struct per
+// diagram kind) since a SWOT quadrant, a PESTEL grid, and the nine-block
+// Business Model Canvas are all "some cells, some spanning more than one
+// grid position, each with a label and body text" once you strip out the
+// specific field names. Kind is informational only (renderers don't switch
+// on it) — Cols/Rows/Cells fully describe the layout.
+type contentDiagram struct {
+	Kind  string // "swot" | "pestel" | "bmc" — for callers/tests, not read by renderers
+	Cols  int
+	Rows  int
+	Cells []diagramCell
+}
+
+// diagramCell is one block of a contentDiagram. Col/Row are 0-indexed grid
+// positions; ColSpan/RowSpan default to 1 when zero. ColorHint keys into
+// render.go's diagramPalette (e.g. "green", "red", "blue", "gold",
+// "purple", "neutral") and is chosen to echo the corresponding frontend
+// editor's Tailwind colour for that block (SwotEditor.tsx,
+// PestleEditor.tsx, BusinessModelCanvasEditor.tsx) so the exported version
+// reads as "the same diagram", not a reinterpretation of it.
+type diagramCell struct {
+	Label     string
+	Text      string
+	Col, Row  int
+	ColSpan   int
+	RowSpan   int
+	ColorHint string
 }
 
 type contentTable struct {
@@ -557,7 +595,7 @@ func (s *Service) buildSituationalAnalysisSections(ctx context.Context, plan *mo
 		for _, it := range swot {
 			t.Rows = append(t.Rows, []string{titleCase(string(it.Category)), it.Text})
 		}
-		out = append(out, contentSection{Heading: "SWOT Analysis", Table: t})
+		out = append(out, contentSection{Heading: "SWOT Analysis", Table: t, Diagram: swotDiagram(swot)})
 	}
 
 	if pestel, err := s.planSvc.ListPESTELItems(ctx, plan.ID, orgID); err == nil && len(pestel) > 0 {
@@ -575,10 +613,124 @@ func (s *Service) buildSituationalAnalysisSections(ctx context.Context, plan *mo
 			}
 			t.Rows = append(t.Rows, []string{titleCase(string(it.Factor)), imp, pos, neg})
 		}
-		out = append(out, contentSection{Heading: "PESTEL Analysis", Table: t})
+		out = append(out, contentSection{Heading: "PESTEL Analysis", Table: t, Diagram: pestelDiagram(pestel)})
 	}
 
 	return out
+}
+
+// swotDiagram lays SWOT items out on the same 2x2 quadrant grid
+// SwotEditor.tsx shows on screen — strengths/weaknesses on the top row,
+// opportunities/threats on the bottom — with every item for a category
+// newline-joined into that quadrant's body text. Returns nil (no diagram)
+// if every category is empty, which can't currently happen given the
+// len(swot) > 0 guard at the call site, but keeps this safe to call
+// standalone.
+func swotDiagram(items []models.SWOTItem) *contentDiagram {
+	byCat := map[models.SWOTCategory][]string{}
+	for _, it := range items {
+		byCat[it.Category] = append(byCat[it.Category], it.Text)
+	}
+	cell := func(cat models.SWOTCategory, label string, col, row int, hint string) diagramCell {
+		return diagramCell{Label: label, Text: strings.Join(byCat[cat], "\n"), Col: col, Row: row, ColorHint: hint}
+	}
+	return &contentDiagram{
+		Kind: "swot", Cols: 2, Rows: 2,
+		Cells: []diagramCell{
+			cell(models.SWOTStrength, "Strengths", 0, 0, "green"),
+			cell(models.SWOTWeakness, "Weaknesses", 1, 0, "red"),
+			cell(models.SWOTOpportunity, "Opportunities", 0, 1, "blue"),
+			cell(models.SWOTThreat, "Threats", 1, 1, "gold"),
+		},
+	}
+}
+
+// pestelDiagram lays PESTEL items out on the same 3-column, 2-row grid
+// PestleEditor.tsx shows on screen (political/economic/social on the top
+// row, technological/legal/environmental on the bottom), one cell per
+// factor. A factor's implication/positive/negative fields are folded into
+// one body text per cell, since the diagram only has room for one block of
+// text per factor — the full breakdown stays in the PESTEL table this
+// diagram accompanies.
+func pestelDiagram(items []models.PESTELItem) *contentDiagram {
+	byFactor := map[models.PESTELFactor][]string{}
+	for _, it := range items {
+		var parts []string
+		if it.Implication != nil && *it.Implication != "" {
+			parts = append(parts, *it.Implication)
+		}
+		if it.Positive != nil && *it.Positive != "" {
+			parts = append(parts, "+ "+*it.Positive)
+		}
+		if it.Negative != nil && *it.Negative != "" {
+			parts = append(parts, "- "+*it.Negative)
+		}
+		if len(parts) > 0 {
+			byFactor[it.Factor] = append(byFactor[it.Factor], strings.Join(parts, "; "))
+		}
+	}
+	cell := func(f models.PESTELFactor, label string, col, row int, hint string) diagramCell {
+		return diagramCell{Label: label, Text: strings.Join(byFactor[f], "\n"), Col: col, Row: row, ColorHint: hint}
+	}
+	return &contentDiagram{
+		Kind: "pestel", Cols: 3, Rows: 2,
+		Cells: []diagramCell{
+			cell(models.PESTELPolitical, "Political", 0, 0, "blue"),
+			cell(models.PESTELEconomic, "Economic", 1, 0, "green"),
+			cell(models.PESTELSocial, "Social", 2, 0, "purple"),
+			cell(models.PESTELTechnological, "Technological", 0, 1, "cyan"),
+			cell(models.PESTELLegal, "Legal", 1, 1, "gold"),
+			cell(models.PESTELEnvironmental, "Environmental", 2, 1, "teal"),
+		},
+	}
+}
+
+// bmcDiagram lays a Business Model Canvas activity's content out on the
+// same nine-block Osterwalder grid BusinessModelCanvasEditor.tsx shows on
+// screen (partners/activities/resources feeding the value proposition,
+// which feeds the customer-facing blocks, with cost/revenue as the
+// foundation row) — same Col/Row/Span positions as that component's
+// lg:col-start-N / lg:row-span-2 classes. Returns nil if none of the nine
+// fields have been filled in yet.
+func bmcDiagram(content map[string]any) *contentDiagram {
+	get := func(k string) string {
+		if v, ok := content[k].(string); ok {
+			return v
+		}
+		return ""
+	}
+	fields := []string{
+		"key_partners", "key_activities", "key_resources", "value_propositions",
+		"customer_relationships", "channels", "customer_segments",
+		"cost_structure", "revenue_streams",
+	}
+	hasContent := false
+	for _, f := range fields {
+		if get(f) != "" {
+			hasContent = true
+			break
+		}
+	}
+	if !hasContent {
+		return nil
+	}
+	mk := func(key, label string, col, row, colSpan, rowSpan int, hint string) diagramCell {
+		return diagramCell{Label: label, Text: get(key), Col: col, Row: row, ColSpan: colSpan, RowSpan: rowSpan, ColorHint: hint}
+	}
+	return &contentDiagram{
+		Kind: "bmc", Cols: 5, Rows: 3,
+		Cells: []diagramCell{
+			mk("key_partners", "Key Partners", 0, 0, 1, 2, "neutral"),
+			mk("key_activities", "Key Activities", 1, 0, 1, 1, "blue"),
+			mk("key_resources", "Key Resources", 1, 1, 1, 1, "blue"),
+			mk("value_propositions", "Value Propositions", 2, 0, 1, 2, "gold"),
+			mk("customer_relationships", "Customer Relationships", 3, 0, 1, 1, "green"),
+			mk("channels", "Channels", 3, 1, 1, 1, "green"),
+			mk("customer_segments", "Customer Segments", 4, 0, 1, 2, "purple"),
+			mk("cost_structure", "Cost Structure", 0, 2, 2, 1, "red"),
+			mk("revenue_streams", "Revenue Streams", 2, 2, 3, 1, "green"),
+		},
+	}
 }
 
 // kpiAchievement computes a KPI's achievement percentage from its Target/
@@ -807,7 +959,19 @@ func buildGenericContentSection(heading string, content map[string]any) *content
 			}
 			cols := make([]string, 0, len(first))
 			for c := range first {
+				// "id" is the row's database primary key — meaningful to
+				// developers/the DB, not to a report reader, so it's left
+				// out of the rendered table entirely rather than shown as
+				// an opaque UUID column (see TableEditor.tsx's {"rows":
+				// [...]} shape, e.g. Financial Projections/Budget
+				// Allocation rows, which each carry one).
+				if strings.EqualFold(c, "id") {
+					continue
+				}
 				cols = append(cols, c)
+			}
+			if len(cols) == 0 {
+				continue
 			}
 			sort.Strings(cols)
 			table = &contentTable{Headers: cols}
@@ -1057,9 +1221,24 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 			// depends on which of the 7 Advanced Research types it is (see
 			// models.AdvancedResearchType) — buildGenericContentSection
 			// renders whatever's there without this package needing to
-			// know each editor's exact shape.
+			// know each editor's exact shape. Business Model Canvas is the
+			// one exception: it's the only Advanced Research type with a
+			// dedicated grid editor (BusinessModelCanvasEditor.tsx) rather
+			// than free text, so it additionally gets a matching diagram —
+			// same nine-block layout, drawn alongside (not instead of) the
+			// generic paragraph rendering of the same fields.
 			for _, a := range activities {
-				if detail := buildGenericContentSection(a.Title, a.Content); detail != nil {
+				detail := buildGenericContentSection(a.Title, a.Content)
+				if a.Type == string(models.ARTypeBusinessModelCanvas) {
+					dg := bmcDiagram(a.Content)
+					if dg != nil {
+						if detail == nil {
+							detail = &contentSection{Heading: a.Title}
+						}
+						detail.Diagram = dg
+					}
+				}
+				if detail != nil {
 					rc.Sections = append(rc.Sections, *detail)
 				}
 			}

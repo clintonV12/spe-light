@@ -300,6 +300,12 @@ func pdfLine(p *pdfPage, x1, y1, x2, y2 float64, c [3]float64, width float64) {
 	p.add(fmt.Sprintf("%.3f %.3f %.3f RG\n%.2f w\n%.2f %.2f m\n%.2f %.2f l\nS", c[0], c[1], c[2], width, x1, y1, x2, y2))
 }
 
+// pdfRectBorder strokes (doesn't fill) a rectangle outline — used for a
+// diagram cell's coloured border, drawn over pdfRect's fill.
+func pdfRectBorder(p *pdfPage, x, y, w, h float64, c [3]float64, width float64) {
+	p.add(fmt.Sprintf("%.3f %.3f %.3f RG\n%.2f w\n%.2f %.2f %.2f %.2f re\nS", c[0], c[1], c[2], width, x, y, w, h))
+}
+
 // bezierCircleK is the standard cubic-bezier control-point offset (as a
 // fraction of the radius) used to approximate a circle with 4 arcs — the
 // commonly cited constant for a <1% radius error, good enough at any size
@@ -942,6 +948,106 @@ func (d *pdfDoc) chart(c *contentChart) {
 	d.y -= 8
 }
 
+// diagramPalette maps a diagramCell's ColorHint onto a fill/border colour
+// pair for the PDF diagram renderer — chosen to echo the corresponding
+// frontend editor's Tailwind colour (e.g. SwotEditor.tsx's strengths
+// quadrant is green, PestleEditor.tsx's technological card is cyan) so the
+// exported diagram reads as the same one, not a re-coloured version of it.
+// Unrecognised/empty hints ("neutral") fall back to the brand's existing
+// bandLight/borderGray pair rather than a fixed sixth colour.
+func diagramPalette(hint string) (fill, border [3]float64) {
+	switch hint {
+	case "green":
+		return [3]float64{0.925, 0.992, 0.961}, [3]float64{0.204, 0.702, 0.502}
+	case "red":
+		return [3]float64{0.996, 0.949, 0.949}, [3]float64{0.863, 0.361, 0.361}
+	case "blue":
+		return [3]float64{0.937, 0.965, 1}, [3]float64{0.376, 0.573, 0.918}
+	case "gold":
+		return [3]float64{1, 0.984, 0.922}, [3]float64{0.780, 0.612, 0.106}
+	case "purple":
+		return [3]float64{0.961, 0.953, 0.996}, [3]float64{0.573, 0.443, 0.851}
+	case "cyan":
+		return [3]float64{0.918, 0.976, 0.984}, [3]float64{0.2, 0.647, 0.729}
+	case "teal":
+		return [3]float64{0.910, 0.973, 0.961}, [3]float64{0.157, 0.541, 0.478}
+	default: // "neutral"
+		return bandLight, borderGray
+	}
+}
+
+// diagram draws a contentDiagram as a grid of coloured, labelled blocks —
+// each grid row gets a fixed height (shorter for the nine-block Business
+// Model Canvas than for a 2x2/3x2 quadrant grid, matching how compact the
+// frontend editors draw those blocks) and each cell's body text is wrapped
+// and clipped to that fixed height, the same way the editors' textareas
+// don't grow past their min-height. The whole diagram is kept together on
+// one page (ensureSpace before drawing, rather than per-cell) since a
+// diagram split across a page break would be unreadable.
+func (d *pdfDoc) diagram(dg *contentDiagram) {
+	if dg == nil || len(dg.Cells) == 0 || dg.Cols == 0 || dg.Rows == 0 {
+		return
+	}
+	const gap = 6.0
+	rowH := 92.0
+	if dg.Kind == "bmc" {
+		rowH = 60.0
+	}
+	totalH := float64(dg.Rows)*rowH + float64(dg.Rows-1)*gap
+
+	// If the diagram doesn't fit in what's left of the current page, start
+	// a fresh page for it rather than letting ensureSpace's normal
+	// mid-content-page break slice it in half.
+	if d.y-totalH < pdfMarginBot+16 {
+		d.newContentPage()
+	} else {
+		d.ensureSpace(totalH + 10)
+	}
+
+	colW := (pdfContentW - float64(dg.Cols-1)*gap) / float64(dg.Cols)
+	top := d.y
+
+	for _, cell := range dg.Cells {
+		colSpan, rowSpan := cell.ColSpan, cell.RowSpan
+		if colSpan < 1 {
+			colSpan = 1
+		}
+		if rowSpan < 1 {
+			rowSpan = 1
+		}
+		x := pdfMarginL + float64(cell.Col)*(colW+gap)
+		w := colW*float64(colSpan) + gap*float64(colSpan-1)
+		cellTop := top - float64(cell.Row)*(rowH+gap)
+		h := rowH*float64(rowSpan) + gap*float64(rowSpan-1)
+		y := cellTop - h
+
+		fill, border := diagramPalette(cell.ColorHint)
+		pdfRect(d.cur, x, y, w, h, fill)
+		pdfRectBorder(d.cur, x, y, w, h, border, 1.1)
+
+		pdfText(d.cur, "F2", 7.5, x+7, cellTop-13, inkDark, strings.ToUpper(asciiFold(cell.Label)))
+
+		text := cell.Text
+		if text == "" {
+			text = naText
+		}
+		lines := wrapText(text, charsForWidth(w-14, 7.5))
+		maxLines := int((h - 22) / 10.5)
+		if maxLines < 1 {
+			maxLines = 1
+		}
+		ly := cellTop - 27
+		for i, line := range lines {
+			if i >= maxLines {
+				break
+			}
+			pdfText(d.cur, "F1", 7.5, x+7, ly, inkMed, line)
+			ly -= 10.5
+		}
+	}
+	d.y = top - totalH - 12
+}
+
 func (d *pdfDoc) build() []byte {
 	total := len(d.pages)
 	for i, p := range d.pages {
@@ -976,6 +1082,14 @@ func renderPDF(meta reportMeta, rc *reportContent, logo *pdfLogo) ([]byte, error
 		d.heading(sec.Heading)
 		for _, p := range sec.Paragraphs {
 			d.paragraph(p)
+		}
+		// Diagram is drawn before Table: the diagram is the "at a glance"
+		// visual (a SWOT quadrant, a PESTEL grid, the Business Model
+		// Canvas), and the table underneath it is the full, unabridged
+		// data — same order a reader would want them in, visual first,
+		// detail second.
+		if sec.Diagram != nil {
+			d.diagram(sec.Diagram)
 		}
 		if sec.Table != nil {
 			d.table(sec.Table)
@@ -1355,6 +1469,138 @@ func docxChart(c *contentChart) string {
 	return b.String()
 }
 
+// diagramPaletteHex mirrors diagramPalette (the PDF renderer's fill/border
+// pair) as DOCX shading hex + a matching darker text hex, keyed by the same
+// ColorHint values, so a diagram looks like the same one whether the report
+// was exported as PDF or DOCX.
+func diagramPaletteHex(hint string) (fillHex, textHex string) {
+	switch hint {
+	case "green":
+		return "ECFDF5", "047857"
+	case "red":
+		return "FEF2F2", "B91C1C"
+	case "blue":
+		return "EFF6FF", "1D4ED8"
+	case "gold":
+		return "FFFBEB", "92400E"
+	case "purple":
+		return "F5F3FF", "6D28D9"
+	case "cyan":
+		return "ECFEFF", "0E7490"
+	case "teal":
+		return "F0FDFA", "0F766E"
+	default: // "neutral"
+		return bandLightHex, inkDarkHex
+	}
+}
+
+// docxDiagram renders a contentDiagram as a Word table shaped like the
+// diagram's grid. Horizontal spans use a real OOXML gridSpan, so those
+// stay genuinely merged; vertical spans are approximated rather than using
+// w:vMerge — the origin cell's content is drawn once, and the row(s)
+// below it in the same column are filled with an empty, same-coloured
+// cell, so the block still reads as one continuous coloured region without
+// this function having to track cross-row merge state. Simpler and, for a
+// grid this small (at most 9 cells), visually indistinguishable from a
+// true merge.
+func docxDiagram(dg *contentDiagram) string {
+	if dg == nil || len(dg.Cells) == 0 || dg.Cols == 0 || dg.Rows == 0 {
+		return ""
+	}
+
+	type placed struct {
+		cell             diagramCell
+		colSpan, rowSpan int
+	}
+	// originAt[row][col] is set for every (row,col) covered by a placed
+	// cell's footprint, pointing back at that cell — used below to tell
+	// "first row of this block" (draw content) from "continuation row"
+	// (draw an empty filler in the same colour).
+	originAt := make([][]*placed, dg.Rows)
+	for i := range originAt {
+		originAt[i] = make([]*placed, dg.Cols)
+	}
+	for _, c := range dg.Cells {
+		colSpan, rowSpan := c.ColSpan, c.RowSpan
+		if colSpan < 1 {
+			colSpan = 1
+		}
+		if rowSpan < 1 {
+			rowSpan = 1
+		}
+		if c.Row < 0 || c.Row >= dg.Rows || c.Col < 0 || c.Col >= dg.Cols {
+			continue
+		}
+		pc := &placed{cell: c, colSpan: colSpan, rowSpan: rowSpan}
+		for r := c.Row; r < c.Row+rowSpan && r < dg.Rows; r++ {
+			originAt[r][c.Col] = pc
+		}
+	}
+
+	var gridCols strings.Builder
+	gridCols.WriteString("<w:tblGrid>")
+	for i := 0; i < dg.Cols; i++ {
+		gridCols.WriteString(`<w:gridCol w:w="1600"/>`)
+	}
+	gridCols.WriteString("</w:tblGrid>")
+
+	var body strings.Builder
+	body.WriteString(`<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>` +
+		`<w:top w:val="single" w:sz="4" w:color="` + borderGrayHex + `"/><w:left w:val="single" w:sz="4" w:color="` + borderGrayHex + `"/>` +
+		`<w:bottom w:val="single" w:sz="4" w:color="` + borderGrayHex + `"/><w:right w:val="single" w:sz="4" w:color="` + borderGrayHex + `"/>` +
+		`<w:insideH w:val="single" w:sz="4" w:color="` + borderGrayHex + `"/><w:insideV w:val="single" w:sz="4" w:color="` + borderGrayHex + `"/></w:tblBorders></w:tblPr>` +
+		gridCols.String())
+
+	for r := 0; r < dg.Rows; r++ {
+		body.WriteString("<w:tr>")
+		c := 0
+		for c < dg.Cols {
+			pc := originAt[r][c]
+			if pc == nil || pc.cell.Col != c {
+				// Not the left edge of any placed cell at this row/col —
+				// shouldn't happen for a well-formed grid, but render a
+				// single blank cell rather than leaving a hole in the row.
+				body.WriteString(`<w:tc><w:tcPr><w:tcMar><w:left w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tcMar></w:tcPr><w:p/></w:tc>`)
+				c++
+				continue
+			}
+			fillHex, textHex := diagramPaletteHex(pc.cell.ColorHint)
+			gridSpanAttr := ""
+			if pc.colSpan > 1 {
+				gridSpanAttr = fmt.Sprintf(`<w:gridSpan w:val="%d"/>`, pc.colSpan)
+			}
+			tcPr := `<w:tcPr>` + gridSpanAttr +
+				`<w:tcMar><w:left w:w="90" w:type="dxa"/><w:right w:w="90" w:type="dxa"/><w:top w:w="70" w:type="dxa"/><w:bottom w:w="70" w:type="dxa"/></w:tcMar>` +
+				`<w:shd w:val="clear" w:fill="` + fillHex + `"/></w:tcPr>`
+
+			if r == pc.cell.Row {
+				// First row of this block: draw the label + body text.
+				content := `<w:p><w:pPr><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="15"/>` +
+					`<w:color w:val="` + textHex + `"/><w:rFonts ` + docxFontRun + `/></w:rPr>` +
+					`<w:t xml:space="preserve">` + xmlEscape(strings.ToUpper(pc.cell.Label)) + `</w:t></w:r></w:p>`
+				text := pc.cell.Text
+				if text == "" {
+					text = naText
+				}
+				for _, line := range strings.Split(text, "\n") {
+					content += `<w:p><w:pPr><w:spacing w:after="20"/></w:pPr><w:r><w:rPr><w:sz w:val="16"/>` +
+						`<w:rFonts ` + docxFontRun + `/><w:color w:val="` + inkMedHex + `"/></w:rPr>` +
+						`<w:t xml:space="preserve">` + xmlEscape(line) + `</w:t></w:r></w:p>`
+				}
+				body.WriteString(`<w:tc>` + tcPr + content + `</w:tc>`)
+			} else {
+				// Continuation row of a vertical span: same fill, no text,
+				// so the block still reads as one coloured region.
+				body.WriteString(`<w:tc>` + tcPr + `<w:p/></w:tc>`)
+			}
+			c += pc.colSpan
+		}
+		body.WriteString("</w:tr>")
+	}
+	body.WriteString(`</w:tbl><w:p><w:pPr><w:spacing w:after="160"/></w:pPr></w:p>`)
+	return body.String()
+}
+
 func docxHeaderXML(orgName string) string {
 	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 		`<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
@@ -1404,6 +1650,9 @@ func renderDOCX(meta reportMeta, rc *reportContent, logo *pdfLogo) ([]byte, erro
 		body.WriteString(docxHeading(sec.Heading))
 		for _, p := range sec.Paragraphs {
 			body.WriteString(docxParagraph(p))
+		}
+		if sec.Diagram != nil {
+			body.WriteString(docxDiagram(sec.Diagram))
 		}
 		if sec.Table != nil && len(sec.Table.Headers) > 0 {
 			body.WriteString(docxTable(sec.Table))
@@ -1549,6 +1798,24 @@ func renderXLSX(meta reportMeta, rc *reportContent) ([]byte, error) {
 		addRow([]string{sec.Heading}, 2)
 		for _, p := range sec.Paragraphs {
 			addRow([]string{p}, 0)
+		}
+		// A spreadsheet can't draw a real grid diagram, so where the section
+		// also has a Table (SWOT/PESTEL — the diagram is a companion visual
+		// to that table) the Diagram is simply skipped here; the Table
+		// already carries the same data. Where there's no Table (the
+		// Business Model Canvas, whose only other rendering is
+		// buildGenericContentSection's plain paragraphs), fall back to one
+		// "LABEL: text" row per diagram cell, in reading order, so the
+		// canvas's content isn't only readable in the PDF/DOCX exports.
+		if sec.Diagram != nil && sec.Table == nil {
+			for _, cell := range sec.Diagram.Cells {
+				text := cell.Text
+				if text == "" {
+					text = naText
+				}
+				addRow([]string{strings.ToUpper(cell.Label) + ": " + strings.ReplaceAll(text, "\n", " / ")}, 4)
+			}
+			addRow([]string{""}, 0)
 		}
 		if sec.Table != nil && len(sec.Table.Headers) > 0 {
 			if len(sec.Table.Headers) > maxCols {
