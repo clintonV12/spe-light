@@ -1013,6 +1013,15 @@ func buildGenericContentSection(heading string, content map[string]any) *content
 			}
 			cols := make([]string, 0, len(first))
 			for c := range first {
+				// "id" is the row's own UUID primary key (every Advanced
+				// Research editor's row shape — TableRow, RiskRow, KpiRow,
+				// etc. — has one), meaningless to a report reader and not
+				// worth a column. Every other key (including things like
+				// objective_id, which is a real cross-reference) still
+				// comes through.
+				if c == "id" {
+					continue
+				}
 				cols = append(cols, c)
 			}
 			sort.Strings(cols)
@@ -1154,12 +1163,25 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 				desc = "No description was provided for this plan."
 			}
 		}
-		paragraphs := []string{
-			fmt.Sprintf(
+		// Same figure the cover badge shows (see buildCover's IsKPIAchievement
+		// branch in render.go) — stats.OverallPercent, not the raw
+		// activity-status progress.Overall.Percent. Using progress.Overall.Percent
+		// here meant this paragraph and the cover badge could show two
+		// different completion numbers for the same plan; stats was already
+		// computed above specifically to be that one true tracking figure.
+		var summaryLine string
+		if stats.IsKPIAchievement {
+			summaryLine = fmt.Sprintf(
+				"%s is currently %s. %.0f%% overall KPI achievement across its %d total activities, with %d overdue.",
+				plan.Title, plan.Status, stats.OverallPercent, progress.Overall.Total, progress.Overall.Overdue,
+			)
+		} else {
+			summaryLine = fmt.Sprintf(
 				"%s is currently %s. %.0f%% of its %d total activities are complete, with %d overdue.",
-				plan.Title, plan.Status, progress.Overall.Percent, progress.Overall.Total, progress.Overall.Overdue,
-			),
+				plan.Title, plan.Status, stats.OverallPercent, progress.Overall.Total, progress.Overall.Overdue,
+			)
 		}
+		paragraphs := []string{summaryLine}
 		if aiGenerated {
 			// Labeled rather than presented as if the org wrote it —
 			// consistent with how the frontend labels AI-drafted content
