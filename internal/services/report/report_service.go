@@ -1056,14 +1056,15 @@ type coverStats struct {
 	OverdueActivities int
 	// IsKPIAchievement is true when OverallPercent came from the same KPI
 	// achievement math as TrackingModule.tsx's "Overall" gauge (see
-	// overallKPICompletion below), false when it's the activity-status
-	// completion percentage (progress.Overall.Percent) used as a fallback
-	// when the plan has no scored KPIs yet — mirrors the frontend's own
-	// fallback rule ("every caller already treats null as 'fall back to
-	// activity-status progress'", per TrackingModule.tsx's
-	// fetchPlanKpiAchievement doc comment). render.go's cover badge reads
-	// this to label the number "OVERALL" vs "ACTIVITIES COMPLETE" so the
-	// label always matches what's actually being shown.
+	// overallKPICompletion below). False means no KPI has been scored yet
+	// for this plan — OverallPercent is then just the zero value, not a
+	// real "0%", and is not meant to be displayed. render.go's cover badge
+	// and this file's Executive Summary both branch on this flag rather
+	// than reading OverallPercent unconditionally, showing "—" / a plain
+	// sentence instead of substituting a different metric (activity-status
+	// completion) the way this used to — that substitution meant the cover
+	// badge could show a number Tracking Module's own "Overall" gauge
+	// never shows for the same plan.
 	IsKPIAchievement bool
 }
 
@@ -1089,11 +1090,16 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 	// That means fetching every activity's KPIs (regardless of which
 	// sections were requested, since the cover always renders) and running
 	// the exact same overallKPICompletion math TrackingModule.tsx uses.
-	// Falls back to the activity-status percentage — same rule the
-	// frontend itself uses (TrackingModule.tsx's fetchPlanKpiAchievement:
-	// "every caller already treats null as 'fall back to activity-status
-	// progress'") — for a plan with no scored KPIs yet, so a brand-new
-	// plan still shows a meaningful number instead of a blank or a 0%.
+	//
+	// No fallback to the activity-status percentage when nothing's been
+	// scored yet — that used to happen here (mirroring an old frontend
+	// rule), but it meant this cover badge could show a number
+	// (e.g. "12% ACTIVITIES COMPLETE") that the Tracking module's own
+	// "Overall" gauge doesn't show for that same plan (it shows "—" — see
+	// TrackingModule.tsx's overallKpiCompletion / DashboardPage.tsx's
+	// PlanCard, which both stopped substituting a different metric for the
+	// same reason). IsKPIAchievement staying false is exactly that "—"
+	// state; buildCover renders it accordingly instead of a stray percent.
 	allActivities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, nil, nil, nil)
 	if err != nil {
 		return nil, coverStats{}, err
@@ -1105,9 +1111,12 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 	if pct, ok := overallKPICompletion(allKPIs); ok {
 		stats.OverallPercent = pct
 		stats.IsKPIAchievement = true
-	} else {
-		stats.OverallPercent = progress.Overall.Percent
 	}
+	// else: leave OverallPercent at its zero value and IsKPIAchievement
+	// false — "no KPIs scored yet," not "0% achieved." buildCover and the
+	// Executive Summary both branch on IsKPIAchievement rather than reading
+	// OverallPercent directly, so this zero value is never displayed as if
+	// it meant something.
 
 	// aiSummary lazily calls aiSummaryFn at most once per report. Both the
 	// Executive Summary's "no description on file" fallback (below) and the
@@ -1164,11 +1173,11 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 			}
 		}
 		// Same figure the cover badge shows (see buildCover's IsKPIAchievement
-		// branch in render.go) — stats.OverallPercent, not the raw
-		// activity-status progress.Overall.Percent. Using progress.Overall.Percent
-		// here meant this paragraph and the cover badge could show two
-		// different completion numbers for the same plan; stats was already
-		// computed above specifically to be that one true tracking figure.
+		// branch in render.go) — stats.OverallPercent/IsKPIAchievement, not
+		// a re-derived activity-status percentage. When nothing's been
+		// scored yet, stats.OverallPercent is just the zero value (not a
+		// real "0%"), so that branch says so in words instead of printing
+		// a fabricated percentage — matching the cover badge's "—".
 		var summaryLine string
 		if stats.IsKPIAchievement {
 			summaryLine = fmt.Sprintf(
@@ -1177,8 +1186,8 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 			)
 		} else {
 			summaryLine = fmt.Sprintf(
-				"%s is currently %s. %.0f%% of its %d total activities are complete, with %d overdue.",
-				plan.Title, plan.Status, stats.OverallPercent, progress.Overall.Total, progress.Overall.Overdue,
+				"%s is currently %s, with %d total activities and %d overdue. No KPI achievement has been scored yet for this plan.",
+				plan.Title, plan.Status, progress.Overall.Total, progress.Overall.Overdue,
 			)
 		}
 		paragraphs := []string{summaryLine}

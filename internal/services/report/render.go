@@ -536,17 +536,22 @@ func (d *pdfDoc) buildCover() {
 	pdfRing(p, badgeCx, badgeCy, badgeOuterR, badgeInnerR, brandAccent)
 	pdfCircle(p, badgeCx, badgeCy, badgeFaceR, brandPrimary)
 	if d.meta.Progress.TotalActivities > 0 {
-		pdfTextCenter(p, "F2", 30, badgeCx, badgeCy+6, white, fmt.Sprintf("%.0f%%", d.meta.Progress.OverallPercent))
+		// The label is always "OVERALL" now — this badge only ever shows
+		// the Tracking module's KPI-achievement figure, never a
+		// substitute. When no KPI has been scored yet for this plan
+		// (IsKPIAchievement false), show "—" instead of a percentage —
+		// that's exactly what TrackingModule.tsx's own "Overall" gauge and
+		// the Dashboard/Plans list ring show in that same state (see
+		// DashboardPage.tsx's PlanCard). This used to fall back to showing
+		// the plan's activity-completion percentage labeled "ACTIVITIES
+		// COMPLETE" instead, which meant this badge could show a number
+		// the in-app Tracking tab never shows for the same plan.
+		display := "\u2014" // em dash
 		if d.meta.Progress.IsKPIAchievement {
-			// Matches TrackingModule.tsx's "Overall" gauge label exactly —
-			// this number is that same KPI-achievement figure, not an
-			// activity-completion count, so it gets that gauge's label
-			// rather than "ACTIVITIES COMPLETE".
-			pdfTextCenter(p, "F1", 8, badgeCx, badgeCy-19, white, "OVERALL")
-		} else {
-			pdfTextCenter(p, "F1", 8, badgeCx, badgeCy-14, white, "ACTIVITIES")
-			pdfTextCenter(p, "F1", 8, badgeCx, badgeCy-25, white, "COMPLETE")
+			display = fmt.Sprintf("%.0f%%", d.meta.Progress.OverallPercent)
 		}
+		pdfTextCenter(p, "F2", 30, badgeCx, badgeCy+6, white, display)
+		pdfTextCenter(p, "F1", 8, badgeCx, badgeCy-19, white, "OVERALL")
 	} else {
 		// A brand-new plan with nothing logged yet isn't "0% complete" in
 		// any meaningful sense — that reads as a failing plan rather than
