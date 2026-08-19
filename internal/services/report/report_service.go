@@ -122,7 +122,6 @@ type SectionConfig struct {
 	SituationalAnalysis bool `json:"situational_analysis"`
 	ObjectiveActivities bool `json:"objective_activities"`
 	AdvancedResearch    bool `json:"advanced_research"`
-	Scorecard           bool `json:"scorecard"`
 	OrgStructure        bool `json:"org_structure"`
 	ProgressStatus      bool `json:"progress_status"`
 	MonitoringEval      bool `json:"monitoring_evaluation"`
@@ -133,7 +132,7 @@ type SectionConfig struct {
 func (s SectionConfig) hasContent() bool {
 	return s.ExecutiveSummary || s.VisionMission || s.SituationalAnalysis ||
 		s.ObjectiveActivities || s.AdvancedResearch ||
-		s.Scorecard || s.OrgStructure ||
+		s.OrgStructure ||
 		s.ProgressStatus || s.MonitoringEval ||
 		s.Milestones || s.AISummary
 }
@@ -147,12 +146,12 @@ func defaultSections(t models.ReportType) SectionConfig {
 		return SectionConfig{
 			ExecutiveSummary: true, VisionMission: true, SituationalAnalysis: true,
 			ObjectiveActivities: true, AdvancedResearch: true,
-			Scorecard: true, OrgStructure: true,
+			OrgStructure:   true,
 			ProgressStatus: true, MonitoringEval: true,
 			Milestones: true, AISummary: true,
 		}
 	case models.ReportExecutiveSummary:
-		return SectionConfig{ExecutiveSummary: true, VisionMission: true, Scorecard: true, ProgressStatus: true}
+		return SectionConfig{ExecutiveSummary: true, VisionMission: true, ProgressStatus: true}
 	case models.ReportPerPhase:
 		// Report type name kept as-is (see models.ReportType / the reports
 		// table's CHECK constraint, both untouched by 014) even though
@@ -160,7 +159,7 @@ func defaultSections(t models.ReportType) SectionConfig {
 		// breakdown", same as ReportActivityDetail minus milestones.
 		return SectionConfig{ObjectiveActivities: true, AdvancedResearch: true}
 	case models.ReportProgressStatus:
-		return SectionConfig{ProgressStatus: true, Scorecard: true, Milestones: true}
+		return SectionConfig{ProgressStatus: true, Milestones: true}
 	case models.ReportActivityDetail:
 		return SectionConfig{ObjectiveActivities: true, AdvancedResearch: true, Milestones: true}
 	default:
@@ -517,10 +516,11 @@ type contentTable struct {
 
 // contentChart is a simple horizontal bar chart — deliberately minimal
 // (one value per bar, 0..Max) rather than a general charting grammar, since
-// every current use case (KPI achievement %, progress %) is exactly that
-// shape. ColorHint on each bar drives red/yellow/green thresholding
-// consistent with TrackingModule.tsx's achievementColor (bad <=50, good
-// >=75, warn in between) — see kpiColorHint in report_service.go.
+// every current use case (risk score, revenue, allocation %, progress %) is
+// exactly that shape. ColorHint on each bar optionally drives red/yellow/
+// green thresholding — see riskRegisterChart's score bands for the one
+// current user of it; charts that don't set it (financial/resource/budget)
+// just get the brand default colour on every bar.
 type contentChart struct {
 	Title string
 	Unit  string // appended after the value, e.g. "%"
@@ -855,6 +855,97 @@ func numFromAny(v any) float64 {
 	}
 }
 
+// riskMatrixDiagram lays named risks out on the same 5x5 likelihood/impact
+// grid RiskRegisterEditor.tsx's "Matrix" view plots them on — likelihood
+// increasing left-to-right, impact increasing bottom-to-top, so the report
+// reads in the same orientation as the on-screen scatter chart. Risks that
+// land on the same likelihood/impact cell share it, newline-joined, and
+// each cell is coloured with the same red/amber/green score thresholds as
+// riskRegisterChart. Only cells with at least one named risk are drawn — a
+// full 25-cell grid mostly reading "N/A" would be worse than no diagram.
+// Returns nil if there are no named risks to plot.
+func riskMatrixDiagram(content map[string]any) *contentDiagram {
+	rows, _ := content["rows"].([]any)
+	type cellKey struct{ likelihood, impact int }
+	byCell := map[cellKey][]string{}
+	for _, raw := range rows {
+		row, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := row["risk"].(string)
+		if name == "" {
+			continue
+		}
+		l := int(numFromAny(row["likelihood"]))
+		i := int(numFromAny(row["impact"]))
+		if l < 1 || l > 5 || i < 1 || i > 5 {
+			continue
+		}
+		key := cellKey{l, i}
+		byCell[key] = append(byCell[key], name)
+	}
+	if len(byCell) == 0 {
+		return nil
+	}
+	cells := make([]diagramCell, 0, len(byCell))
+	for key, names := range byCell {
+		score := key.likelihood * key.impact
+		hint := "green"
+		switch {
+		case score >= 15:
+			hint = "red"
+		case score >= 8:
+			hint = "gold"
+		}
+		cells = append(cells, diagramCell{
+			Label:     fmt.Sprintf("L%d x I%d", key.likelihood, key.impact),
+			Text:      strings.Join(names, "\n"),
+			Col:       key.likelihood - 1,
+			Row:       5 - key.impact,
+			ColorHint: hint,
+		})
+	}
+	// Map iteration order is random — sort so repeated generation for the
+	// same plan produces byte-identical report output.
+	sort.Slice(cells, func(i, j int) bool {
+		if cells[i].Row != cells[j].Row {
+			return cells[i].Row < cells[j].Row
+		}
+		return cells[i].Col < cells[j].Col
+	})
+	return &contentDiagram{Kind: "risk_matrix", Cols: 5, Rows: 5, Cells: cells}
+}
+
+// riskRegisterTable renders a Risk Register activity's rows with Risk as
+// the first column — the same order RiskRegisterEditor.tsx's own table uses
+// (Risk, Likelihood, Impact, Score, Mitigation, Owner) — rather than
+// buildGenericContentSection's alphabetical column order, which would sort
+// "Risk" in among the other columns instead of leading with it.
+func riskRegisterTable(content map[string]any) *contentTable {
+	rows, _ := content["rows"].([]any)
+	if len(rows) == 0 {
+		return nil
+	}
+	t := &contentTable{Headers: []string{"Risk", "Likelihood", "Impact", "Score", "Mitigation", "Owner"}}
+	for _, raw := range rows {
+		row, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		str := func(k string) string {
+			v, _ := row[k].(string)
+			return v
+		}
+		num := func(k string) string { return fmt.Sprintf("%.0f", numFromAny(row[k])) }
+		t.Rows = append(t.Rows, []string{str("risk"), num("likelihood"), num("impact"), num("score"), str("mitigation"), str("owner")})
+	}
+	if len(t.Rows) == 0 {
+		return nil
+	}
+	return t
+}
+
 // financialProjectionsChart mirrors the revenue bars in
 // FinancialProjectionsEditor.tsx's chart view — one bar per period, valued
 // at that period's total revenue (summed across every revenue line item,
@@ -955,21 +1046,6 @@ func kpiAchievement(k models.KPI) (float64, bool) {
 	return (actual / target) * 100, true
 }
 
-// kpiColorHint maps an achievement percentage onto the same red/yellow/
-// green thresholds as TrackingModule.tsx's achievementColor (bad <=50%,
-// good >=75%, warn in between), so a report's chart colours mean the same
-// thing the in-app gauges do.
-func kpiColorHint(pct float64) string {
-	switch {
-	case pct >= 75:
-		return "good"
-	case pct <= 50:
-		return "bad"
-	default:
-		return "warn"
-	}
-}
-
 // periodKPICompletion mirrors TrackingModule.tsx's periodCompletion
 // exactly: average achievement (via kpiAchievement) across every KPI whose
 // TargetPeriod matches, each individually capped at 100 first so one
@@ -1022,105 +1098,6 @@ func overallKPICompletion(kpis []models.KPI) (float64, bool) {
 		return 0, false
 	}
 	return sum / float64(n), true
-}
-
-// buildScorecardSections returns the KPI detail table and, if any KPI has
-// a reporting period set, an achievement-by-period bar chart — the same
-// capped-at-100-per-KPI averaging TrackingModule.tsx's periodCompletion
-// uses, so one overachieving KPI can't skew a period's bar past what a
-// fully-met set of KPIs would show.
-//
-// Period is read from each KPI's own TargetPeriod (migration 013 moved
-// Budget/Responsibility/TargetPeriod off Activity and onto models.KPI —
-// two KPIs on the same activity can report on different cadences, so the
-// grouping has to happen at the KPI level, same as TrackingModule.tsx's
-// periodCompletion).
-//
-// KPIs live on Activity.KPIs (see models.KPI) for any objective-attached
-// activity — Advanced Research activities don't carry KPIs (see
-// CreateActivity's validation in plan_service.go), so this section is
-// scoped to ordinary pillar/objective activities in practice, though
-// nothing here specifically filters Advanced Research activities out — an
-// activity with no KPIs just never contributes a row.
-func (s *Service) buildScorecardSections(ctx context.Context, plan *models.Plan, orgID uuid.UUID) []contentSection {
-	activities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, nil, nil, nil)
-	if err != nil {
-		return nil
-	}
-
-	t := &contentTable{Headers: []string{"Activity", "Indicator", "Target", "Actual", "Achievement", "Period"}}
-	periodSums := map[models.KPIPeriod]float64{}
-	periodCounts := map[models.KPIPeriod]int{}
-	haveRows := false
-
-	for _, a := range activities {
-		for _, k := range a.KPIs {
-			haveRows = true
-			pct, ok := kpiAchievement(k)
-			achievement := naText
-			if ok {
-				achievement = fmt.Sprintf("%.0f%%", pct)
-			}
-			target := naText
-			if k.TargetValue != nil {
-				target = fmt.Sprintf("%.2f", *k.TargetValue)
-			} else if k.Target != "" {
-				target = k.Target
-			}
-			actual := naText
-			if k.ActualValue != nil {
-				actual = fmt.Sprintf("%.2f", *k.ActualValue)
-			}
-			period := naText
-			if k.TargetPeriod != nil {
-				period = titleCase(string(*k.TargetPeriod))
-			}
-			indicator := k.Indicator
-			if indicator == "" {
-				indicator = naText
-			}
-			t.Rows = append(t.Rows, []string{a.Title, indicator, target, actual, achievement, period})
-
-			if ok && k.TargetPeriod != nil {
-				capped := pct
-				if capped > 100 {
-					capped = 100
-				}
-				periodSums[*k.TargetPeriod] += capped
-				periodCounts[*k.TargetPeriod]++
-			}
-		}
-	}
-
-	if !haveRows {
-		return nil
-	}
-	sections := []contentSection{{Heading: "Strategic Scorecard", Table: t}}
-
-	var bars []chartBar
-	var periodTotal float64
-	var periodN float64
-	for _, p := range models.ValidKPIPeriods {
-		n := periodCounts[p]
-		if n == 0 {
-			continue
-		}
-		avg := periodSums[p] / float64(n)
-		bars = append(bars, chartBar{Label: titleCase(string(p)), Value: avg, ColorHint: kpiColorHint(avg)})
-		periodTotal += avg
-		periodN++
-	}
-	if periodN > 0 {
-		overall := periodTotal / periodN
-		bars = append(bars, chartBar{Label: "Overall", Value: overall, ColorHint: kpiColorHint(overall)})
-	}
-	if len(bars) > 0 {
-		sections = append(sections, contentSection{
-			Heading: "KPI Achievement",
-			Chart:   &contentChart{Title: "Achievement by reporting period", Unit: "%", Max: 100, Bars: bars},
-		})
-	}
-	return sections
 }
 
 // buildOrgStructureSection renders a plan's org chart (see
@@ -1421,10 +1398,6 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 		rc.Sections = append(rc.Sections, s.buildSituationalAnalysisSections(ctx, plan, orgID)...)
 	}
 
-	if sec.Scorecard {
-		rc.Sections = append(rc.Sections, s.buildScorecardSections(ctx, plan, orgID)...)
-	}
-
 	if sec.ProgressStatus {
 		t := &contentTable{Headers: []string{"Strategic Pillar", "Total", "Complete", "In Progress", "Overdue", "% Complete"}}
 		for _, p := range progress.Pillars {
@@ -1552,7 +1525,20 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 				case string(models.ARTypeOperationalRoadmap):
 					dg = roadmapDiagram(a.Content)
 				case string(models.ARTypeRiskRegister):
+					// Risk Register gets both a diagram (the likelihood x
+					// impact matrix) and a chart (score by risk), plus its
+					// own Risk-first column order overriding the Table
+					// buildGenericContentSection already built (which
+					// would otherwise sort "Risk" alphabetically among
+					// the other columns instead of leading with it).
+					dg = riskMatrixDiagram(a.Content)
 					ch = riskRegisterChart(a.Content)
+					if t := riskRegisterTable(a.Content); t != nil {
+						if detail == nil {
+							detail = &contentSection{Heading: a.Title}
+						}
+						detail.Table = t
+					}
 				case string(models.ARTypeFinancialProjections):
 					ch = financialProjectionsChart(a.Content)
 				case string(models.ARTypeResourcePlan):

@@ -1003,8 +1003,11 @@ func (d *pdfDoc) diagram(dg *contentDiagram) {
 	}
 	const gap = 6.0
 	rowH := 92.0
-	if dg.Kind == "bmc" {
+	switch dg.Kind {
+	case "bmc":
 		rowH = 60.0
+	case "risk_matrix":
+		rowH = 46.0
 	}
 	totalH := float64(dg.Rows)*rowH + float64(dg.Rows-1)*gap
 
@@ -1019,6 +1022,24 @@ func (d *pdfDoc) diagram(dg *contentDiagram) {
 
 	colW := (pdfContentW - float64(dg.Cols-1)*gap) / float64(dg.Cols)
 	top := d.y
+
+	// risk_matrix is deliberately sparse — dg.Cells only covers grid
+	// positions with at least one named risk (see riskMatrixDiagram),
+	// unlike SWOT/PESTEL/BMC which always cover every grid position. Draw
+	// an empty, faintly bordered cell at every grid position first so the
+	// matrix still reads as a 5x5 grid rather than a few boxes scattered
+	// on a blank page; the real cells drawn below paint over these.
+	if dg.Kind == "risk_matrix" {
+		for row := 0; row < dg.Rows; row++ {
+			for col := 0; col < dg.Cols; col++ {
+				x := pdfMarginL + float64(col)*(colW+gap)
+				cellTop := top - float64(row)*(rowH+gap)
+				y := cellTop - rowH
+				pdfRect(d.cur, x, y, colW, rowH, bandLight)
+				pdfRectBorder(d.cur, x, y, colW, rowH, borderGray, 0.75)
+			}
+		}
+	}
 
 	for _, cell := range dg.Cells {
 		colSpan, rowSpan := cell.ColSpan, cell.RowSpan
