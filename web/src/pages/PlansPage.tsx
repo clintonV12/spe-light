@@ -252,7 +252,10 @@ export default function PlansPage() {
       if (sortKey === 'title')      { av = a.title; bv = b.title }
       if (sortKey === 'status')     { av = a.status; bv = b.status }
       if (sortKey === 'updated_at') { av = a.updated_at; bv = b.updated_at }
-      if (sortKey === 'progress')   { av = a.kpi_achievement ?? a.progress?.overall.percent_complete ?? 0; bv = b.kpi_achievement ?? b.progress?.overall.percent_complete ?? 0 }
+      // Sort key must track the same figure the column displays
+      // (kpi_achievement, matching TrackingModule.tsx's "Overall" gauge).
+      // Unscored plans (null) sort as if lowest, same as an empty "—" cell.
+      if (sortKey === 'progress')   { av = a.kpi_achievement ?? -1; bv = b.kpi_achievement ?? -1 }
       if (av < bv) return sortDir === 'asc' ? -1 : 1
       if (av > bv) return sortDir === 'asc' ? 1 : -1
       return 0
@@ -474,10 +477,14 @@ export default function PlansPage() {
               {paginated.map((plan, idx) => {
                 const statusLabel = t(`plan.status.${plan.status}`)
                 const statusVariant = STATUS_VARIANT[plan.status]
-                // KPI achievement is what "progress" means now — falls
-                // back to activity-status percent_complete for a plan with
-                // no KPIs scored yet (see Plan.kpi_achievement in types).
-                const overallPct = plan.kpi_achievement ?? plan.progress?.overall.percent_complete ?? 0
+                // Must be the exact same figure TrackingModule.tsx's
+                // "Overall" gauge shows for this plan — no substitute
+                // metric. A plan with nothing scored yet shows "—" here
+                // too, rather than silently swapping in the unrelated
+                // activity-status percent_complete (see Plan.kpi_achievement
+                // in types).
+                const kpiPct = plan.kpi_achievement ?? null
+                const overallPct = kpiPct ?? 0 // only used to size the bar; the label never shows this when kpiPct is null
                 const overdue = plan.progress?.overall.overdue ?? 0
                 const isSelected = selected.has(plan.id)
                 const avatarCls = AVATAR_PALETTE[idx % AVATAR_PALETTE.length]
@@ -525,7 +532,7 @@ export default function PlansPage() {
                       <div className="flex items-center gap-2">
                         <ProgressBar value={overallPct} className="w-full" />
                         <span className="flex items-center gap-1 text-xs font-semibold text-ink-500 tabular-nums shrink-0 w-16">
-                          <Target className="size-3 text-ink-300" /> {Math.round(overallPct)}%
+                          <Target className="size-3 text-ink-300" /> {kpiPct === null ? '—' : `${Math.round(overallPct)}%`}
                         </span>
                       </div>
                     </td>

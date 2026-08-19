@@ -229,11 +229,14 @@ export interface Plan {
    * (see TrackingModule.tsx's fetchPlanKpiAchievement / overallKpiCompletion);
    * not a backend field. The average KPI achievement (actual vs. target)
    * across every KPI on every activity in the plan — this is what "progress"
-   * means wherever a plan-level progress bar/percentage is shown now, with
-   * `progress.overall.percent_complete` (activity-status-based) as the
-   * fallback for a plan with no KPIs scored yet (`kpi_achievement` is then
-   * `null`, not `0` — a plan with no KPIs isn't "0% achieved," it just
-   * hasn't been measured that way).
+   * means wherever a plan-level progress bar/percentage is shown, and it
+   * must always be the exact number TrackingModule.tsx's "Overall" gauge
+   * shows for the same plan. `null` (not `0`) means no KPI has been scored
+   * yet — every caller renders that as "—", the same as the Tracking tab's
+   * gauge. Do NOT fall back to `progress.overall.percent_complete` (an
+   * unrelated activity-status stat) when this is `null` — that fallback
+   * used to exist and caused the dashboard/plans-list percentage to show a
+   * different number than the Tracking tab for the same plan.
    */
   kpi_achievement?: number | null
   /**

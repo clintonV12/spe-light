@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Plus, AlertTriangle, TrendingUp, CheckCircle2,
+import { Plus, TrendingUp, CheckCircle2,
   ArrowUpRight, Sparkles, Activity,
   FileText, GitBranch, UserCheck, BarChart2,
   FileOutput, RefreshCw, ArrowRight, Target,
@@ -70,18 +70,19 @@ const STATUS_RAIL_CLS: Record<PlanStatus, string> = {
 
 function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
   const { t } = useTranslation()
-  const progress = plan.progress
-  const overdue  = progress?.overall.overdue ?? 0
   const pillCls  = STATUS_PILL_CLS[plan.status]
   const railCls  = STATUS_RAIL_CLS[plan.status]
 
-  // "Progress" means KPI achievement now (actual vs. target), not "% of
-  // activities marked complete" — the ring and the "on track" line below
-  // are both KPI-based, matching TrackingModule.tsx.
-  // Falls back to activity-status percent_complete only for a plan with no
-  // KPIs scored yet, so a brand-new plan doesn't just show an empty ring.
-  const kpiPct = plan.kpi_achievement
-  const overallPct = kpiPct ?? progress?.overall.percent_complete ?? 0
+  // "Progress" here must be the exact same figure TrackingModule.tsx's
+  // "Overall" gauge shows for this plan (kpi_achievement, computed by
+  // overallKpiCompletion) — never a substitute metric. This used to fall
+  // back to progress.overall.percent_complete (% of activities marked
+  // complete, an unrelated activity-status stat) whenever no KPI was
+  // scored yet, which meant this ring could show a number the Tracking
+  // tab never showed for the same plan. Now it matches: null stays null,
+  // rendered as "—", exactly like the Tracking tab's gauge.
+  const kpiPct = plan.kpi_achievement ?? null
+  const overallPct = kpiPct ?? 0 // only used to size the ring's arc; the label below never shows this when kpiPct is null
   const kpiScored = plan.kpi_scored ?? 0
   const kpiOnTrack = plan.kpi_on_track ?? 0
   const ringColor = kpiPct === null ? '#CBD5E1' : overallPct >= 80 ? '#10B981' : overallPct >= 40 ? '#4B6BFB' : '#EF4444'
@@ -126,7 +127,7 @@ function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
             />
           </svg>
           <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-ink-800 tabular-nums">
-            {Math.round(overallPct)}%
+            {kpiPct === null ? '—' : `${Math.round(overallPct)}%`}
           </span>
         </div>
         <div className="flex-1 min-w-0">
@@ -136,13 +137,9 @@ function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
               ? t('dashboard.kpisOnTrack', { onTrack: kpiOnTrack, scored: kpiScored, defaultValue: `${kpiOnTrack} of ${kpiScored} KPIs on track` })
               : t('dashboard.noKpisScored', { defaultValue: 'No KPIs scored yet' })}
           </p>
-          {overdue > 0 ? (
-            <p className="flex items-center gap-1 text-xs text-red-500 font-medium mt-0.5">
-              <AlertTriangle className="size-3" /> {t('dashboard.overdueBadge', { count: overdue })}
-            </p>
-          ) : (
-            <p className="text-xs text-ink-400 mt-0.5">{t('dashboard.onTrack')}</p>
-          )}
+          <p className="text-xs text-ink-400 mt-0.5">
+            {t('dashboard.updatedAt', { time: relativeTime(plan.updated_at, t), defaultValue: `Updated ${relativeTime(plan.updated_at, t)}` })}
+          </p>
         </div>
       </div>
 
@@ -385,7 +382,7 @@ export default function DashboardPage() {
       // backend field on Plan (see the type's own doc comment); it only
       // comes back from GET /plans/{id}/progress. Without this extra
       // fetch-and-merge step every PlanCard's ring and this page's own
-      // avg-progress/overdue stats always read as zero.
+      // avg-progress stats always read as zero.
       // kpi_achievement/kpi_on_track/kpi_scored are fetched the same way,
       // from each plan's activities — see fetchPlanKpiSummary.
       const withProgress = await Promise.all(
@@ -415,11 +412,22 @@ export default function DashboardPage() {
   }, [])
 
   const activePlans  = plans.filter((p) => p.status === 'active').length
-  const totalOverdue = plans.reduce((s, p) => s + (p.progress?.overall.overdue ?? 0), 0)
-  // Same KPI-achievement-first, activity-status-fallback rule as PlanCard's
-  // ring — see the Plan.kpi_achievement doc comment in types/index.ts.
-  const avgProgress  = plans.length
-    ? Math.round(plans.reduce((s, p) => s + (p.kpi_achievement ?? p.progress?.overall.percent_complete ?? 0), 0) / plans.length) : 0
+  const completedPlans = plans.filter((p) => p.status === 'completed').length
+  // Same rule as PlanCard's ring: this must match TrackingModule.tsx's
+  // "Overall" gauge for each plan, so plans with nothing scored yet are
+  // excluded from the average rather than folded in via a different
+  // (activity-status) metric — mixing the two metrics together would make
+  // this stat correspond to neither one.
+  const scoredPlans  = plans.filter((p): p is Plan & { kpi_achievement: number } => p.kpi_achievement != null)
+  const avgProgress  = scoredPlans.length
+    ? Math.round(scoredPlans.reduce((s, p) => s + p.kpi_achievement, 0) / scoredPlans.length) : null
+  // Aggregate "KPIs on track" across every plan — reuses the same
+  // kpi_on_track/kpi_scored figures each PlanCard shows (from
+  // fetchPlanKpiSummary), just totalled up. Overdue is not tracked at the
+  // plan level for this plan type, so it's dropped from the stat row
+  // rather than shown as an always-zero/meaningless number.
+  const totalKpiOnTrack = plans.reduce((s, p) => s + (p.kpi_on_track ?? 0), 0)
+  const totalKpiScored  = plans.reduce((s, p) => s + (p.kpi_scored ?? 0), 0)
   const recentPlans  = [...plans]
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
     .slice(0, 6)
@@ -461,51 +469,31 @@ export default function DashboardPage() {
       {/* ── Stat cards ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
+          label={t('dashboard.statTotalPlans')} loading={loading} value={plans.length}
+          sub={t('dashboard.statTotalPlansSub', { count: completedPlans })}
+          accent="bg-violet-400"
+          icon={<div className="size-9 rounded-xl bg-violet-50 flex items-center justify-center"><BarChart2 className="size-4 text-violet-500" /></div>}
+        />
+        <StatCard
           label={t('dashboard.statActivePlans')} loading={loading} value={activePlans}
           sub={t('dashboard.statActivePlansSub', { count: activePlans })}
           accent="bg-emerald-400"
           icon={<div className="size-9 rounded-xl bg-emerald-50 flex items-center justify-center"><TrendingUp className="size-4 text-emerald-600" /></div>}
         />
         <StatCard
-          label={t('dashboard.statAvgProgress')} loading={loading} value={`${avgProgress}%`}
+          label={t('dashboard.statAvgProgress')} loading={loading} value={avgProgress === null ? '—' : `${avgProgress}%`}
           sub={t('dashboard.statAvgProgressSub')}
           accent="bg-blue-400"
           icon={<div className="size-9 rounded-xl bg-blue-50 flex items-center justify-center"><CheckCircle2 className="size-4 text-blue-500" /></div>}
         />
         <StatCard
-          label={t('dashboard.statOverdue')} loading={loading} value={totalOverdue} alert={totalOverdue > 0}
-          sub={totalOverdue > 0 ? t('dashboard.statOverdueSubAlert') : t('dashboard.statOverdueSubOk')}
-          accent="bg-ink-300"
-          icon={<div className={`size-9 rounded-xl flex items-center justify-center ${totalOverdue > 0 ? 'bg-red-50' : 'bg-ink-50'}`}><AlertTriangle className={`size-4 ${totalOverdue > 0 ? 'text-red-500' : 'text-ink-300'}`} /></div>}
-        />
-        <StatCard
-          label={t('dashboard.statTotalPlans')} loading={loading} value={plans.length}
-          sub={t('dashboard.statTotalPlansSub', { count: plans.filter(p => p.status === 'completed').length })}
-          accent="bg-violet-400"
-          icon={<div className="size-9 rounded-xl bg-violet-50 flex items-center justify-center"><BarChart2 className="size-4 text-violet-500" /></div>}
+          label={t('dashboard.statKpisOnTrack', { defaultValue: 'KPIs On Track' })}
+          loading={loading} value={`${totalKpiOnTrack}/${totalKpiScored}`}
+          sub={t('dashboard.statKpisOnTrackSub', { defaultValue: 'Scored KPIs at or past target' })}
+          accent="bg-amber-400"
+          icon={<div className="size-9 rounded-xl bg-amber-50 flex items-center justify-center"><Target className="size-4 text-amber-500" /></div>}
         />
       </div>
-
-      {/* ── Overdue alert ───────────────────────────────────────────────────── */}
-      {totalOverdue > 0 && (
-        <div className="flex items-center gap-4 rounded-2xl border border-red-200 bg-gradient-to-r from-red-50 to-white px-5 py-4">
-          <div className="size-9 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
-            <AlertTriangle className="size-4 text-red-500" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-red-800">
-              {t('dashboard.overdueAlert', { count: totalOverdue })}
-            </p>
-            <p className="text-xs text-red-500 mt-0.5">{t('dashboard.overdueAlertSub')}</p>
-          </div>
-          <button
-            onClick={() => navigate('/plans')}
-            className="flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-800 bg-red-100 hover:bg-red-200 rounded-lg px-3 py-2 transition-colors shrink-0"
-          >
-            {t('dashboard.viewPlans')} <ArrowRight className="size-3" />
-          </button>
-        </div>
-      )}
 
       {/* ── Two-column body ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-6 items-start">
