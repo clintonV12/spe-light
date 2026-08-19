@@ -537,8 +537,16 @@ func (d *pdfDoc) buildCover() {
 	pdfCircle(p, badgeCx, badgeCy, badgeFaceR, brandPrimary)
 	if d.meta.Progress.TotalActivities > 0 {
 		pdfTextCenter(p, "F2", 30, badgeCx, badgeCy+6, white, fmt.Sprintf("%.0f%%", d.meta.Progress.OverallPercent))
-		pdfTextCenter(p, "F1", 8, badgeCx, badgeCy-14, white, "ACTIVITIES")
-		pdfTextCenter(p, "F1", 8, badgeCx, badgeCy-25, white, "COMPLETE")
+		if d.meta.Progress.IsKPIAchievement {
+			// Matches TrackingModule.tsx's "Overall" gauge label exactly —
+			// this number is that same KPI-achievement figure, not an
+			// activity-completion count, so it gets that gauge's label
+			// rather than "ACTIVITIES COMPLETE".
+			pdfTextCenter(p, "F1", 8, badgeCx, badgeCy-19, white, "OVERALL")
+		} else {
+			pdfTextCenter(p, "F1", 8, badgeCx, badgeCy-14, white, "ACTIVITIES")
+			pdfTextCenter(p, "F1", 8, badgeCx, badgeCy-25, white, "COMPLETE")
+		}
 	} else {
 		// A brand-new plan with nothing logged yet isn't "0% complete" in
 		// any meaningful sense — that reads as a failing plan rather than

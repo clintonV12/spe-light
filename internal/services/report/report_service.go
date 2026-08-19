@@ -769,6 +769,60 @@ func kpiColorHint(pct float64) string {
 	}
 }
 
+// periodKPICompletion mirrors TrackingModule.tsx's periodCompletion
+// exactly: average achievement (via kpiAchievement) across every KPI whose
+// TargetPeriod matches, each individually capped at 100 first so one
+// overachieving KPI can't drag a period's average past what a fully-met
+// set of KPIs would show. Returns ok=false if no KPI for that period has
+// both a target and an actual value set (nothing to average).
+func periodKPICompletion(kpis []models.KPI, period models.KPIPeriod) (float64, bool) {
+	var sum float64
+	var n int
+	for _, k := range kpis {
+		if k.TargetPeriod == nil || *k.TargetPeriod != period {
+			continue
+		}
+		pct, ok := kpiAchievement(k)
+		if !ok {
+			continue
+		}
+		if pct > 100 {
+			pct = 100
+		}
+		sum += pct
+		n++
+	}
+	if n == 0 {
+		return 0, false
+	}
+	return sum / float64(n), true
+}
+
+// overallKPICompletion mirrors TrackingModule.tsx's overallKpiCompletion
+// exactly — the same figure the Tracking page's "Overall" gauge shows —
+// so the report's cover badge (see buildCover in render.go) can never
+// disagree with what the Tracking module displays on screen for the same
+// plan. It's the average of whichever of monthly/quarterly/annual actually
+// have at least one scored KPI; returns ok=false (not 0) if none do, so
+// callers know to fall back to activity-status progress rather than
+// showing a misleading 0%.
+func overallKPICompletion(kpis []models.KPI) (float64, bool) {
+	var sum float64
+	var n int
+	for _, period := range models.ValidKPIPeriods {
+		pct, ok := periodKPICompletion(kpis, period)
+		if !ok {
+			continue
+		}
+		sum += pct
+		n++
+	}
+	if n == 0 {
+		return 0, false
+	}
+	return sum / float64(n), true
+}
+
 // buildScorecardSections returns the KPI detail table and, if any KPI has
 // a reporting period set, an achievement-by-period bar chart — the same
 // capped-at-100-per-KPI averaging TrackingModule.tsx's periodCompletion
@@ -959,19 +1013,7 @@ func buildGenericContentSection(heading string, content map[string]any) *content
 			}
 			cols := make([]string, 0, len(first))
 			for c := range first {
-				// "id" is the row's database primary key — meaningful to
-				// developers/the DB, not to a report reader, so it's left
-				// out of the rendered table entirely rather than shown as
-				// an opaque UUID column (see TableEditor.tsx's {"rows":
-				// [...]} shape, e.g. Financial Projections/Budget
-				// Allocation rows, which each carry one).
-				if strings.EqualFold(c, "id") {
-					continue
-				}
 				cols = append(cols, c)
-			}
-			if len(cols) == 0 {
-				continue
 			}
 			sort.Strings(cols)
 			table = &contentTable{Headers: cols}
@@ -1003,6 +1045,17 @@ type coverStats struct {
 	OverallPercent    float64
 	TotalActivities   int
 	OverdueActivities int
+	// IsKPIAchievement is true when OverallPercent came from the same KPI
+	// achievement math as TrackingModule.tsx's "Overall" gauge (see
+	// overallKPICompletion below), false when it's the activity-status
+	// completion percentage (progress.Overall.Percent) used as a fallback
+	// when the plan has no scored KPIs yet — mirrors the frontend's own
+	// fallback rule ("every caller already treats null as 'fall back to
+	// activity-status progress'", per TrackingModule.tsx's
+	// fetchPlanKpiAchievement doc comment). render.go's cover badge reads
+	// this to label the number "OVERALL" vs "ACTIVITIES COMPLETE" so the
+	// label always matches what's actually being shown.
+	IsKPIAchievement bool
 }
 
 func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uuid.UUID, sec SectionConfig) (*reportContent, coverStats, error) {
@@ -1015,9 +1068,36 @@ func (s *Service) buildContent(ctx context.Context, plan *models.Plan, orgID uui
 		return nil, coverStats{}, err
 	}
 	stats := coverStats{
-		OverallPercent:    progress.Overall.Percent,
 		TotalActivities:   progress.Overall.Total,
 		OverdueActivities: progress.Overall.Overdue,
+	}
+
+	// The cover page's completion badge (see buildCover in render.go) is
+	// meant to be the plan's "true tracking metric" — the same figure the
+	// Tracking module's "Overall" gauge shows — not a re-derivation of it,
+	// so a reader can't see two different completion numbers for the same
+	// plan depending on whether they're looking at the app or the export.
+	// That means fetching every activity's KPIs (regardless of which
+	// sections were requested, since the cover always renders) and running
+	// the exact same overallKPICompletion math TrackingModule.tsx uses.
+	// Falls back to the activity-status percentage — same rule the
+	// frontend itself uses (TrackingModule.tsx's fetchPlanKpiAchievement:
+	// "every caller already treats null as 'fall back to activity-status
+	// progress'") — for a plan with no scored KPIs yet, so a brand-new
+	// plan still shows a meaningful number instead of a blank or a 0%.
+	allActivities, err := s.planSvc.ListActivities(ctx, plan.ID, orgID, nil, nil, nil)
+	if err != nil {
+		return nil, coverStats{}, err
+	}
+	var allKPIs []models.KPI
+	for _, a := range allActivities {
+		allKPIs = append(allKPIs, a.KPIs...)
+	}
+	if pct, ok := overallKPICompletion(allKPIs); ok {
+		stats.OverallPercent = pct
+		stats.IsKPIAchievement = true
+	} else {
+		stats.OverallPercent = progress.Overall.Percent
 	}
 
 	// aiSummary lazily calls aiSummaryFn at most once per report. Both the
