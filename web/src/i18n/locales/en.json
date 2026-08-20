@@ -15,7 +15,8 @@
     "none": "None",
     "add": "Add",
     "remove": "Remove",
-    "view": "View"
+    "view": "View",
+    "creating": "Creating…"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -25,7 +26,10 @@
     "admin": "Admin",
     "platformConsole": "Platform console",
     "logout": "Log out",
-    "account": "Account settings"
+    "account": "Account settings",
+    "docs": "Docs",
+    "advising": "Advising",
+    "exitAdvising": "Switch organisation"
   },
   "plan": {
     "status": {
@@ -238,7 +242,8 @@
     "org_admin": "Org admin",
     "planner": "Planner",
     "contributor": "Contributor",
-    "viewer": "Viewer"
+    "viewer": "Viewer",
+    "advisor": "Advisor"
   },
   "auditActions": {
     "plan": {
@@ -416,7 +421,8 @@
       "superAdminDesc": "Full cross-org access",
       "note": "This grants cross-organisation access, not membership in any single org. A 7-day setup link is emailed to accept.",
       "error": "Could not send the invitation. They may already have a platform account.",
-      "submit": "Send invite"
+      "submit": "Send invite",
+      "advisorDesc": "Acts as org admin inside any organisation it selects"
     },
     "team": {
       "inviteTeammate": "Invite teammate",
@@ -923,5 +929,20 @@
     "signedInSince": "Signed in {{date}}",
     "expires": "Expires {{date}}",
     "noSessions": "No other active sessions."
+  },
+  "orgPicker": {
+    "title": "Which organisation are you advising today?",
+    "subtitle": "Pick an existing organisation, or set up a new one.",
+    "searchPlaceholder": "Search organisations…",
+    "newOrg": "New organisation",
+    "loadError": "Could not load organisations.",
+    "noMatches": "No organisations match \"{{query}}\".",
+    "none": "No organisations yet — create the first one.",
+    "nameRequired": "Organisation name is required.",
+    "createError": "Could not create the organisation. Try again.",
+    "createTitle": "New organisation",
+    "orgName": "Organisation name",
+    "industry": "Industry (optional)",
+    "createAndEnter": "Create & enter"
   }
 }

@@ -30,10 +30,11 @@ function getActionGroups(t: (key: string) => string) {
   ]
 }
 
-function getPlatformRoleMeta(t: (key: string) => string): Record<'super_admin' | 'platform_support', { label: string; className: string }> {
+function getPlatformRoleMeta(t: (key: string) => string): Record<'super_admin' | 'platform_support' | 'advisor', { label: string; className: string }> {
   return {
     super_admin:      { label: t('roles.super_admin'),      className: 'bg-accent-100 text-accent-700' },
     platform_support: { label: t('roles.platform_support'), className: 'bg-p3-light text-p3-dark' },
+    advisor:          { label: t('roles.advisor'),          className: 'bg-p1-light text-p1-dark' },
   }
 }
 
@@ -660,7 +661,7 @@ function InviteOrgAdminModal({ orgs, onInvited, onClose }: { orgs: Organisation[
 function InviteTeamModal({ onInvited, onClose }: { onInvited: () => void; onClose: () => void }) {
   const { t } = useTranslation()
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<'platform_support' | 'super_admin'>('platform_support')
+  const [role, setRole] = useState<'platform_support' | 'super_admin' | 'advisor'>('platform_support')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -705,8 +706,8 @@ function InviteTeamModal({ onInvited, onClose }: { onInvited: () => void; onClos
 
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-ink-700">{t('platformAdmin.inviteTeamModal.platformRole')}</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['platform_support', 'super_admin'] as const).map((r) => (
+            <div className="grid grid-cols-3 gap-2">
+              {(['platform_support', 'super_admin', 'advisor'] as const).map((r) => (
                 <button
                   type="button"
                   key={r}
@@ -719,7 +720,11 @@ function InviteTeamModal({ onInvited, onClose }: { onInvited: () => void; onClos
                     {platformRoleMeta[r].label}
                   </p>
                   <p className="text-xs text-ink-400 mt-0.5">
-                    {r === 'platform_support' ? t('platformAdmin.inviteTeamModal.platformSupportDesc') : t('platformAdmin.inviteTeamModal.superAdminDesc')}
+                    {r === 'platform_support'
+                      ? t('platformAdmin.inviteTeamModal.platformSupportDesc')
+                      : r === 'super_admin'
+                      ? t('platformAdmin.inviteTeamModal.superAdminDesc')
+                      : t('platformAdmin.inviteTeamModal.advisorDesc', 'Acts as org_admin inside any organisation it selects — no platform console access.')}
                   </p>
                 </button>
               ))}
@@ -804,7 +809,7 @@ function TeamTab() {
             </thead>
             <tbody className="divide-y divide-ink-50">
               {users.map((u) => {
-                const meta = platformRoleMeta[u.role as 'super_admin' | 'platform_support']
+                const meta = platformRoleMeta[u.role as 'super_admin' | 'platform_support' | 'advisor']
                 const isSelf = u.id === currentUser?.id
                 return (
                   <tr key={u.id} className={!u.is_active ? 'opacity-60' : ''}>
@@ -821,6 +826,7 @@ function TeamTab() {
                         >
                           <option value="platform_support">{t('roles.platform_support')}</option>
                           <option value="super_admin">{t('roles.super_admin')}</option>
+                          <option value="advisor">{t('roles.advisor')}</option>
                         </select>
                       ) : (
                         <span className={`text-xs font-semibold rounded-lg px-2 py-1 ${meta?.className ?? 'bg-ink-100 text-ink-600'}`}>
@@ -937,7 +943,7 @@ function InvitationsTab() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-ink-800">{inv.email}</p>
                   <p className="text-xs text-ink-400">
-                    {platformRoleMeta[inv.role as 'super_admin' | 'platform_support']?.label ?? inv.role} · {t('platformAdmin.team.expires', { date: new Date(inv.expires_at).toLocaleDateString() })}
+                    {platformRoleMeta[inv.role as 'super_admin' | 'platform_support' | 'advisor']?.label ?? inv.role} · {t('platformAdmin.team.expires', { date: new Date(inv.expires_at).toLocaleDateString() })}
                   </p>
                 </div>
                 {actionLoading === inv.id ? (

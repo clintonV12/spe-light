@@ -43,7 +43,7 @@ export default function AcceptInvitePage() {
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [isPlatformTier, setIsPlatformTier] = useState(false)
+  const [postAcceptDest, setPostAcceptDest] = useState<'/platform-admin' | '/org-picker' | '/dashboard'>('/dashboard')
 
   // Small mount-in transition for the success state — kept subtle and
   // one-shot, not a repeating/ambient animation.
@@ -94,7 +94,16 @@ export default function AcceptInvitePage() {
         }
         setAuth(user, org, tokens.access_token, tokens.refresh_token)
       }
-      setIsPlatformTier(user.role === 'super_admin' || user.role === 'platform_support')
+      setPostAcceptDest(
+        user.role === 'super_admin' || user.role === 'platform_support'
+          ? '/platform-admin'
+          // A platform-tier advisor invite (adminsvc.InvitePlatformUser
+          // now accepts role: 'advisor' too, since Role.IsPlatformRole()
+          // includes it) has no org yet — send it to pick one.
+          : user.role === 'advisor'
+          ? '/org-picker'
+          : '/dashboard'
+      )
       setStep('success')
     } catch {
       setError(t('acceptInvite.invalidLink'))
@@ -147,7 +156,7 @@ export default function AcceptInvitePage() {
                 </p>
               </div>
               <button
-                onClick={() => navigate(isPlatformTier ? '/platform-admin' : '/dashboard')}
+                onClick={() => navigate(postAcceptDest)}
                 className="w-full flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-accent-600 hover:shadow-md"
               >
                 {t('acceptInvite.goToDashboard')} <ArrowRight className="size-4" />

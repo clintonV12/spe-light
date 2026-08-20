@@ -15,7 +15,8 @@
     "none": "Lutho",
     "add": "Engeza",
     "remove": "Susa",
-    "view": "Buka"
+    "view": "Buka",
+    "creating": "Iyadala…"
   },
   "nav": {
     "dashboard": "Ideshibhodi",
@@ -25,7 +26,10 @@
     "admin": "Ukuphathwa",
     "platformConsole": "Ipulatifomu yokuphatha",
     "logout": "Phuma",
-    "account": "Izilungiselelo ze-akhawunti"
+    "account": "Izilungiselelo ze-akhawunti",
+    "docs": "Imibhalo",
+    "advising": "Uyeluleka",
+    "exitAdvising": "Shintsha inhlangano"
   },
   "plan": {
     "status": {
@@ -238,7 +242,8 @@
     "org_admin": "Umlawuli wenhlangano",
     "planner": "Umhleli",
     "contributor": "Umnikeli",
-    "viewer": "Umbukeli"
+    "viewer": "Umbukeli",
+    "advisor": "Umeluleki"
   },
   "auditActions": {
     "plan": {
@@ -416,7 +421,8 @@
       "superAdminDesc": "Ukufinyelela okugcwele kuzo zonke izinhlangano",
       "note": "Lokhu kunika ukufinyelela phakathi kwezinhlangano, hhayi ubulungu kunhlangano eyodwa. Isixhumanisi sokulungiselela esisebenza izinsuku ezi-7 sithunyelwa nge-imeyili ukuvuma.",
       "error": "Ayikwazanga ukuthumela isimemo. Mhlawumbe usenayo i-akhawunti yepulatifomu.",
-      "submit": "Thumela isimemo"
+      "submit": "Thumela isimemo",
+      "advisorDesc": "Usebenza njengomlawuli wenhlangano kunoma iyiphi inhlangano ayikhethayo"
     },
     "team": {
       "inviteTeammate": "Mema umlingani",
@@ -923,5 +929,20 @@
     "signedInSince": "Ungene ngo-{{date}}",
     "expires": "Iphelelwa yisikhathi ngo-{{date}}",
     "noSessions": "Azikho ezinye izikhathi zokungena ezisebenzayo."
+  },
+  "orgPicker": {
+    "title": "Yiyiphi inhlangano oyeluleka namuhla?",
+    "subtitle": "Khetha inhlangano ekhona, noma udale entsha.",
+    "searchPlaceholder": "Sesha izinhlangano…",
+    "newOrg": "Inhlangano entsha",
+    "loadError": "Azikwazanga ukulayishwa izinhlangano.",
+    "noMatches": "Ayikho inhlangano efanisa ne-\"{{query}}\".",
+    "none": "Azikho izinhlangano okwamanje — dala eyokuqala.",
+    "nameRequired": "Igama lenhlangano liyadingeka.",
+    "createError": "Ayikwazanga ukudala inhlangano. Zama futhi.",
+    "createTitle": "Inhlangano entsha",
+    "orgName": "Igama lenhlangano",
+    "industry": "Umkhakha (kungakhethwa)",
+    "createAndEnter": "Dala bese ungena"
   }
 }

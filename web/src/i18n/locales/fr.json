@@ -15,7 +15,8 @@
     "none": "Aucun",
     "add": "Ajouter",
     "remove": "Retirer",
-    "view": "Voir"
+    "view": "Voir",
+    "creating": "Création…"
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -25,7 +26,10 @@
     "admin": "Administration",
     "platformConsole": "Console plateforme",
     "logout": "Déconnexion",
-    "account": "Paramètres du compte"
+    "account": "Paramètres du compte",
+    "docs": "Docs",
+    "advising": "Conseil en cours",
+    "exitAdvising": "Changer d'organisation"
   },
   "plan": {
     "status": {
@@ -238,7 +242,8 @@
     "org_admin": "Administrateur d'organisation",
     "planner": "Planificateur",
     "contributor": "Contributeur",
-    "viewer": "Observateur"
+    "viewer": "Observateur",
+    "advisor": "Conseiller"
   },
   "auditActions": {
     "plan": {
@@ -416,7 +421,8 @@
       "superAdminDesc": "Accès complet multi-organisations",
       "note": "Cela accorde un accès multi-organisations, pas une adhésion à une organisation en particulier. Un lien de configuration valable 7 jours est envoyé par e-mail pour l'acceptation.",
       "error": "Impossible d'envoyer l'invitation. Cette personne possède peut-être déjà un compte plateforme.",
-      "submit": "Envoyer l'invitation"
+      "submit": "Envoyer l'invitation",
+      "advisorDesc": "Agit comme administrateur au sein de l'organisation qu'il sélectionne"
     },
     "team": {
       "inviteTeammate": "Inviter un collègue",
@@ -923,5 +929,20 @@
     "signedInSince": "Connecté(e) depuis le {{date}}",
     "expires": "Expire le {{date}}",
     "noSessions": "Aucune autre session active."
+  },
+  "orgPicker": {
+    "title": "Quelle organisation conseillez-vous aujourd'hui ?",
+    "subtitle": "Choisissez une organisation existante ou créez-en une nouvelle.",
+    "searchPlaceholder": "Rechercher des organisations…",
+    "newOrg": "Nouvelle organisation",
+    "loadError": "Impossible de charger les organisations.",
+    "noMatches": "Aucune organisation ne correspond à \"{{query}}\".",
+    "none": "Aucune organisation pour l'instant — créez la première.",
+    "nameRequired": "Le nom de l'organisation est requis.",
+    "createError": "Impossible de créer l'organisation. Réessayez.",
+    "createTitle": "Nouvelle organisation",
+    "orgName": "Nom de l'organisation",
+    "industry": "Secteur (facultatif)",
+    "createAndEnter": "Créer et entrer"
   }
 }

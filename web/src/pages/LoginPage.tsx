@@ -55,7 +55,16 @@ export default function LoginPage() {
         setAuth(user, org, tokens.access_token, tokens.refresh_token)
       }
       const isPlatformTier = user.role === 'super_admin' || user.role === 'platform_support'
-      navigate(from ?? (isPlatformTier ? '/platform-admin' : '/dashboard'), { replace: true })
+      const dest = isPlatformTier
+        ? '/platform-admin'
+        // advisor has no org yet right after login (advisorOrgStore was
+        // cleared on the previous logout, if any — see tokenStore.clear()
+        // in api/client.ts) — send it to pick one instead of /dashboard,
+        // which would 403 on every org-scoped call until it does.
+        : user.role === 'advisor'
+        ? '/org-picker'
+        : '/dashboard'
+      navigate(from ?? dest, { replace: true })
     } catch {
       setError(t('auth.signInError'))
     } finally {

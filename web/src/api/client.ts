@@ -38,6 +38,16 @@ const BASE_URL    = '/api/v1'
 const TOKEN_KEY   = 'stratplan_access'
 const REFRESH_KEY = 'stratplan_refresh'
 
+// Only meaningful for a logged-in advisor (Role.Advisor — a platform-tier
+// user with no org of their own, see internal/models.RoleAdvisor). Holds
+// whichever organisation the advisor has currently selected to act in;
+// sent as X-Org-Context on every request so the backend's
+// ResolveAdvisorOrgContext middleware can grant org_admin-equivalent
+// access to that one org for the duration of the request. Ignored by the
+// backend entirely for every other role, so it's safe to just always
+// attach the header when this is set.
+const ADVISOR_ORG_KEY = 'stratplan_advisor_org'
+
 // ── Token store ──────────────────────────────────────────────────────────────
 
 /**
@@ -55,7 +65,21 @@ export const tokenStore = {
   clear: (): void => {
     sessionStorage.removeItem(TOKEN_KEY)
     sessionStorage.removeItem(REFRESH_KEY)
+    sessionStorage.removeItem(ADVISOR_ORG_KEY)
   },
+}
+
+/**
+ * advisorOrgStore holds the org an advisor has currently selected. Separate
+ * from tokenStore because it's not part of the auth session itself — it's
+ * UI-level "which org am I looking at right now" state that only exists
+ * for the advisor role, and is cleared independently when an advisor
+ * exits back to the org picker (without logging them out entirely).
+ */
+export const advisorOrgStore = {
+  get: (): string | null => sessionStorage.getItem(ADVISOR_ORG_KEY),
+  set: (orgId: string): void => sessionStorage.setItem(ADVISOR_ORG_KEY, orgId),
+  clear: (): void => sessionStorage.removeItem(ADVISOR_ORG_KEY),
 }
 
 // ── Axios instance ────────────────────────────────────────────────────────────
@@ -66,12 +90,16 @@ export const apiClient: AxiosInstance = axios.create({
   timeout: 15_000,
 })
 
-// ── Request interceptor — attach Bearer ──────────────────────────────────────
+// ── Request interceptor — attach Bearer + advisor org context ────────────────
 
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = tokenStore.getAccess()
   if (token && config.headers) {
     config.headers['Authorization'] = `Bearer ${token}`
+  }
+  const advisorOrg = advisorOrgStore.get()
+  if (advisorOrg && config.headers) {
+    config.headers['X-Org-Context'] = advisorOrg
   }
   return config
 })

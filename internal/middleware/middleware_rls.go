@@ -69,7 +69,21 @@ func WithRLS(pool *pgxpool.Pool) func(http.Handler) http.Handler {
 			}
 			defer conn.Release()
 
-			bypass := claims.Role == models.RoleSuperAdmin || claims.Role == models.RolePlatformSupport
+			// bypass grants cross-org visibility on RLS-scoped queries.
+			// super_admin/platform_support get it because their whole
+			// console is cross-tenant. RoleAdvisor gets it too — but only
+			// while it has no selected org (claims.OrgID nil here, at the
+			// top of the authenticated group): that's exactly the state an
+			// advisor is in while listing/creating organisations in
+			// /api/v1/admin/orgs, which is itself a cross-tenant view.
+			// Once an advisor selects an org, ResolveAdvisorOrgContext
+			// (internal/middleware/advisor_context.go) re-sets this same
+			// connection's org context with bypass explicitly false — see
+			// that file for why an advisor acting inside one org must NOT
+			// keep cross-tenant bypass for the rest of the request.
+			bypass := claims.Role == models.RoleSuperAdmin ||
+				claims.Role == models.RolePlatformSupport ||
+				claims.Role == models.RoleAdvisor
 
 			if err := database.WithOrgContext(r.Context(), conn.Conn(), claims.OrgID, bypass); err != nil {
 				slog.Error("rls middleware: set org context", "err", err)

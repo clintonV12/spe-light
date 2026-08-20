@@ -29,5 +29,7 @@ export {
   ssoApi,
   adminApi,
   auditApi,
+  // ── Advisor org-selection (client-side only, see endpointsImpl.ts) ──────
+  advisorApi,
 } from './endpointsImpl'
 export type { PlatformStats, OrgDetail } from './endpointsImpl'

@@ -29,6 +29,7 @@ import type {
   SSOConfig, CoreValue, Stakeholder, StakeholderLevel, SWOTItem, SWOTCategory,
   PESTELItem, PESTELFactor, OrgStructureRole, MEItem, MECategory
 } from '../types'
+import { advisorOrgStore } from './client'
 
 const IS_MOCK = import.meta.env.VITE_MOCK === 'true'
 
@@ -314,6 +315,27 @@ export const adminApi = {
   resendPlatformInvitation: (id: string) => api().then((m) => m.adminApi.resendPlatformInvitation(id)) as Promise<void>,
   updatePlatformUser:       (id: string, p: { role?: UserRole; is_active?: boolean }) =>
                               api().then((m) => m.adminApi.updatePlatformUser(id, p))                 as Promise<User>,
+}
+
+/**
+ * advisorApi — client-side only, no dedicated backend route.
+ *
+ * An advisor (Role 'advisor') has no org of their own. Selecting an org to
+ * act in is just choosing which org_id gets sent as the X-Org-Context
+ * header on every subsequent request — see api/client.ts's advisorOrgStore
+ * and the backend's ResolveAdvisorOrgContext middleware. enterOrg/exitOrg
+ * therefore just flip that local flag; they don't call the network. Use
+ * adminApi.listOrgs / adminApi.createOrg (both now permitted for the
+ * advisor role server-side) to find or create the org first, then call
+ * enterOrg with its id.
+ */
+export const advisorApi = {
+  /** Selects an org to act in — every request from here on carries X-Org-Context. */
+  enterOrg: (orgId: string): void => advisorOrgStore.set(orgId),
+  /** Returns to the org picker — org-scoped requests are rejected again until enterOrg is called. */
+  exitOrg: (): void => advisorOrgStore.clear(),
+  /** The org currently selected, or null if the advisor hasn't picked one yet. */
+  currentOrgId: (): string | null => advisorOrgStore.get(),
 }
 
 // ── Audit log ─────────────────────────────────────────────────────────────────

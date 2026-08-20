@@ -21,14 +21,28 @@ type Role string
 const (
 	RoleSuperAdmin      Role = "super_admin"
 	RolePlatformSupport Role = "platform_support"
-	RoleOrgAdmin        Role = "org_admin"
-	RolePlanner         Role = "planner"
-	RoleContributor     Role = "contributor"
-	RoleViewer          Role = "viewer"
+	// RoleAdvisor is a platform-tier user (org_id nil, same as super_admin /
+	// platform_support — see IsPlatformRole below) who is not a member of
+	// any single organisation. Instead of holding standing org membership,
+	// an advisor selects (or creates) an organisation per session and gets
+	// org_admin-equivalent access to it via a request-scoped X-Org-Context
+	// header — see middleware.ResolveAdvisorOrgContext. They never appear
+	// in an org's own user list; their actions inside an org are
+	// attributed to their real advisor UserID in that org's audit log.
+	RoleAdvisor     Role = "advisor"
+	RoleOrgAdmin    Role = "org_admin"
+	RolePlanner     Role = "planner"
+	RoleContributor Role = "contributor"
+	RoleViewer      Role = "viewer"
 )
 
+// IsPlatformRole reports whether r is a platform-tier role — one with
+// org_id NULL on its users row, managed via /api/v1/admin/platform-users
+// rather than any single org's /api/v1/org/users. Advisor counts as
+// platform-tier: it has no home org of its own, even though it is granted
+// org_admin-equivalent access to whichever org it is currently advising.
 func (r Role) IsPlatformRole() bool {
-	return r == RoleSuperAdmin || r == RolePlatformSupport
+	return r == RoleSuperAdmin || r == RolePlatformSupport || r == RoleAdvisor
 }
 
 func (r Role) CanEditPlans() bool {

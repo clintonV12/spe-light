@@ -15,7 +15,8 @@
     "none": "Nenhum",
     "add": "Adicionar",
     "remove": "Remover",
-    "view": "Ver"
+    "view": "Ver",
+    "creating": "A criar…"
   },
   "nav": {
     "dashboard": "Painel",
@@ -25,7 +26,10 @@
     "admin": "Administração",
     "platformConsole": "Consola da plataforma",
     "logout": "Terminar sessão",
-    "account": "Definições da conta"
+    "account": "Definições da conta",
+    "docs": "Documentação",
+    "advising": "A aconselhar",
+    "exitAdvising": "Mudar de organização"
   },
   "plan": {
     "status": {
@@ -238,7 +242,8 @@
     "org_admin": "Administrador da organização",
     "planner": "Planeador",
     "contributor": "Contribuidor",
-    "viewer": "Observador"
+    "viewer": "Observador",
+    "advisor": "Consultor"
   },
   "auditActions": {
     "plan": {
@@ -416,7 +421,8 @@
       "superAdminDesc": "Acesso total entre organizações",
       "note": "Isto concede acesso entre organizações, não a associação a uma única organização. É enviado por e-mail um link de configuração válido por 7 dias para aceitação.",
       "error": "Não foi possível enviar o convite. Esta pessoa pode já ter uma conta de plataforma.",
-      "submit": "Enviar convite"
+      "submit": "Enviar convite",
+      "advisorDesc": "Atua como administrador dentro da organização que selecionar"
     },
     "team": {
       "inviteTeammate": "Convidar colega",
@@ -923,5 +929,20 @@
     "signedInSince": "Sessão iniciada em {{date}}",
     "expires": "Expira em {{date}}",
     "noSessions": "Não existem outras sessões ativas."
+  },
+  "orgPicker": {
+    "title": "Que organização está a aconselhar hoje?",
+    "subtitle": "Escolha uma organização existente ou crie uma nova.",
+    "searchPlaceholder": "Pesquisar organizações…",
+    "newOrg": "Nova organização",
+    "loadError": "Não foi possível carregar as organizações.",
+    "noMatches": "Nenhuma organização corresponde a \"{{query}}\".",
+    "none": "Ainda não há organizações — crie a primeira.",
+    "nameRequired": "O nome da organização é obrigatório.",
+    "createError": "Não foi possível criar a organização. Tente novamente.",
+    "createTitle": "Nova organização",
+    "orgName": "Nome da organização",
+    "industry": "Setor (opcional)",
+    "createAndEnter": "Criar e entrar"
   }
 }

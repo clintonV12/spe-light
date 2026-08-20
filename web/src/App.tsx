@@ -15,6 +15,11 @@ const ActivityEditorPage = lazy(() => import('./pages/ActivityEditorPage'))
 const ReportsPage        = lazy(() => import('./pages/ReportsPage'))
 const AdminPage          = lazy(() => import('./pages/AdminPage'))
 const PlatformAdminPage  = lazy(() => import('./pages/PlatformAdminPage'))
+// Advisor-only landing page — pick or create the org to act in. Lives
+// outside AppShell (no sidebar/nav chrome — see OrgPickerPage.tsx's own
+// full-screen layout) but still inside the outer auth-only ProtectedRoute
+// below, since it requires being logged in, just not any particular org.
+const OrgPickerPage      = lazy(() => import('./pages/OrgPickerPage'))
 // In-app documentation (API reference, and any future user guides) — see
 // src/docs/ and DOC_REGISTRY in DocsPage.tsx. Public route (see below) —
 // not just "no role gate," genuinely reachable without signing in at all.
@@ -66,6 +71,13 @@ export default function App() {
         <Route path="/docs" element={<Suspense fallback={<PageLoader />}><DocsPage /></Suspense>} />
 
         <Route element={<ProtectedRoute />}>
+          {/* Must be registered before ProtectedRoute's advisor-without-org
+              check has anywhere to send someone — without this route,
+              that redirect and the catch-all's redirect to /dashboard
+              ping-pong forever ("Maximum update depth exceeded"). Sibling
+              of the AppShell subtree, not nested inside it — no
+              sidebar/nav while picking an org. */}
+          <Route path="/org-picker" element={<Suspense fallback={<PageLoader />}><OrgPickerPage /></Suspense>} />
           <Route element={<AppShell />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard"   element={<Suspense fallback={<PageLoader />}><DashboardPage /></Suspense>} />

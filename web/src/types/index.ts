@@ -13,6 +13,13 @@
 export type UserRole =
   | 'super_admin'
   | 'platform_support'
+  // Advisor is platform-tier (no org_id of its own) but is granted
+  // org_admin-equivalent access to whichever org it selects via
+  // OrgPickerPage — see api/endpoints.ts's advisorApi and
+  // internal/models.RoleAdvisor on the backend. Listed here between the
+  // two platform roles and org_admin since that's exactly where it sits:
+  // platform-tier for auth purposes, org_admin-equivalent once acting.
+  | 'advisor'
   | 'org_admin'
   | 'planner'
   | 'contributor'

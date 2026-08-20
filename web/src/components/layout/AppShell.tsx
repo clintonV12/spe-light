@@ -6,13 +6,14 @@ import {
   LayoutDashboard, FileText, FileOutput,
   Settings, ChevronLeft, ChevronRight, WifiOff, RefreshCw,
   Menu, Search, Keyboard, ShieldCheck, LogOut, UserCircle, BookOpen,
+  Building2, ArrowLeftRight,
 } from 'lucide-react'
 import { useUIStore } from '../../store/ui'
 import { useOfflineStore } from '../../store/offline'
 import { useAuthStore } from '../../store/auth'
 import { useSyncEngine } from '../../hooks'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
-import { authApi } from '../../api/endpoints'
+import { authApi, orgApi, advisorApi } from '../../api/endpoints'
 import { tokenStore } from '../../api/client'
 import ToastContainer from '../ui/ToastContainer'
 import LanguageSwitcher from '../ui/LanguageSwitcher'
@@ -41,6 +42,37 @@ export const AppShell: React.FC = () => {
   const location = useLocation()
 
   const [loggingOut, setLoggingOut] = useState(false)
+
+  // ── Advisor: which org is currently being acted in ──────────────────────
+  // An advisor's own auth-store `org` is always null (it has no org of its
+  // own — see store/auth.ts). Once it has picked one via OrgPickerPage,
+  // every request carries X-Org-Context and the backend treats it as that
+  // org's org_admin (see ResolveAdvisorOrgContext) — but the frontend still
+  // needs to separately ask GET /api/v1/org for that org's name to show the
+  // "Advising: {org}" banner, since nothing in the auth store already
+  // knows it.
+  const isAdvisor = role === 'advisor'
+  const advisedOrgId = isAdvisor ? advisorApi.currentOrgId() : null
+  const [advisedOrgName, setAdvisedOrgName] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!advisedOrgId) {
+      setAdvisedOrgName(null)
+      return
+    }
+    let cancelled = false
+    orgApi.getOrg()
+      .then((org) => { if (!cancelled) setAdvisedOrgName(org.name) })
+      .catch(() => { if (!cancelled) setAdvisedOrgName(null) })
+    return () => { cancelled = true }
+  }, [advisedOrgId])
+
+  // Returns to the org picker without logging out — clears only the
+  // advisor's org selection (advisorOrgStore), not the auth session itself.
+  const handleExitAdvising = useCallback(() => {
+    advisorApi.exitOrg()
+    navigate('/org-picker', { replace: true })
+  }, [navigate])
 
   // Revokes the refresh token server-side (best-effort — logout still
   // proceeds locally even if this fails, e.g. offline or token already
@@ -99,6 +131,13 @@ export const AppShell: React.FC = () => {
   // get a single link to their own console instead. Docs is the one item
   // both lists share, since it's permission-agnostic reading material
   // rather than org-scoped work.
+  //
+  // advisor is deliberately excluded from isPlatformTier here — once it has
+  // picked an org (ProtectedRoute already forces that before anything in
+  // AppShell renders — see the /org-picker redirect there), it should see
+  // the exact same org-tier nav as a real org_admin, not the platform
+  // console link. ROLE_HIERARCHY.advisor === ROLE_HIERARCHY.org_admin makes
+  // the /admin nav item show up for it too.
   const isPlatformTier = role === 'super_admin' || role === 'platform_support'
 
   const orgNavItems = [
@@ -275,6 +314,26 @@ export const AppShell: React.FC = () => {
             {pendingCount > 0 && (
               <span className="font-medium">{pendingCount} pending</span>
             )}
+          </div>
+        )}
+
+        {/* Advisor banner — only rendered once an org is selected; before
+            that ProtectedRoute has already redirected to /org-picker, so
+            AppShell (and this banner) never mounts in the unselected state. */}
+        {isAdvisor && advisedOrgId && (
+          <div className="flex items-center gap-2 bg-accent-50 border-b border-accent-200 px-4 py-2 text-sm text-accent-800">
+            <Building2 className="size-4 shrink-0" />
+            <span className="flex-1">
+              {t('nav.advising', 'Advising')}{': '}
+              <span className="font-medium">{advisedOrgName ?? '…'}</span>
+            </span>
+            <button
+              onClick={handleExitAdvising}
+              className="flex items-center gap-1.5 text-xs font-medium text-accent-700 hover:text-accent-900 transition-colors"
+            >
+              <ArrowLeftRight className="size-3.5" />
+              {t('nav.exitAdvising', 'Switch organisation')}
+            </button>
           </div>
         )}
 

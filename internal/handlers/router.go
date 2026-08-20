@@ -157,41 +157,34 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 			r.Post("/sessions/revoke-all", orgH.RevokeAllSessions)
 		})
 
-		// ── Org ────────────────────────────────────────────────────
-		r.Route("/api/v1/org", func(r chi.Router) {
-			// No role gate — every authenticated org user (including
-			// viewers) can read their own profile and their own org's
-			// public details. Required by LoginPage.tsx (real mode).
-			r.Get("/me", orgH.GetMe)
-			r.Get("/", orgH.GetOrg)
-
-			// Org admin only.
-			r.Group(func(r chi.Router) {
-				r.Use(middleware.RequireRole(models.RoleOrgAdmin))
-				r.Patch("/", orgH.UpdateOrgProfile)
-				r.Get("/users", orgH.ListUsers)
-				r.Patch("/users/{userID}", orgH.UpdateUser)
-				r.Get("/invitations", orgH.ListInvitations)
-				r.Post("/invitations", orgH.SendInvitation)
-				r.Delete("/invitations/{invitationID}", orgH.CancelInvitation)
-				r.Post("/invitations/{invitationID}/resend", orgH.ResendInvitation)
-				r.Get("/sso", ssoH.GetConfig)
-				r.Put("/sso", ssoH.UpsertConfig)
-				r.Delete("/sso", ssoH.DeleteConfig)
-				r.Get("/audit-log", orgH.ListAuditLog)
-			})
-		})
-
 		// ── Platform admin ─────────────────────────────────────────
 		r.Route("/api/v1/admin", func(r chi.Router) {
-			r.Use(middleware.RequireRole(models.RoleSuperAdmin, models.RolePlatformSupport))
-			r.Get("/stats", adminH.GetStats)
-			r.Get("/orgs", adminH.ListOrgs)
-			r.Get("/orgs/{orgID}", adminH.GetOrgDetail)
-			r.Get("/audit-log", adminH.ListAuditLog)
-			r.Get("/platform-users", adminH.ListPlatformUsers)
-			r.Get("/platform-users/invitations", adminH.ListPlatformInvitations)
-			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Post("/orgs", adminH.CreateOrg)
+			// Org directory — readable/creatable by super_admin,
+			// platform_support, AND advisor. An advisor has no admin
+			// console access beyond this: it's the "pick or create an org
+			// to advise" surface only, not the rest of platform admin.
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequireRole(
+					models.RoleSuperAdmin, models.RolePlatformSupport, models.RoleAdvisor,
+				))
+				r.Get("/orgs", adminH.ListOrgs)
+				r.Get("/orgs/{orgID}", adminH.GetOrgDetail)
+			})
+			r.With(middleware.RequireRole(
+				models.RoleSuperAdmin, models.RoleAdvisor,
+			)).Post("/orgs", adminH.CreateOrg)
+
+			// Everything else in platform admin stays super_admin /
+			// platform_support only — advisor does not get platform
+			// stats, cross-org audit log, org deactivation/deletion, or
+			// platform-user management.
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequireRole(models.RoleSuperAdmin, models.RolePlatformSupport))
+				r.Get("/stats", adminH.GetStats)
+				r.Get("/audit-log", adminH.ListAuditLog)
+				r.Get("/platform-users", adminH.ListPlatformUsers)
+				r.Get("/platform-users/invitations", adminH.ListPlatformInvitations)
+			})
 			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Patch("/orgs/{orgID}", adminH.UpdateOrg)
 			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Delete("/orgs/{orgID}", adminH.DeleteOrg)
 			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Post("/org-invitations", adminH.SendOrgInvitation)
@@ -201,203 +194,246 @@ func NewRouter(cfg *config.Config, db *pgxpool.Pool) (http.Handler, error) {
 			r.With(middleware.RequireRole(models.RoleSuperAdmin)).Patch("/platform-users/{userID}", adminH.UpdatePlatformUser)
 		})
 
-		// ── Plans ──────────────────────────────────────────────────
-		r.Route("/api/v1/plans", func(r chi.Router) {
-			r.Get("/", planH.ListPlans)
-			r.Get("/{planID}", planH.GetPlan)
-			r.Get("/{planID}/progress", planH.GetProgress)
-			r.Get("/{planID}/activities", planH.ListActivities) // ?objective_id=&category=advanced_research&status=
-			r.Get("/{planID}/links", planH.ListPlanLinks)
-			r.Get("/{planID}/auto-links", planH.ListAutoLinks)
+		// ── Org-scoped routes ────────────────────────────────────────
+		// Everything from here through Reports operates on a single
+		// organisation's data. Wrapped in ResolveAdvisorOrgContext so an
+		// advisor's X-Org-Context header can swap their effective claims
+		// (org_admin role, target org) AND re-point the RLS connection
+		// WithRLS already pinned above — see advisor_context.go for why
+		// both need updating together, and why this is a no-op for every
+		// non-advisor role and for advisor requests that omit the header
+		// (which then correctly fall through to RequireRole(RoleOrgAdmin,
+		// ...) below and get rejected, forcing "select an org first").
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.ResolveAdvisorOrgContext(db))
 
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/", planH.CreatePlan)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Put("/{planID}", planH.UpdatePlan)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin,
-			)).Delete("/{planID}", planH.DeletePlan)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/{planID}/duplicate", planH.DuplicatePlan)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/{planID}/activities", planH.CreateActivity)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin,
-			)).Post("/{planID}/viewers", planH.GrantPlanViewer)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin,
-			)).Delete("/{planID}/viewers/{userID}", planH.RevokePlanViewer)
-			// ── Strategic pillars / objectives ──────────────────────
-			r.Get("/{planID}/pillars", planH.ListPillars)
-			r.Get("/{planID}/objectives", planH.ListObjectives)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/{planID}/pillars", planH.CreatePillar)
+			// ── Org ────────────────────────────────────────────────
+			r.Route("/api/v1/org", func(r chi.Router) {
+				// No role gate — every authenticated org user (including
+				// viewers) can read their own profile and their own org's
+				// public details. Required by LoginPage.tsx (real mode).
+				// An advisor without an X-Org-Context header simply has
+				// no org to read here (claims.OrgID is nil), same as
+				// today for any platform-tier user.
+				r.Get("/me", orgH.GetMe)
+				r.Get("/", orgH.GetOrg)
 
-			r.Get("/{planID}/milestones", milestoneH.ListMilestones)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/{planID}/milestones", milestoneH.CreateMilestone)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/{planID}/reports", reportsH.Generate)
-			r.Get("/{planID}/reports", reportsH.History)
+				// Org admin only — an advisor with a valid X-Org-Context
+				// header is treated as org_admin here, per design.
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireRole(models.RoleOrgAdmin))
+					r.Patch("/", orgH.UpdateOrgProfile)
+					r.Get("/users", orgH.ListUsers)
+					r.Patch("/users/{userID}", orgH.UpdateUser)
+					r.Get("/invitations", orgH.ListInvitations)
+					r.Post("/invitations", orgH.SendInvitation)
+					r.Delete("/invitations/{invitationID}", orgH.CancelInvitation)
+					r.Post("/invitations/{invitationID}/resend", orgH.ResendInvitation)
+					r.Get("/sso", ssoH.GetConfig)
+					r.Put("/sso", ssoH.UpsertConfig)
+					r.Delete("/sso", ssoH.DeleteConfig)
+					r.Get("/audit-log", orgH.ListAuditLog)
+				})
+			})
 
-			// ── Chapter 2: Strategic Focus ───────────────────────────
-			r.Get("/{planID}/core-values", planH.ListCoreValues)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Put("/{planID}/strategic-focus", planH.UpdateStrategicFocus)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/{planID}/core-values", planH.CreateCoreValue)
+			// ── Plans ──────────────────────────────────────────────────
+			r.Route("/api/v1/plans", func(r chi.Router) {
+				r.Get("/", planH.ListPlans)
+				r.Get("/{planID}", planH.GetPlan)
+				r.Get("/{planID}/progress", planH.GetProgress)
+				r.Get("/{planID}/activities", planH.ListActivities) // ?objective_id=&category=advanced_research&status=
+				r.Get("/{planID}/links", planH.ListPlanLinks)
+				r.Get("/{planID}/auto-links", planH.ListAutoLinks)
 
-			// ── Chapter 3: Situational Analysis ──────────────────────
-			r.Get("/{planID}/stakeholders", planH.ListStakeholders)
-			r.Get("/{planID}/swot-items", planH.ListSWOTItems)
-			r.Get("/{planID}/pestel-items", planH.ListPESTELItems)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/{planID}/stakeholders", planH.CreateStakeholder)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/{planID}/swot-items", planH.CreateSWOTItem)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/{planID}/pestel-items", planH.CreatePESTELItem)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/", planH.CreatePlan)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Put("/{planID}", planH.UpdatePlan)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin,
+				)).Delete("/{planID}", planH.DeletePlan)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/{planID}/duplicate", planH.DuplicatePlan)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/{planID}/activities", planH.CreateActivity)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin,
+				)).Post("/{planID}/viewers", planH.GrantPlanViewer)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin,
+				)).Delete("/{planID}/viewers/{userID}", planH.RevokePlanViewer)
+				// ── Strategic pillars / objectives ──────────────────────
+				r.Get("/{planID}/pillars", planH.ListPillars)
+				r.Get("/{planID}/objectives", planH.ListObjectives)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/{planID}/pillars", planH.CreatePillar)
 
-			// ── Chapter 6: Organisational Structure ──────────────────
-			r.Get("/{planID}/org-structure-roles", planH.ListOrgStructureRoles)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/{planID}/org-structure-roles", planH.CreateOrgStructureRole)
+				r.Get("/{planID}/milestones", milestoneH.ListMilestones)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/{planID}/milestones", milestoneH.CreateMilestone)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/{planID}/reports", reportsH.Generate)
+				r.Get("/{planID}/reports", reportsH.History)
 
-			// ── Chapter 7: Monitoring & Evaluation ───────────────────
-			r.Get("/{planID}/me-items", planH.ListMEItems)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/{planID}/me-items", planH.CreateMEItem)
+				// ── Chapter 2: Strategic Focus ───────────────────────────
+				r.Get("/{planID}/core-values", planH.ListCoreValues)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Put("/{planID}/strategic-focus", planH.UpdateStrategicFocus)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/{planID}/core-values", planH.CreateCoreValue)
 
-		})
+				// ── Chapter 3: Situational Analysis ──────────────────────
+				r.Get("/{planID}/stakeholders", planH.ListStakeholders)
+				r.Get("/{planID}/swot-items", planH.ListSWOTItems)
+				r.Get("/{planID}/pestel-items", planH.ListPESTELItems)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/{planID}/stakeholders", planH.CreateStakeholder)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/{planID}/swot-items", planH.CreateSWOTItem)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/{planID}/pestel-items", planH.CreatePESTELItem)
 
-		// ── Activities ─────────────────────────────────────────────
-		r.Route("/api/v1/activities/{activityID}", func(r chi.Router) {
-			r.Get("/", planH.GetActivity)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner, models.RoleContributor,
-			)).Put("/", planH.UpdateActivity)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Delete("/", planH.DeleteActivity)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/links", planH.CreateActivityLink)
-			r.Get("/links", planH.ListActivityLinks)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Delete("/links/{linkID}", planH.DeleteActivityLink)
-		})
+				// ── Chapter 6: Organisational Structure ──────────────────
+				r.Get("/{planID}/org-structure-roles", planH.ListOrgStructureRoles)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/{planID}/org-structure-roles", planH.CreateOrgStructureRole)
 
-		// ── Strategic pillars / objectives ───────────────────────────
-		r.Route("/api/v1/pillars/{pillarID}", func(r chi.Router) {
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Put("/", planH.UpdatePillar)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Delete("/", planH.DeletePillar)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/objectives", planH.CreateObjective)
-		})
-		r.Route("/api/v1/objectives/{objectiveID}", func(r chi.Router) {
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Put("/", planH.UpdateObjective)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Delete("/", planH.DeleteObjective)
-		})
+				// ── Chapter 7: Monitoring & Evaluation ───────────────────
+				r.Get("/{planID}/me-items", planH.ListMEItems)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/{planID}/me-items", planH.CreateMEItem)
 
-		r.Route("/api/v1/core-values/{coreValueID}", func(r chi.Router) {
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Put("/", planH.UpdateCoreValue)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Delete("/", planH.DeleteCoreValue)
-		})
-		r.Route("/api/v1/stakeholders/{stakeholderID}", func(r chi.Router) {
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Put("/", planH.UpdateStakeholder)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Delete("/", planH.DeleteStakeholder)
-		})
-		r.Route("/api/v1/swot-items/{swotItemID}", func(r chi.Router) {
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Put("/", planH.UpdateSWOTItem)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Delete("/", planH.DeleteSWOTItem)
-		})
-		r.Route("/api/v1/pestel-items/{pestelItemID}", func(r chi.Router) {
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Put("/", planH.UpdatePESTELItem)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Delete("/", planH.DeletePESTELItem)
-		})
-		r.Route("/api/v1/org-structure-roles/{roleID}", func(r chi.Router) {
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Put("/", planH.UpdateOrgStructureRole)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Delete("/", planH.DeleteOrgStructureRole)
-		})
-		r.Route("/api/v1/me-items/{meItemID}", func(r chi.Router) {
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Put("/", planH.UpdateMEItem)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Delete("/", planH.DeleteMEItem)
-		})
+			})
 
-		// ── Milestones ─────────────────────────────────────────────
-		r.Route("/api/v1/milestones/{milestoneID}", func(r chi.Router) {
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Put("/", milestoneH.UpdateMilestone)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin,
-			)).Delete("/", milestoneH.DeleteMilestone)
-		})
+			// ── Activities ─────────────────────────────────────────────
+			r.Route("/api/v1/activities/{activityID}", func(r chi.Router) {
+				r.Get("/", planH.GetActivity)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner, models.RoleContributor,
+				)).Put("/", planH.UpdateActivity)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Delete("/", planH.DeleteActivity)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/links", planH.CreateActivityLink)
+				r.Get("/links", planH.ListActivityLinks)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Delete("/links/{linkID}", planH.DeleteActivityLink)
+			})
 
-		// ── AI (Sprint C) ───────────────────────────────────────────
-		r.Route("/api/v1/ai", func(r chi.Router) {
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/draft", aiH.Draft)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/summary", aiH.Summary)
-			r.With(middleware.RequireRole(
-				models.RoleOrgAdmin, models.RolePlanner,
-			)).Post("/suggest-links", aiH.SuggestLinks)
-		})
+			// ── Strategic pillars / objectives ───────────────────────────
+			r.Route("/api/v1/pillars/{pillarID}", func(r chi.Router) {
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Put("/", planH.UpdatePillar)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Delete("/", planH.DeletePillar)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/objectives", planH.CreateObjective)
+			})
+			r.Route("/api/v1/objectives/{objectiveID}", func(r chi.Router) {
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Put("/", planH.UpdateObjective)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Delete("/", planH.DeleteObjective)
+			})
 
-		// ── Reports (Sprint D) ─────────────────────────────────────
-		r.Get("/api/v1/reports/{jobID}", reportsH.Poll)
-		r.Get("/api/v1/reports/{jobID}/download", reportsH.Download)
+			r.Route("/api/v1/core-values/{coreValueID}", func(r chi.Router) {
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Put("/", planH.UpdateCoreValue)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Delete("/", planH.DeleteCoreValue)
+			})
+			r.Route("/api/v1/stakeholders/{stakeholderID}", func(r chi.Router) {
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Put("/", planH.UpdateStakeholder)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Delete("/", planH.DeleteStakeholder)
+			})
+			r.Route("/api/v1/swot-items/{swotItemID}", func(r chi.Router) {
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Put("/", planH.UpdateSWOTItem)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Delete("/", planH.DeleteSWOTItem)
+			})
+			r.Route("/api/v1/pestel-items/{pestelItemID}", func(r chi.Router) {
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Put("/", planH.UpdatePESTELItem)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Delete("/", planH.DeletePESTELItem)
+			})
+			r.Route("/api/v1/org-structure-roles/{roleID}", func(r chi.Router) {
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Put("/", planH.UpdateOrgStructureRole)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Delete("/", planH.DeleteOrgStructureRole)
+			})
+			r.Route("/api/v1/me-items/{meItemID}", func(r chi.Router) {
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Put("/", planH.UpdateMEItem)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Delete("/", planH.DeleteMEItem)
+			})
+
+			// ── Milestones ─────────────────────────────────────────────
+			r.Route("/api/v1/milestones/{milestoneID}", func(r chi.Router) {
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Put("/", milestoneH.UpdateMilestone)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin,
+				)).Delete("/", milestoneH.DeleteMilestone)
+			})
+
+			// ── AI (Sprint C) ───────────────────────────────────────────
+			r.Route("/api/v1/ai", func(r chi.Router) {
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/draft", aiH.Draft)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/summary", aiH.Summary)
+				r.With(middleware.RequireRole(
+					models.RoleOrgAdmin, models.RolePlanner,
+				)).Post("/suggest-links", aiH.SuggestLinks)
+			})
+
+			// ── Reports (Sprint D) ─────────────────────────────────────
+			r.Get("/api/v1/reports/{jobID}", reportsH.Poll)
+			r.Get("/api/v1/reports/{jobID}/download", reportsH.Download)
+		}) // end org-scoped route group (ResolveAdvisorOrgContext)
 	})
 
 	return r, nil
