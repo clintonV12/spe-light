@@ -18,6 +18,7 @@
  */
 
 import { useAuthStore } from '../store/auth'
+import { advisorApi } from '../api/endpoints'
 import type { UserRole } from '../types'
 
 // ── Role hierarchy ────────────────────────────────────────────────────────────
@@ -25,6 +26,13 @@ import type { UserRole } from '../types'
 const ROLE_RANK: Record<UserRole, number> = {
   super_admin:      100,
   platform_support:  80,
+  // Same rank as org_admin, not a distinct tier — an advisor is only ever
+  // evaluated by this hook after it has selected an org (ProtectedRoute
+  // redirects to /org-picker before that; see the isOrglessAdvisor guard
+  // below for the same rule enforced defensively here too), at which
+  // point every capability below should behave exactly as it does for a
+  // real org_admin, matching the backend's ResolveAdvisorOrgContext swap.
+  advisor:           60,
   org_admin:         60,
   planner:           40,
   contributor:       20,
@@ -87,7 +95,15 @@ export function usePermission(): {
   const user = useAuthStore((s) => s.user)
   const role = user?.role ?? null
 
-  if (!role) {
+  // An advisor with no org selected yet has nothing to grant capabilities
+  // over — ProtectedRoute already keeps this case from reaching a page
+  // that would call this hook (it redirects to /org-picker first), but
+  // this hook has no way to know that on its own, so it treats an
+  // org-less advisor the same as unauthenticated below rather than
+  // assuming a role rank it hasn't actually earned access to yet.
+  const isOrglessAdvisor = role === 'advisor' && !advisorApi.currentOrgId()
+
+  if (!role || isOrglessAdvisor) {
     // Unauthenticated — all false
     const none = Object.fromEntries(
       Object.keys({} as PermissionSet).map((k) => [k, false])
@@ -105,7 +121,12 @@ export function usePermission(): {
       viewAdminPanel: false, createOrg: false, deactivateOrg: false,
     }
     void none
-    return { can: noCan, role: null, isPlatform: false, isOrgUser: false }
+    // role is still returned as its real value (not forced to null) for
+    // the org-less-advisor case — callers that want to show "pick an org
+    // to continue" rather than a generic "please sign in" need to tell the
+    // two apart, and ProtectedRoute is what actually enforces the redirect
+    // either way, so returning the true role here costs nothing.
+    return { can: noCan, role, isPlatform: false, isOrgUser: false }
   }
 
   const isPlatform = role === 'super_admin' || role === 'platform_support'

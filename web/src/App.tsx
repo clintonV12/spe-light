@@ -80,11 +80,24 @@ export default function App() {
           <Route path="/org-picker" element={<Suspense fallback={<PageLoader />}><OrgPickerPage /></Suspense>} />
           <Route element={<AppShell />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard"   element={<Suspense fallback={<PageLoader />}><DashboardPage /></Suspense>} />
-            <Route path="/plans"       element={<Suspense fallback={<PageLoader />}><PlansPage /></Suspense>} />
-            <Route path="/plans/:planId" element={<Suspense fallback={<PageLoader />}><PlanDetailPage /></Suspense>} />
-            <Route path="/plans/:planId/activities/:activityId" element={<Suspense fallback={<PageLoader />}><ActivityEditorPage /></Suspense>} />
-            <Route path="/reports"     element={<Suspense fallback={<PageLoader />}><ReportsPage /></Suspense>} />
+            {/* minimumRole="viewer" (the lowest org-tier rank) doesn't
+                restrict which org-tier role can get in — every one of them
+                already clears it. What it actually does is exclude
+                platform-tier roles (super_admin, platform_support, and an
+                advisor with no org selected) via ProtectedRoute's
+                isPlatformTier-vs-gateIsOrgTier check, redirecting them to
+                /platform-admin or /org-picker respectively instead of
+                letting them land on a page that 403s on every API call.
+                Previously these four routes had no gate at all — reachable
+                (and broken) for platform-tier roles via a typed URL, a
+                stale command-palette entry, or a keyboard shortcut. */}
+            <Route element={<ProtectedRoute minimumRole="viewer" />}>
+              <Route path="/dashboard"   element={<Suspense fallback={<PageLoader />}><DashboardPage /></Suspense>} />
+              <Route path="/plans"       element={<Suspense fallback={<PageLoader />}><PlansPage /></Suspense>} />
+              <Route path="/plans/:planId" element={<Suspense fallback={<PageLoader />}><PlanDetailPage /></Suspense>} />
+              <Route path="/plans/:planId/activities/:activityId" element={<Suspense fallback={<PageLoader />}><ActivityEditorPage /></Suspense>} />
+              <Route path="/reports"     element={<Suspense fallback={<PageLoader />}><ReportsPage /></Suspense>} />
+            </Route>
             {/* No role gate — every authenticated user, org-tier or
                 platform-tier, manages their own account here. */}
             <Route path="/profile"     element={<Suspense fallback={<PageLoader />}><ProfilePage /></Suspense>} />

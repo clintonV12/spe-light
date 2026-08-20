@@ -34,7 +34,11 @@ export const ROLE_HIERARCHY: Record<UserRole, number> = {
 // platform-tier (org_id nil on its own user row), but functionally it's
 // the one platform-tier role whose entire purpose is to act inside org-tier
 // pages — see the dedicated branch below instead.
-const PLATFORM_ROLES: UserRole[] = ['super_admin', 'platform_support']
+//
+// Exported so other role-aware UI (CommandPalette's page-result filtering,
+// for one) can reuse this exact list instead of re-deriving "which roles
+// have no org access" a second time and risking drift between the two.
+export const PLATFORM_ROLES: UserRole[] = ['super_admin', 'platform_support']
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ minimumRole }) => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)

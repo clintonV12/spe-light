@@ -1,5 +1,8 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '../store/auth'
+import { advisorApi } from '../api/endpoints'
+import { ROLE_HIERARCHY, PLATFORM_ROLES } from '../components/layout/ProtectedRoute'
 
 export interface ShortcutDefinition {
   keys: string[]          // display labels, e.g. ['g', 'd']
@@ -11,7 +14,6 @@ export const SHORTCUT_DEFS: ShortcutDefinition[] = [
   // Navigation — g prefix
   { keys: ['g', 'd'], description: 'Go to Dashboard',  group: 'Navigate' },
   { keys: ['g', 'p'], description: 'Go to Plans',      group: 'Navigate' },
-  { keys: ['g', 'r'], description: 'Go to Progress',   group: 'Navigate' },
   { keys: ['g', 'e'], description: 'Go to Reports',    group: 'Navigate' },
   { keys: ['g', 'a'], description: 'Go to Admin',      group: 'Navigate' },
   // Actions
@@ -37,6 +39,18 @@ export function useKeyboardShortcuts({
   onOpenHelp,
 }: UseKeyboardShortcutsOptions) {
   const navigate = useNavigate()
+  const role = useAuthStore((s) => s.user?.role)
+
+  // Same access rules ProtectedRoute enforces route-side and CommandPalette
+  // enforces on search results — applied here too so a g-chord shortcut
+  // can't fire a navigate() to a page the very next render bounces the
+  // user away from. A platform-tier role (super_admin, platform_support)
+  // or an advisor with no org selected yet has no org context at all.
+  const isPlatformTier = role ? PLATFORM_ROLES.includes(role) : false
+  const isOrglessAdvisor = role === 'advisor' && !advisorApi.currentOrgId()
+  const canSeeOrgPages = !isPlatformTier && !isOrglessAdvisor
+  const canSeeAdminPage = canSeeOrgPages && !!role && ROLE_HIERARCHY[role] >= ROLE_HIERARCHY.org_admin
+
   // g-chord state: after pressing 'g', wait for the second key
   const gChordActive = useRef(false)
   const gChordTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -69,11 +83,10 @@ export function useKeyboardShortcuts({
       if (gChordActive.current) {
         resetGChord()
         switch (e.key.toLowerCase()) {
-          case 'd': navigate('/dashboard'); break
-          case 'p': navigate('/plans');     break
-          case 'r': navigate('/progress');  break
-          case 'e': navigate('/reports');   break
-          case 'a': navigate('/admin');     break
+          case 'd': if (canSeeOrgPages) navigate('/dashboard'); break
+          case 'p': if (canSeeOrgPages) navigate('/plans');     break
+          case 'e': if (canSeeOrgPages) navigate('/reports');   break
+          case 'a': if (canSeeAdminPage) navigate('/admin');    break
         }
         e.preventDefault()
         return
@@ -107,5 +120,5 @@ export function useKeyboardShortcuts({
       window.removeEventListener('keydown', handler)
       if (gChordTimer.current) clearTimeout(gChordTimer.current)
     }
-  }, [navigate, onOpenSearch, onOpenCreate, onOpenHelp, resetGChord])
+  }, [navigate, onOpenSearch, onOpenCreate, onOpenHelp, resetGChord, canSeeOrgPages, canSeeAdminPage])
 }

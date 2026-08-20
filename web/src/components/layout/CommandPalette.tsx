@@ -1,11 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Search, FileText, LayoutDashboard, BarChart2, FileOutput, Settings,
+  Search, FileText, LayoutDashboard, FileOutput, Settings,
   CornerDownLeft, ArrowUp, ArrowDown, X, BookOpen,
 } from 'lucide-react'
 import { useGlobalSearch } from '../../hooks/useGlobalSearch'
 import type { SearchResult } from '../../hooks/useGlobalSearch'
+import { useAuthStore } from '../../store/auth'
+import { advisorApi } from '../../api/endpoints'
+import { ROLE_HIERARCHY, PLATFORM_ROLES } from './ProtectedRoute'
 
 const PHASE_DOT: Record<'P1' | 'P2' | 'P3', string> = {
   P1: 'bg-p1', P2: 'bg-p2', P3: 'bg-p3',
@@ -14,7 +17,6 @@ const PHASE_DOT: Record<'P1' | 'P2' | 'P3', string> = {
 const PAGE_ICON: Record<string, React.ReactNode> = {
   '/dashboard': <LayoutDashboard className="size-4" />,
   '/plans':     <FileText className="size-4" />,
-  '/progress':  <BarChart2 className="size-4" />,
   '/reports':   <FileOutput className="size-4" />,
   '/admin':     <Settings className="size-4" />,
   // Icon mapping only — /docs itself isn't in useGlobalSearch's static page
@@ -23,6 +25,17 @@ const PAGE_ICON: Record<string, React.ReactNode> = {
   // it'll pick up this icon automatically; until then this entry is inert.
   '/docs':      <BookOpen className="size-4" />,
 }
+
+// The authoritative set of pages that actually exist (mirrors App.tsx's
+// route tree). useGlobalSearch builds its own static "page" list
+// independently (that hook wasn't available when this was last touched),
+// so if it still lists a page that's since been removed — like the old
+// standalone Progress page — filtering results against this set here
+// catches it without needing to touch that hook too. '/platform-admin'
+// and '/profile' are deliberately not page-search results anywhere in the
+// app (no nav entry links to them via search), so they're left out; add
+// them here if that ever changes.
+const KNOWN_PAGES = new Set(['/dashboard', '/plans', '/reports', '/admin', '/docs'])
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-ink-100 text-ink-500',
@@ -41,10 +54,35 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const navigate = useNavigate()
   const { buildIndex, search, isIndexing } = useGlobalSearch()
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<SearchResult[]>([])
+  const [rawResults, setRawResults] = useState<SearchResult[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+
+  const role = useAuthStore((s) => s.user?.role)
+
+  // Same access rules ProtectedRoute enforces server-route-side, applied
+  // here so the palette never offers a destination it's about to bounce
+  // the user away from. A platform-tier user (super_admin,
+  // platform_support) or an advisor that hasn't picked an org yet has no
+  // org context at all — every org-scoped page 403s for them — so those
+  // pages are filtered out of results entirely rather than shown and then
+  // redirected away from after the fact.
+  const isPlatformTier = role ? PLATFORM_ROLES.includes(role) : false
+  const isOrglessAdvisor = role === 'advisor' && !advisorApi.currentOrgId()
+  const canSeeOrgPages = !isPlatformTier && !isOrglessAdvisor
+  const canSeeAdminPage = canSeeOrgPages && !!role && ROLE_HIERARCHY[role] >= ROLE_HIERARCHY.org_admin
+
+  const results = useMemo(() => {
+    return rawResults.filter((r) => {
+      if (r.kind !== 'page') return true // plan/activity results are already org-scoped by the index itself
+      if (!KNOWN_PAGES.has(r.path)) return false // stale entries (e.g. the removed Progress page)
+      if (r.path === '/admin') return canSeeAdminPage
+      if (r.path === '/docs') return true
+      // /dashboard, /plans, /reports — org-tier only
+      return canSeeOrgPages
+    })
+  }, [rawResults, canSeeOrgPages, canSeeAdminPage])
 
   // Build the index once when the palette first opens
   useEffect(() => {
@@ -54,7 +92,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
   // Re-run search whenever query or open state changes
   useEffect(() => {
     if (!open) return
-    setResults(search(query))
+    setRawResults(search(query))
     setActiveIndex(0)
   }, [open, query, search])
 

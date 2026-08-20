@@ -5,6 +5,7 @@ import { useUIStore } from '../store/ui'
 import type { ToastVariant } from '../store/ui'
 import type { UserRole } from '../types'
 import apiClient from '../api/client'
+import { advisorApi } from '../api/endpoints'
 
 // ─── useOnlineStatus ────────────────────────────────────────────────────────
 
@@ -70,6 +71,9 @@ export function useSyncEngine() {
 const ROLE_HIERARCHY: Record<UserRole, number> = {
   super_admin: 100,
   platform_support: 80,
+  // See hooks/usePermission.ts's ROLE_RANK for the full rationale — same
+  // rank as org_admin, only meaningful once an advisor has selected an org.
+  advisor: 60,
   org_admin: 60,
   planner: 40,
   contributor: 20,
@@ -79,12 +83,21 @@ const ROLE_HIERARCHY: Record<UserRole, number> = {
 export function usePermission() {
   const role = useAuthStore((s) => s.user?.role)
 
+  // Mirrors ProtectedRoute's redirect-to-/org-picker rule defensively: an
+  // advisor with no org selected has ROLE_HIERARCHY.advisor === 60 (same
+  // as org_admin) but hasn't actually been granted org_admin-equivalent
+  // access to anything yet — that only happens once X-Org-Context is set
+  // server-side. Without this, hasRole('planner') etc. would read true for
+  // an advisor sitting on /org-picker before it's picked anything.
+  const hasSelectedOrg = advisorApi.currentOrgId() !== null
+
   const hasRole = useCallback(
     (minimum: UserRole): boolean => {
       if (!role) return false
+      if (role === 'advisor' && !hasSelectedOrg) return false
       return ROLE_HIERARCHY[role] >= ROLE_HIERARCHY[minimum]
     },
-    [role],
+    [role, hasSelectedOrg],
   )
 
   const can = {
