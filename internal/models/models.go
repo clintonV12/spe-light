@@ -219,12 +219,19 @@ type TokenClaims struct {
 // ── Refresh token ─────────────────────────────────────────────────────────
 
 type RefreshToken struct {
-	ID        uuid.UUID  `db:"id"`
-	UserID    uuid.UUID  `db:"user_id"`
-	TokenHash string     `db:"token_hash"`
-	ExpiresAt time.Time  `db:"expires_at"`
-	CreatedAt time.Time  `db:"created_at"`
-	RevokedAt *time.Time `db:"revoked_at"`
+	ID        uuid.UUID `db:"id"`
+	UserID    uuid.UUID `db:"user_id"`
+	TokenHash string    `db:"token_hash"`
+	ExpiresAt time.Time `db:"expires_at"`
+	CreatedAt time.Time `db:"created_at"`
+	// LastUsedAt is bumped to NOW() every time this token is presented to
+	// RefreshToken() (see authsvc.Service.RefreshToken) — set to CreatedAt
+	// at insert time. Distinct from ExpiresAt: ExpiresAt is the token's
+	// fixed absolute lifetime (JWT_REFRESH_EXPIRY_DAYS); LastUsedAt is what
+	// SESSION_IDLE_TIMEOUT_MIN is checked against, so a session dies from
+	// inactivity long before its 30-day absolute expiry if it goes quiet.
+	LastUsedAt time.Time  `db:"last_used_at"`
+	RevokedAt  *time.Time `db:"revoked_at"`
 }
 
 // ── SSO config ────────────────────────────────────────────────────────────

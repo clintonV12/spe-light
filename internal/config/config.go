@@ -31,6 +31,22 @@ type Config struct {
 	JWTAccessExpiryMin   int
 	JWTRefreshExpiryDays int
 
+	// SessionIdleTimeoutMin is how many minutes a session can go without any
+	// request before it's force-expired, independent of the refresh token's
+	// own 30-day absolute expiry (JWTRefreshExpiryDays). Enforced in
+	// authsvc.Service.RefreshToken via refresh_tokens.last_used_at (see
+	// migration 016_refresh_token_activity) — every refresh call updates
+	// last_used_at, and a refresh attempt where too much time has passed
+	// since the last one is rejected outright rather than rotated.
+	//
+	// IMPORTANT: this can only catch idle time that spans at least one
+	// access-token refresh cycle — while the access token is still valid, no
+	// refresh call happens at all, so the backend has no signal either way.
+	// Keep JWTAccessExpiryMin <= SessionIdleTimeoutMin (ideally equal) or
+	// the effective idle bound is capped at JWTAccessExpiryMin regardless of
+	// this value — see the warning Load() prints if that's misconfigured.
+	SessionIdleTimeoutMin int
+
 	// Ollama
 	OllamaURL   string
 	OllamaModel string
@@ -97,6 +113,26 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid JWT_REFRESH_EXPIRY_DAYS: %w", err)
 	}
 
+	// Default 15 min — matches the "10-15 min idle logout" requirement out
+	// of the box. Must be positive; 0/negative would either mean "never
+	// enforced" or "always rejected" depending on how it's read downstream,
+	// neither of which is an intentional mode today, so it's rejected here
+	// rather than silently doing something surprising.
+	cfg.SessionIdleTimeoutMin, err = getEnvInt("SESSION_IDLE_TIMEOUT_MIN", 15)
+	if err != nil {
+		return nil, fmt.Errorf("invalid SESSION_IDLE_TIMEOUT_MIN: %w", err)
+	}
+	if cfg.SessionIdleTimeoutMin <= 0 {
+		return nil, fmt.Errorf("SESSION_IDLE_TIMEOUT_MIN must be a positive number of minutes")
+	}
+	if cfg.JWTAccessExpiryMin > cfg.SessionIdleTimeoutMin {
+		fmt.Fprintf(os.Stderr,
+			"WARNING: JWT_ACCESS_EXPIRY_MIN (%dm) is greater than SESSION_IDLE_TIMEOUT_MIN (%dm) — "+
+				"idle sessions can only be caught once the access token itself expires, so the "+
+				"effective idle timeout is capped at %dm regardless of SESSION_IDLE_TIMEOUT_MIN\n",
+			cfg.JWTAccessExpiryMin, cfg.SessionIdleTimeoutMin, cfg.JWTAccessExpiryMin)
+	}
+
 	cfg.SMTPPort, err = getEnvInt("SMTP_PORT", 587)
 	if err != nil {
 		return nil, fmt.Errorf("invalid SMTP_PORT: %w", err)
@@ -126,6 +162,13 @@ func (c *Config) JWTAccessExpiry() time.Duration {
 
 func (c *Config) JWTRefreshExpiry() time.Duration {
 	return time.Duration(c.JWTRefreshExpiryDays) * 24 * time.Hour
+}
+
+// SessionIdleTimeout is how long a session may go without a refresh call
+// before authsvc.Service.RefreshToken rejects it as idle. See
+// SessionIdleTimeoutMin's doc comment for the access-token-cycle caveat.
+func (c *Config) SessionIdleTimeout() time.Duration {
+	return time.Duration(c.SessionIdleTimeoutMin) * time.Minute
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

@@ -135,15 +135,22 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (*TokenResponse, 
 // RefreshToken rotates the refresh token: revokes the presented token and
 // issues a new token pair. This limits the blast radius if a refresh token
 // is stolen — re-use of a revoked token should trigger an alert (future work).
+//
+// Also enforces the inactivity timeout (SESSION_IDLE_TIMEOUT_MIN, see
+// config.go): a token that's otherwise valid and unexpired is still
+// rejected — and revoked — if it's gone longer than that between refreshes.
+// This is what actually makes "log out after N minutes idle" true; the
+// token's own ExpiresAt only bounds its absolute lifetime (30 days by
+// default) and says nothing about how long it's been sitting unused.
 func (s *Service) RefreshToken(ctx context.Context, plaintextToken string) (*TokenResponse, error) {
 	hash := auth.HashToken(plaintextToken)
 
 	var rt models.RefreshToken
 	err := s.db.QueryRow(ctx,
-		`SELECT id, user_id, expires_at, revoked_at
+		`SELECT id, user_id, expires_at, last_used_at, revoked_at
 		 FROM refresh_tokens WHERE token_hash = $1`,
 		hash,
-	).Scan(&rt.ID, &rt.UserID, &rt.ExpiresAt, &rt.RevokedAt)
+	).Scan(&rt.ID, &rt.UserID, &rt.ExpiresAt, &rt.LastUsedAt, &rt.RevokedAt)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("invalid refresh token")
 	}
@@ -157,6 +164,15 @@ func (s *Service) RefreshToken(ctx context.Context, plaintextToken string) (*Tok
 	}
 	if time.Now().After(rt.ExpiresAt) {
 		return nil, fmt.Errorf("refresh token has expired")
+	}
+	if idleFor := time.Since(rt.LastUsedAt); idleFor > s.cfg.SessionIdleTimeout() {
+		// Revoke on the way out — this token line is dead either way, so
+		// don't leave it sitting valid for a subsequent attempt to slip
+		// through if the clock check above is ever changed.
+		_, _ = s.db.Exec(ctx,
+			`UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1`, rt.ID)
+		slog.Info("session idle timeout", "token_id", rt.ID, "user_id", rt.UserID, "idle_for", idleFor)
+		return nil, fmt.Errorf("session expired due to inactivity — please log in again")
 	}
 
 	// Revoke before issuing — if the DB write below fails, the old token
@@ -475,8 +491,8 @@ func (s *Service) issueTokenPair(ctx context.Context, user *models.User) (*Token
 
 	expiresAt := time.Now().Add(s.cfg.JWTRefreshExpiry())
 	if _, err = s.db.Exec(ctx,
-		`INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
-		 VALUES ($1, $2, $3, $4)`,
+		`INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, last_used_at)
+		 VALUES ($1, $2, $3, $4, NOW())`,
 		uuid.New(), user.ID, hash, expiresAt); err != nil {
 		return nil, fmt.Errorf("store refresh token: %w", err)
 	}
