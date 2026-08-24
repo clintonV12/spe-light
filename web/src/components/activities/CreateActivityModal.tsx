@@ -287,6 +287,9 @@ export const CreateActivityModal: React.FC<CreateActivityModalProps> = ({
                     applying={ai.applying}
                     draft={ai.draft}
                     model={ai.model}
+                    attempts={ai.attempts}
+                    currentIndex={ai.currentIndex}
+                    onSelectAttempt={ai.selectAttempt}
                     onRegenerate={ai.generate}
                     onClose={ai.close}
                     onAccept={() => ai.accept(acceptAiKpis)}

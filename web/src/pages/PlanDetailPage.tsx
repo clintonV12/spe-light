@@ -100,6 +100,11 @@ export default function PlanDetailPage() {
   const { planId } = useParams<{ planId: string }>()
   const [searchParams] = useSearchParams()
   const initialChapter = searchParams.get('tab') as ChapterKey | null
+  // Set by ActivityEditorPage's backDestination() when returning from an
+  // objective-nested activity, so the pillar the person was actually
+  // working in re-expands instead of LocalPlanBoard defaulting to the
+  // first pillar on this fresh mount.
+  const initialPillarId = searchParams.get('pillar')
   const navigate = useNavigate()
   const { can } = usePermission()
   const { t } = useTranslation()
@@ -176,6 +181,7 @@ export default function PlanDetailPage() {
         onChanged={load}
         onPlanUpdated={setPlan}
         initialChapter={initialChapter ?? undefined}
+        initialExpandedPillarId={initialPillarId ?? undefined}
       />
     </div>
   )

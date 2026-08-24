@@ -43,6 +43,15 @@ interface LocalPlanBoardProps {
   canDelete: boolean
   /** Re-fetches plan + activities (and, inside this component, pillars/objectives) */
   onChanged: () => void
+  /**
+   * Pillar id to expand on initial load instead of defaulting to the first
+   * pillar — set by PlanDetailPage from the `pillar` query param when
+   * returning from an activity/KPI editor (see ActivityEditorPage's
+   * backDestination). Without this, every save-and-return remounts this
+   * component with a fresh `expanded` set and silently snaps back to
+   * pillar one, regardless of which pillar was actually being worked on.
+   */
+  initialExpandedPillarId?: string
 }
 
 // ─── Inline "add pillar" / "add objective" row ─────────────────────────────
@@ -150,7 +159,7 @@ function EditableTitle({ value, onSave, saving, textClassName, inputClassName }:
   )
 }
 
-export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, onChanged }: LocalPlanBoardProps) {
+export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, onChanged, initialExpandedPillarId }: LocalPlanBoardProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { success, error: toastError } = useToast()
@@ -158,6 +167,9 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
   const [pillars, setPillars] = useState<StrategicPillar[]>([])
   const [objectives, setObjectives] = useState<StrategicObjective[]>([])
   const [loading, setLoading] = useState(true)
+  // Left empty here on purpose — we don't yet know if initialExpandedPillarId
+  // (from the URL) actually refers to a real pillar. Resolved once pillars
+  // have loaded, in `load()` below.
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [addActivityFor, setAddActivityFor] = useState<string | null>(null)
@@ -173,9 +185,19 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
         const objectiveList = o ?? []
         setPillars(pillarList)
         setObjectives(objectiveList)
-        // Default to the first pillar expanded so the board isn't empty-looking.
+        // Default to the pillar we were asked to return to (see
+        // initialExpandedPillarId), falling back to the first pillar only
+        // so the board isn't empty-looking when there's no such request —
+        // e.g. landing here fresh from the plan list rather than coming
+        // back from an activity/KPI save.
         if (pillarList.length > 0) {
-          setExpanded((prev) => (prev.size === 0 ? new Set([pillarList[0].id]) : prev))
+          setExpanded((prev) => {
+            if (prev.size > 0) return prev
+            const target = initialExpandedPillarId && pillarList.some((p) => p.id === initialExpandedPillarId)
+              ? initialExpandedPillarId
+              : pillarList[0].id
+            return new Set([target])
+          })
         }
       })
       .finally(() => setLoading(false))

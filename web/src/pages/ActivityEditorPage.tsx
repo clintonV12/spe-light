@@ -297,8 +297,20 @@ function ActivityEditor({ activity, onChange, readOnly, objectives }: {
 // ordinary objective-nested activity, the Advanced Research tab for a
 // standalone one, or LocalPlanChapters' default tab if we don't know yet
 // (activity not loaded).
-function backDestination(planId: string, activity: Activity | null): string {
-  if (activity?.objective_id) return `/plans/${planId}?tab=pillars`
+//
+// For an objective-nested activity we also thread the pillar id through as
+// a `pillar` query param, so LocalPlanBoard can re-expand the pillar the
+// person was actually working in instead of always falling back to the
+// first one on remount. `formalObjectives` is optional — if it hasn't
+// loaded yet we still land on the right tab, just without the pillar
+// pre-expanded.
+function backDestination(planId: string, activity: Activity | null, formalObjectives: StrategicObjective[] = []): string {
+  if (activity?.objective_id) {
+    const objective = formalObjectives.find((o) => o.id === activity.objective_id)
+    return objective
+      ? `/plans/${planId}?tab=pillars&pillar=${objective.pillar_id}`
+      : `/plans/${planId}?tab=pillars`
+  }
   if (activity?.category === 'advanced_research') return `/plans/${planId}?tab=advanced`
   return `/plans/${planId}`
 }
@@ -458,13 +470,13 @@ export default function ActivityEditorPage() {
     setDeleting(true)
     try {
       await activitiesApi.delete(activityId)
-      // Same rule as the back button: return to the tab this activity
-      // actually lives on rather than LocalPlanChapters' default tab.
-      navigate(backDestination(planId, activity))
+      // Same rule as the back button: return to the tab (and pillar) this
+      // activity actually lives on rather than LocalPlanChapters' default.
+      navigate(backDestination(planId, activity, formalObjectives))
     } catch {
       setDeleting(false)
     }
-  }, [activityId, planId, navigate, activity])
+  }, [activityId, planId, navigate, activity, formalObjectives])
 
   // ── Cmd+S instant save ──────────────────────────────────────────────────────
 
@@ -518,7 +530,7 @@ export default function ActivityEditorPage() {
           under their own tab, so return there directly rather than
           dropping back to LocalPlanChapters' default 'focus' tab. */}
       <button
-        onClick={() => navigate(backDestination(planId!, activity))}
+        onClick={() => navigate(backDestination(planId!, activity, formalObjectives))}
         className="flex items-center gap-1.5 text-sm text-ink-400 hover:text-ink-700 transition-colors"
       >
         <ArrowLeft className="size-4" /> {t('activityEditor.backToPlan')}

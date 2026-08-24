@@ -32,6 +32,13 @@ interface LocalPlanChaptersProps {
    * omitted or not a recognized chapter key.
    */
   initialChapter?: ChapterKey
+  /**
+   * Pillar id to re-expand on first render of the Strategic Pillars board
+   * (see PlanDetailPage's `pillar` query param) — passed straight through
+   * to LocalPlanBoard so returning from an activity/KPI save lands back on
+   * the pillar the person was working in instead of the first one.
+   */
+  initialExpandedPillarId?: string
 }
 
 export type ChapterKey = 'focus' | 'analysis' | 'pillars' | 'org' | 'me' | 'tracking' | 'advanced'
@@ -49,7 +56,7 @@ const CHAPTERS: { key: ChapterKey; label: string; icon: React.ElementType }[] = 
 ]
 
 export const LocalPlanChapters: React.FC<LocalPlanChaptersProps> = ({
-  plan, activities, canEdit, canDelete, onChanged, onPlanUpdated, initialChapter,
+  plan, activities, canEdit, canDelete, onChanged, onPlanUpdated, initialChapter, initialExpandedPillarId,
 }) => {
   const isValidChapter = (key: ChapterKey | undefined): key is ChapterKey =>
     !!key && CHAPTERS.some((c) => c.key === key)
@@ -91,6 +98,7 @@ export const LocalPlanChapters: React.FC<LocalPlanChaptersProps> = ({
           canEdit={canEdit}
           canDelete={canDelete}
           onChanged={onChanged}
+          initialExpandedPillarId={initialExpandedPillarId}
         />
       )}
       {active === 'org' && <OrgStructureSection plan={plan} canEdit={canEdit} />}
@@ -213,6 +221,9 @@ const StrategicFocusSection: React.FC<{ plan: Plan; onPlanUpdated: (plan: Plan) 
             applying={ai.applying}
             draft={ai.draft}
             model={ai.model}
+            attempts={ai.attempts}
+            currentIndex={ai.currentIndex}
+            onSelectAttempt={ai.selectAttempt}
             onRegenerate={ai.generate}
             onClose={ai.close}
             onAccept={() => ai.accept(handleAiAccept)}
@@ -418,6 +429,9 @@ const StakeholderTable: React.FC<{
           applying={ai.applying}
           draft={ai.draft}
           model={ai.model}
+          attempts={ai.attempts}
+          currentIndex={ai.currentIndex}
+          onSelectAttempt={ai.selectAttempt}
           onRegenerate={ai.generate}
           onClose={ai.close}
           onAccept={() => ai.accept(handleAiAccept)}
@@ -610,6 +624,9 @@ const SWOTGrid: React.FC<{
           applying={ai.applying}
           draft={ai.draft}
           model={ai.model}
+          attempts={ai.attempts}
+          currentIndex={ai.currentIndex}
+          onSelectAttempt={ai.selectAttempt}
           onRegenerate={ai.generate}
           onClose={ai.close}
           onAccept={() => ai.accept(handleAiAccept)}
@@ -843,6 +860,9 @@ const PESTELTable: React.FC<{
           applying={ai.applying}
           draft={ai.draft}
           model={ai.model}
+          attempts={ai.attempts}
+          currentIndex={ai.currentIndex}
+          onSelectAttempt={ai.selectAttempt}
           onRegenerate={ai.generate}
           onClose={ai.close}
           onAccept={() => ai.accept(handleAiAccept)}
@@ -1120,6 +1140,9 @@ const OrgStructureSection: React.FC<{ plan: Plan; canEdit: boolean }> = ({ plan,
           applying={ai.applying}
           draft={ai.draft}
           model={ai.model}
+          attempts={ai.attempts}
+          currentIndex={ai.currentIndex}
+          onSelectAttempt={ai.selectAttempt}
           onRegenerate={ai.generate}
           onClose={ai.close}
           onAccept={() => ai.accept(handleAiAccept)}
@@ -1249,6 +1272,9 @@ const MESection: React.FC<{ plan: Plan; canEdit: boolean }> = ({ plan, canEdit }
           applying={ai.applying}
           draft={ai.draft}
           model={ai.model}
+          attempts={ai.attempts}
+          currentIndex={ai.currentIndex}
+          onSelectAttempt={ai.selectAttempt}
           onRegenerate={ai.generate}
           onClose={ai.close}
           onAccept={() => ai.accept(handleAiAccept)}

@@ -27,21 +27,37 @@ import type { KPI } from '../../types'
 //     previously — cramming a growing card into a `justify-between` row
 //     next to a title left it fighting for width instead of owning a row.
 
+export interface DraftAttempt {
+  draft: Record<string, unknown>
+  model: string
+  keywords: string
+}
+
+// A frontend-only "clipboard" of every draft generated in this panel
+// session (not persisted — resets on refresh/navigation, same as the rest
+// of this hook's state). Retry used to just overwrite `draft`, so a
+// person who generated something decent, wasn't sure, and hit Retry to
+// compare had no way back to the first version short of retrying again
+// and hoping. `attempts` keeps every generation around; `currentIndex`
+// points at whichever one is currently shown, and can be moved backward
+// *and* forward across the list rather than only ever appending.
 export function useAiDraft(planId: string, activityType: string, activityId?: string) {
   const [open, setOpen] = useState(false)
   const [keywords, setKeywords] = useState('')
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
-  const [draft, setDraft] = useState<Record<string, unknown> | null>(null)
-  const [model, setModel] = useState('')
+  const [attempts, setAttempts] = useState<DraftAttempt[]>([])
+  const [currentIndex, setCurrentIndex] = useState(-1)
   const { success, error } = useToast()
+
+  const draft = currentIndex >= 0 ? attempts[currentIndex]?.draft ?? null : null
+  const model = currentIndex >= 0 ? attempts[currentIndex]?.model ?? '' : ''
 
   const generate = async () => {
     const kw = keywords.split(',').map((k) => k.trim()).filter(Boolean)
     if (kw.length === 0) return
 
     setLoading(true)
-    setDraft(null)
     try {
       const result = await aiApi.draft({
         plan_id: planId,
@@ -55,8 +71,14 @@ export function useAiDraft(planId: string, activityType: string, activityId?: st
         // created in CreateActivityModal (no id yet).
         ...(activityId ? { activity_id: activityId } : {}),
       })
-      setDraft(result.draft)
-      setModel(result.model)
+      // Appended, never overwritten — the previous attempt (if any) stays
+      // in the list so Retry reads as "generate another option" rather
+      // than "throw the last one away".
+      setAttempts((prev) => {
+        const next = [...prev, { draft: result.draft, model: result.model, keywords: keywords.trim() }]
+        setCurrentIndex(next.length - 1)
+        return next
+      })
     } catch {
       error('AI generation failed. Is Ollama running?')
     } finally {
@@ -71,7 +93,15 @@ export function useAiDraft(planId: string, activityType: string, activityId?: st
 
   const close = () => {
     setOpen(false)
-    setDraft(null)
+    setAttempts([])
+    setCurrentIndex(-1)
+  }
+
+  // Jump to any past attempt without losing the others — this is the
+  // "select from clipboard" action, not a destructive swap.
+  const selectAttempt = (index: number) => {
+    if (index < 0 || index >= attempts.length) return
+    setCurrentIndex(index)
   }
 
   const accept = async (onAccept: (draft: Record<string, unknown>) => Promise<void>) => {
@@ -88,7 +118,11 @@ export function useAiDraft(planId: string, activityType: string, activityId?: st
     }
   }
 
-  return { open, keywords, setKeywords, loading, applying, draft, model, start, close, generate, accept }
+  return {
+    open, keywords, setKeywords, loading, applying, draft, model,
+    attempts, currentIndex, selectAttempt,
+    start, close, generate, accept,
+  }
 }
 
 // Shared by LocalActivityEditor.tsx and CreateActivityModal.tsx — both parse
@@ -240,7 +274,15 @@ export const AiAssistPanel: React.FC<{
   onRegenerate: () => void
   onAccept: () => void
   onClose: () => void
-}> = ({ keywords, onKeywordsChange, loading, applying, draft, model, onGenerate, onRegenerate, onAccept, onClose }) => (
+  /** Every draft generated so far this session — the "clipboard" the person can jump back to. */
+  attempts?: DraftAttempt[]
+  /** Index into `attempts` currently shown. */
+  currentIndex?: number
+  onSelectAttempt?: (index: number) => void
+}> = ({
+  keywords, onKeywordsChange, loading, applying, draft, model, onGenerate, onRegenerate, onAccept, onClose,
+  attempts = [], currentIndex = -1, onSelectAttempt,
+}) => (
   <div className="w-full rounded-2xl border-2 border-accent bg-accent-50 p-4 mb-4 space-y-3">
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-1.5">
@@ -252,7 +294,7 @@ export const AiAssistPanel: React.FC<{
       </button>
     </div>
 
-    {!draft && (
+    {!loading && !draft && (
       <>
         <Input
           placeholder="Enter keywords, separated by commas (e.g. fintech, East Africa, growth)"
@@ -273,8 +315,28 @@ export const AiAssistPanel: React.FC<{
       </>
     )}
 
+    {/* Shown for both the first generation and a Retry — a Retry keeps the
+        prior attempt in state (see useAiDraft.generate), so without this
+        branch the panel would render nothing at all while the new one is
+        in flight instead of showing it's working. */}
+    {loading && (
+      <div className="rounded-xl bg-white p-6 flex flex-col items-center justify-center gap-2 text-center">
+        <LwaziFace size={22} state="thinking" />
+        <p className="text-sm text-ink-500">
+          {draft ? 'Generating another option…' : 'Thinking…'}
+        </p>
+      </div>
+    )}
+
     {!loading && draft && (
       <>
+        {/* Shown from the very first draft, not just once there's a second
+            one to compare — otherwise the clipboard is invisible until the
+            person happens to hit Retry, which is exactly what made it hard
+            to find in the Vision & Mission panel. */}
+        {attempts.length > 0 && onSelectAttempt && (
+          <AttemptClipboard attempts={attempts} currentIndex={currentIndex} onSelect={onSelectAttempt} />
+        )}
         <div className="rounded-xl bg-white p-3 max-h-72 overflow-y-auto">
           {renderDraftPreview(draft)}
         </div>
@@ -291,5 +353,41 @@ export const AiAssistPanel: React.FC<{
         </div>
       </>
     )}
+  </div>
+)
+
+// ── Attempt clipboard ────────────────────────────────────────────────────
+//
+// A row of "Attempt N" chips, most recent last, so Retry reads left-to-
+// right the way the person generated them. The current attempt is
+// highlighted; clicking any other one just swaps the preview below to
+// that draft — nothing is discarded, so bouncing between two or three
+// versions to compare them costs nothing. Only shown once there's
+// something to compare (2+ attempts).
+const AttemptClipboard: React.FC<{
+  attempts: DraftAttempt[]
+  currentIndex: number
+  onSelect: (index: number) => void
+}> = ({ attempts, currentIndex, onSelect }) => (
+  <div className="space-y-1">
+    <p className="text-[11px] font-bold uppercase tracking-wide text-ink-400">
+      Attempts · {attempts.length}
+    </p>
+    <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+      {attempts.map((attempt, i) => (
+        <button
+          key={i}
+          onClick={() => onSelect(i)}
+          title={attempt.keywords || undefined}
+          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap transition-colors ${
+            i === currentIndex
+              ? 'bg-accent text-white'
+              : 'bg-white text-ink-500 border border-ink-200 hover:border-accent-200 hover:text-accent'
+          }`}
+        >
+          Attempt {i + 1}
+        </button>
+      ))}
+    </div>
   </div>
 )
