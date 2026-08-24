@@ -77,6 +77,12 @@ type DraftRequest struct {
 	ActivityType string    `json:"activity_type"`
 	Phase        string    `json:"phase"`
 	Keywords     []string  `json:"keywords,omitempty"`
+	// PillarID grounds a "local_pillar_objectives" draft in one specific
+	// Strategic Pillar (see LocalPlanBoard.tsx's PillarSection, which is
+	// the only caller that sets this) — required for that activity_type,
+	// ignored for every other one. Zero value (uuid.Nil) means omitted,
+	// same convention as ActivityID above.
+	PillarID uuid.UUID `json:"pillar_id"`
 }
 
 type DraftResponse struct {
@@ -126,6 +132,27 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 		`SELECT title FROM activities WHERE id = $1 AND plan_id = $2 AND org_id = $3 AND deleted_at IS NULL`,
 		req.ActivityID, req.PlanID, orgID,
 	).Scan(&activityTitle)
+
+	// Unlike activityTitle above, this is NOT best-effort: a
+	// local_pillar_objectives draft with no real pillar to ground it in
+	// isn't "drafting without extra context", it's drafting objectives for
+	// nothing in particular — the whole point of splitting pillar and
+	// objective generation into two prompts (see local_pillars/
+	// local_pillar_objectives below) is that objectives are grounded in
+	// one specific, already-saved pillar. So this hard-fails instead of
+	// silently falling through to an ungrounded draft.
+	var pillarTitle string
+	if req.ActivityType == "local_pillar_objectives" {
+		if req.PillarID == uuid.Nil {
+			return nil, fmt.Errorf("pillar_id is required for local_pillar_objectives")
+		}
+		if err := s.db.QueryRow(ctx,
+			`SELECT title FROM strategic_pillars WHERE id = $1 AND plan_id = $2 AND org_id = $3`,
+			req.PillarID, req.PlanID, orgID,
+		).Scan(&pillarTitle); err != nil {
+			return nil, fmt.Errorf("pillar not found")
+		}
+	}
 
 	// Plan-wide context: every other activity in this plan, its status, a
 	// compact synopsis of what it has already produced, and the dependency
@@ -215,6 +242,9 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 	fmt.Fprintf(&sb, "Activity type: %s\n", req.ActivityType)
 	if activityTitle != "" {
 		fmt.Fprintf(&sb, "Activity title: %s\n", activityTitle)
+	}
+	if pillarTitle != "" {
+		fmt.Fprintf(&sb, "Strategic Pillar: %s\n", pillarTitle)
 	}
 	if len(req.Keywords) > 0 {
 		fmt.Fprintf(&sb, "Keywords/focus areas to incorporate: %s\n", strings.Join(req.Keywords, ", "))
@@ -729,11 +759,32 @@ func draftSchemaFor(activityType string) (schema string, instructions string) {
 	// string's "- " bullet lines into individual SWOTItem rows on accept.
 
 	case "local_pillars":
-		return `{"pillars": [{"title": "...", "objectives": ["...", "..."]}]}`,
+		// Pillars only — objectives are a deliberately separate generation
+		// (see "local_pillar_objectives" below), requested only once the
+		// person has reviewed/saved the pillars they want. Generating both
+		// in one shot meant accepting a pillar silently bulk-created 2-4
+		// objectives under it the person never got to review individually,
+		// and regenerating "just the objectives" for one pillar meant
+		// regenerating (and re-approving) every other pillar's objectives
+		// too. This schema deliberately has no "objectives" field.
+		return `{"pillars": [{"title": "..."}]}`,
 			"Draft the Strategic Pillars for this plan (e.g. \"Leadership & Governance\", \"Financial " +
-				"Stability\", \"Member Services\"). Provide 3-5 pillars. Each pillar's \"objectives\" array " +
-				"should list 2-4 Strategic Objectives (KPAs) that are short, specific, and clearly belong " +
-				"under that pillar."
+				"Stability\", \"Member Services\"). Provide 3-5 pillars, each a short, specific pillar name. " +
+				"Do not draft Strategic Objectives (KPAs) here — those are generated separately, per pillar, " +
+				"once each pillar has been saved."
+
+	// Backs LocalPlanBoard.tsx's per-pillar "Suggest objectives" trigger,
+	// which only appears on an already-saved pillar (see PillarSection) —
+	// so unlike local_pillars above, this always has a real pillar to
+	// ground against. PillarID is required (see the pillarTitle lookup in
+	// Draft(), which hard-fails the request rather than drafting
+	// ungrounded objectives if it's missing or doesn't resolve).
+	case "local_pillar_objectives":
+		return `{"objectives": ["...", "..."]}`,
+			"Draft 2-4 Strategic Objectives (KPAs) for the Strategic Pillar named above (see \"Strategic " +
+				"Pillar\" in the context). Each entry in \"objectives\" is a short, specific KPA title that " +
+				"clearly belongs under that one pillar specifically — not a generic objective that could sit " +
+				"under any pillar, and not an objective for a different pillar."
 
 	case "local_core_values":
 		return `{"values": ["...", "..."]}`,

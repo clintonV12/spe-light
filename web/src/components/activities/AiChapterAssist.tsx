@@ -41,7 +41,20 @@ export interface DraftAttempt {
 // and hoping. `attempts` keeps every generation around; `currentIndex`
 // points at whichever one is currently shown, and can be moved backward
 // *and* forward across the list rather than only ever appending.
-export function useAiDraft(planId: string, activityType: string, activityId?: string) {
+// extraContext lets a caller thread additional, activity-type-specific
+// fields into the /ai/draft request body beyond the common plan_id/
+// activity_type/keywords/activity_id shape — e.g. LocalPlanBoard's
+// per-pillar "Suggest objectives" passes { pillar_id } so the backend can
+// ground the draft in that one pillar's title rather than the plan in
+// general. Backend contract: ai_service.go's handler for the given
+// activity_type must read whatever keys this supplies (see its
+// "local_pillar_objectives" case).
+export function useAiDraft(
+  planId: string,
+  activityType: string,
+  activityId?: string,
+  extraContext?: Record<string, unknown>,
+) {
   const [open, setOpen] = useState(false)
   const [keywords, setKeywords] = useState('')
   const [loading, setLoading] = useState(false)
@@ -70,6 +83,7 @@ export function useAiDraft(planId: string, activityType: string, activityId?: st
         // for KPI suggestions made while an activity is still being
         // created in CreateActivityModal (no id yet).
         ...(activityId ? { activity_id: activityId } : {}),
+        ...(extraContext ?? {}),
       })
       // Appended, never overwritten — the previous attempt (if any) stays
       // in the list so Retry reads as "generate another option" rather
