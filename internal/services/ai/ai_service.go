@@ -345,6 +345,87 @@ func postProcessDraft(activityType string, draft map[string]any) {
 				row["owner"] = ""
 			}
 		})
+	case "financial_projections":
+		postProcessFinancialProjections(draft)
+	}
+}
+
+// postProcessFinancialProjections converts the model's label-keyed draft
+// (see draftSchemaFor's "financial_projections" case) into the real
+// FinancialProjectionsContent shape FinancialProjectionsEditor.tsx expects:
+// periods as {id, label} objects, and every line item's `values` as a
+// periodId-keyed map instead of a plain positional array. Real UUIDs are
+// generated here rather than asked of the model — same reasoning as the
+// structural `row["id"]` pass above — and the model's positional values
+// array is zipped against them index-by-index. A line item with fewer
+// values than periods (model under-filled) gets "" for the missing periods
+// rather than being dropped or causing a panic; extra values beyond the
+// period count are ignored.
+func postProcessFinancialProjections(draft map[string]any) {
+	rawPeriods, _ := draft["periods"].([]any)
+	periodIDs := make([]string, 0, len(rawPeriods))
+	periods := make([]any, 0, len(rawPeriods))
+	for _, p := range rawPeriods {
+		label, _ := p.(string)
+		label = strings.TrimSpace(label)
+		if label == "" {
+			continue
+		}
+		id := uuid.New().String()
+		periodIDs = append(periodIDs, id)
+		periods = append(periods, map[string]any{"id": id, "label": label})
+	}
+	draft["periods"] = periods
+
+	emptySections := map[string]any{"revenue": []any{}, "cogs": []any{}, "opex": []any{}, "other_income": []any{}}
+	lineItems, ok := draft["lineItems"].(map[string]any)
+	if !ok {
+		draft["lineItems"] = emptySections
+		return
+	}
+
+	for _, section := range []string{"revenue", "cogs", "opex", "other_income"} {
+		rawItems, _ := lineItems[section].([]any)
+		items := make([]any, 0, len(rawItems))
+		for _, raw := range rawItems {
+			row, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			label, _ := row["label"].(string)
+			rawValues, _ := row["values"].([]any)
+			values := make(map[string]any, len(periodIDs))
+			for i, pid := range periodIDs {
+				if i < len(rawValues) {
+					values[pid] = stringifyNumeric(rawValues[i])
+				} else {
+					values[pid] = ""
+				}
+			}
+			items = append(items, map[string]any{
+				"id":     uuid.New().String(),
+				"label":  label,
+				"values": values,
+			})
+		}
+		lineItems[section] = items
+	}
+	draft["lineItems"] = lineItems
+}
+
+// stringifyNumeric renders a JSON value as a plain digit string, matching
+// FPLineItem.values' Record<string,string> contract (FinancialProjections-
+// Editor.tsx parses these with a bare Number(...)). Tolerates the model
+// dropping the requested quotes and sending a bare JSON number instead of
+// a numeric string.
+func stringifyNumeric(v any) string {
+	switch val := v.(type) {
+	case string:
+		return strings.TrimSpace(val)
+	case float64:
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	default:
+		return ""
 	}
 }
 
@@ -706,10 +787,39 @@ func draftSchemaFor(activityType string) (schema string, instructions string) {
 				"timeframe (e.g. \"Q2 2026\")."
 
 	case "financial_projections":
-		return `{"rows": [{"period": "...", "revenue": "...", "costs": "...", "profit": "..."}]}`,
-			"Draft a financial projections table. Provide 3-4 rows, one per period (e.g. \"Q1 2026\"). " +
-				"\"revenue\", \"costs\", and \"profit\" are plain numeric strings in dollars, no symbol or " +
-				"commas. Keep profit consistent with revenue minus costs for each row."
+		// FinancialProjectionsEditor.tsx's real content shape needs each
+		// period to have a stable `id` and each line item's `values` keyed
+		// by that id — not something the model can be trusted to invent
+		// and cross-reference correctly (same reasoning as KpiRow/RiskRow's
+		// `id` above: an LLM asked to invent and reuse ids across a nested
+		// structure tends to drop or mismatch them). So the model is asked
+		// for periods as plain labels and each line item's values as a
+		// positional array aligned to those labels; postProcessDraft's
+		// "financial_projections" case (via postProcessFinancialProjections)
+		// converts that into the real id-keyed shape server-side.
+		//
+		// This also replaces a stale schema that used to return the old
+		// flat {rows: [{period, revenue, costs, profit}]} table shape from
+		// before this editor was rebuilt into a sectioned P&L (see
+		// FinancialProjectionsEditor.tsx's own comment on that rebuild) —
+		// that shape doesn't match FinancialProjectionsContent at all, so
+		// an accepted draft silently produced an empty-looking projection
+		// (no periods, no line items) with the model's actual output
+		// effectively discarded.
+		return `{"currency": "SZL", "periods": ["Year 1", "Year 2", "Year 3"], ` +
+				`"lineItems": {"revenue": [{"label": "...", "values": ["...", "...", "..."]}], ` +
+				`"cogs": [{"label": "...", "values": ["...", "...", "..."]}], ` +
+				`"opex": [{"label": "...", "values": ["...", "...", "..."]}], "other_income": []}, ` +
+				`"assumptions": "..."}`,
+			"Draft a financial projection (P&L). \"periods\" is an array of 3-4 period labels (e.g. \"Year " +
+				"1\", \"Year 2\", \"Year 3\"). For every line item, \"values\" must be an array with EXACTLY " +
+				"the same length and order as \"periods\" — values[i] is that line item's amount for " +
+				"periods[i]. Provide 2-3 revenue streams, 1-3 cost-of-sales lines, and 2-4 operating-expense " +
+				"lines; leave \"other_income\" as an empty array unless the plan context clearly implies " +
+				"grants or interest income. Every value is a plain numeric string with no currency symbol " +
+				"or commas (e.g. \"50000\" not \"$50,000\"). \"currency\" should be a 3-letter ISO code — " +
+				"default to \"SZL\" unless the plan context clearly implies otherwise. \"assumptions\" is a " +
+				"short paragraph on the growth, pricing, and cost basis behind the numbers."
 
 	case "budget_allocation":
 		return `{"rows": [{"category": "...", "amount": "...", "notes": "..."}]}`,
