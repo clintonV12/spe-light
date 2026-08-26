@@ -8,7 +8,7 @@ import {
 import { pillarsApi, activitiesApi } from '../../api/endpoints'
 import { useToast } from '../../hooks'
 import { EmptyState } from '../ui'
-import CreateActivityModal from './CreateActivityModal'
+import CreateActivityModal, { LOCAL_ACTIVITY_TYPE } from './CreateActivityModal'
 import { useAiDraft, AiAssistTrigger, AiAssistPanel } from './AiChapterAssist'
 import type { Plan, Activity, StrategicPillar, StrategicObjective, ActivityStatus, KPIPeriod } from '../../types'
 
@@ -159,14 +159,14 @@ function EditableTitle({ value, onSave, saving, textClassName, inputClassName }:
   )
 }
 
-// Draft shape for a per-pillar "Suggest objectives" generation — tolerant
-// of either a plain string array or `{title}` objects, matching the same
-// defensive-parsing style parseKpiDraft (AiChapterAssist.tsx) uses for the
-// other structured draft types, since the exact shape depends on
-// ai_service.go's prompt for "local_pillar_objectives" and is easy to get
-// subtly wrong on either side.
-function parseObjectivesDraft(draft: Record<string, unknown>): string[] {
-  const list = Array.isArray(draft.objectives) ? draft.objectives as unknown[] : []
+// Draft shape shared by the per-pillar "Suggest objectives" and per-
+// objective "Suggest activities" generations — both are tolerant of either
+// a plain string array or `{title}` objects, matching the same defensive-
+// parsing style parseKpiDraft (AiChapterAssist.tsx) uses for other
+// structured draft types, since the exact shape depends on ai_service.go's
+// prompt and is easy to get subtly wrong on either side.
+function parseTitleListDraft(draft: Record<string, unknown>, key: string): string[] {
+  const list = Array.isArray(draft[key]) ? draft[key] as unknown[] : []
   const titles: string[] = []
   for (const raw of list) {
     const title = typeof raw === 'string'
@@ -221,7 +221,7 @@ function PillarSection({
   const ai = useAiDraft(plan.id, 'local_pillar_objectives', undefined, { pillar_id: pillar.id })
 
   const handleAiAcceptObjectives = async (draft: Record<string, unknown>) => {
-    const titles = parseObjectivesDraft(draft)
+    const titles = parseTitleListDraft(draft, 'objectives')
     for (const title of titles) {
       try {
         await pillarsApi.createObjective(pillar.id, { title })
@@ -297,87 +297,24 @@ function PillarSection({
             />
           )}
 
-          {pillarObjectives.map((objective) => {
-            const objActivities = activitiesByObjective.get(objective.id) ?? []
-            return (
-              <div key={objective.id} className="rounded-xl border border-ink-100 p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Target className="size-3.5 text-p2 shrink-0" />
-                  {canEdit ? (
-                    <EditableTitle
-                      value={objective.title}
-                      onSave={(title) => onRenameObjective(objective.id, title)}
-                      saving={busy}
-                      textClassName="text-sm font-semibold text-ink-800"
-                      inputClassName="flex-1 min-w-0 rounded-lg border border-accent-200 px-2 py-1 text-sm font-semibold text-ink-800 outline-none focus:border-accent"
-                    />
-                  ) : (
-                    <p className="text-sm font-semibold text-ink-800 flex-1">{objective.title}</p>
-                  )}
-                  {canEdit && (
-                    <>
-                      <button
-                        onClick={() => onAddActivityFor(objective.id)}
-                        className="flex items-center gap-1 text-xs text-accent hover:text-accent-600 transition-colors"
-                      >
-                        <Plus className="size-3.5" /> {t('localPlan.addActivity', { defaultValue: 'Activity' })}
-                      </button>
-                      <button
-                        onClick={() => onDeleteObjective(objective.id)}
-                        className="text-ink-300 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </>
-                  )}
-                </div>
-
-                {objActivities.length === 0 ? (
-                  <p className="text-xs text-ink-300 italic pl-5">
-                    {t('localPlan.noActivities', { defaultValue: 'No activities yet' })}
-                  </p>
-                ) : (
-                  <div className="divide-y divide-ink-50 pl-5">
-                    {objActivities.map((a) => {
-                      const { period, totalBudget } = activityKpiSummary(a)
-                      return (
-                      <div
-                        key={a.id}
-                        className="group w-full flex items-center gap-2 py-2 hover:bg-ink-50 -mx-2 px-2 rounded-lg transition-colors"
-                      >
-                        <button
-                          onClick={() => navigate(`/plans/${plan.id}/activities/${a.id}`)}
-                          className="flex-1 min-w-0 flex items-center gap-2 text-left"
-                        >
-                          <span className={`size-2 rounded-full shrink-0 ${STATUS_DOT[a.status]}`} />
-                          <span className="flex-1 min-w-0 text-sm text-ink-700 truncate">{a.title}</span>
-                          {period && (
-                            <span className="flex items-center gap-1 text-[11px] text-ink-400 shrink-0">
-                              <Clock className="size-3" /> {period.charAt(0).toUpperCase() + period.slice(1)}
-                            </span>
-                          )}
-                          {typeof totalBudget === 'number' && (
-                            <span className="text-[11px] text-ink-400 shrink-0">
-                              {totalBudget.toLocaleString(undefined, { style: 'currency', currency: 'SZL', maximumFractionDigits: 0 })}
-                            </span>
-                          )}
-                        </button>
-                        {canDelete && (
-                          <button
-                            onClick={() => onDeleteActivityRequest(a)}
-                            className="shrink-0 p-1 rounded-lg text-ink-300 opacity-0 group-hover:opacity-100 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            title={t('planDetail.deleteActivityConfirm', { defaultValue: 'Delete activity' })}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    )})}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+          {pillarObjectives.map((objective) => (
+            <ObjectiveRow
+              key={objective.id}
+              plan={plan}
+              objective={objective}
+              objActivities={activitiesByObjective.get(objective.id) ?? []}
+              canEdit={canEdit}
+              canDelete={canDelete}
+              busy={busy}
+              onRenameObjective={(title) => onRenameObjective(objective.id, title)}
+              onDeleteObjective={() => onDeleteObjective(objective.id)}
+              onAddActivityFor={() => onAddActivityFor(objective.id)}
+              onDeleteActivityRequest={onDeleteActivityRequest}
+              onActivitiesGenerated={onObjectivesGenerated}
+              navigate={navigate}
+              t={t}
+            />
+          ))}
 
           {canEdit && (
             <InlineAddRow
@@ -386,6 +323,162 @@ function PillarSection({
               loading={busy}
             />
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// One Strategic Objective's row, including its own "Suggest activities" AI
+// flow. Pulled out into its own component for the same reason PillarSection
+// was: each objective needs an independent useAiDraft() hook instance,
+// which isn't possible calling the hook inside PillarSection's own
+// pillarObjectives.map() loop.
+function ObjectiveRow({
+  plan, objective, objActivities, canEdit, canDelete, busy,
+  onRenameObjective, onDeleteObjective, onAddActivityFor, onDeleteActivityRequest,
+  onActivitiesGenerated, navigate, t,
+}: {
+  plan: Plan
+  objective: StrategicObjective
+  objActivities: Activity[]
+  canEdit: boolean
+  canDelete: boolean
+  busy: boolean
+  onRenameObjective: (title: string) => void
+  onDeleteObjective: () => void
+  onAddActivityFor: () => void
+  onDeleteActivityRequest: (activity: Activity) => void
+  /** Called after activities are created from an accepted draft, so the parent reloads pillars/objectives and activities. */
+  onActivitiesGenerated: () => void
+  navigate: ReturnType<typeof useNavigate>
+  t: ReturnType<typeof useTranslation>['t']
+}) {
+  // Grounded in this one objective via objective_id — see useAiDraft's
+  // extraContext param (AiChapterAssist.tsx) and ai_service.go's
+  // "local_objective_activities" case, which must read objective_id (and
+  // the objective's own title, plus its pillar's title, looked up
+  // server-side) rather than generating generic activities detached from
+  // the objective they'll be saved under.
+  const ai = useAiDraft(plan.id, 'local_objective_activities', undefined, { objective_id: objective.id })
+
+  const handleAiAcceptActivities = async (draft: Record<string, unknown>) => {
+    const titles = parseTitleListDraft(draft, 'activities')
+    for (const title of titles) {
+      try {
+        // Same shape CreateActivityModal.tsx creates an ordinary
+        // objective-nested activity with — LOCAL_ACTIVITY_TYPE is
+        // imported from there rather than redeclared, so an
+        // AI-generated activity is indistinguishable from a hand-created
+        // one everywhere downstream (ActivityCard's type lookup, etc.).
+        await activitiesApi.create(plan.id, {
+          objective_id: objective.id,
+          type: LOCAL_ACTIVITY_TYPE,
+          title,
+          content: {},
+        })
+      } catch {
+        // best-effort — skip an activity that fails to save rather than aborting the rest
+      }
+    }
+    onActivitiesGenerated()
+  }
+
+  return (
+    <div className="rounded-xl border border-ink-100 p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <Target className="size-3.5 text-p2 shrink-0" />
+        {canEdit ? (
+          <EditableTitle
+            value={objective.title}
+            onSave={onRenameObjective}
+            saving={busy}
+            textClassName="text-sm font-semibold text-ink-800"
+            inputClassName="flex-1 min-w-0 rounded-lg border border-accent-200 px-2 py-1 text-sm font-semibold text-ink-800 outline-none focus:border-accent"
+          />
+        ) : (
+          <p className="text-sm font-semibold text-ink-800 flex-1">{objective.title}</p>
+        )}
+        {canEdit && (
+          <>
+            <AiAssistTrigger onClick={ai.start} label="Suggest activities" />
+            <button
+              onClick={onAddActivityFor}
+              className="flex items-center gap-1 text-xs text-accent hover:text-accent-600 transition-colors"
+            >
+              <Plus className="size-3.5" /> {t('localPlan.addActivity', { defaultValue: 'Activity' })}
+            </button>
+            <button
+              onClick={onDeleteObjective}
+              className="text-ink-300 hover:text-red-500 transition-colors"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          </>
+        )}
+      </div>
+
+      {ai.open && (
+        <div className="mb-2">
+          <AiAssistPanel
+            keywords={ai.keywords}
+            onKeywordsChange={ai.setKeywords}
+            onGenerate={ai.generate}
+            loading={ai.loading}
+            applying={ai.applying}
+            draft={ai.draft}
+            model={ai.model}
+            attempts={ai.attempts}
+            currentIndex={ai.currentIndex}
+            onSelectAttempt={ai.selectAttempt}
+            onRegenerate={ai.generate}
+            onClose={ai.close}
+            onAccept={() => ai.accept(handleAiAcceptActivities)}
+          />
+        </div>
+      )}
+
+      {objActivities.length === 0 ? (
+        <p className="text-xs text-ink-300 italic pl-5">
+          {t('localPlan.noActivities', { defaultValue: 'No activities yet' })}
+        </p>
+      ) : (
+        <div className="divide-y divide-ink-50 pl-5">
+          {objActivities.map((a) => {
+            const { period, totalBudget } = activityKpiSummary(a)
+            return (
+            <div
+              key={a.id}
+              className="group w-full flex items-center gap-2 py-2 hover:bg-ink-50 -mx-2 px-2 rounded-lg transition-colors"
+            >
+              <button
+                onClick={() => navigate(`/plans/${plan.id}/activities/${a.id}`)}
+                className="flex-1 min-w-0 flex items-center gap-2 text-left"
+              >
+                <span className={`size-2 rounded-full shrink-0 ${STATUS_DOT[a.status]}`} />
+                <span className="flex-1 min-w-0 text-sm text-ink-700 truncate">{a.title}</span>
+                {period && (
+                  <span className="flex items-center gap-1 text-[11px] text-ink-400 shrink-0">
+                    <Clock className="size-3" /> {period.charAt(0).toUpperCase() + period.slice(1)}
+                  </span>
+                )}
+                {typeof totalBudget === 'number' && (
+                  <span className="text-[11px] text-ink-400 shrink-0">
+                    {totalBudget.toLocaleString(undefined, { style: 'currency', currency: 'SZL', maximumFractionDigits: 0 })}
+                  </span>
+                )}
+              </button>
+              {canDelete && (
+                <button
+                  onClick={() => onDeleteActivityRequest(a)}
+                  className="shrink-0 p-1 rounded-lg text-ink-300 opacity-0 group-hover:opacity-100 hover:text-red-600 hover:bg-red-50 transition-colors"
+                  title={t('planDetail.deleteActivityConfirm', { defaultValue: 'Delete activity' })}
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              )}
+            </div>
+          )})}
         </div>
       )}
     </div>

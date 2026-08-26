@@ -32,7 +32,12 @@ export const ADVANCED_RESEARCH_TYPES: { value: ActivityType }[] = [
 // lookup) still has something to resolve; add an
 // `activityTypes.strategic_action` locale key alongside the existing
 // activityTypes.* ones.
-const LOCAL_ACTIVITY_TYPE = 'strategic_action'
+//
+// Exported so LocalPlanBoard.tsx's ObjectiveRow (per-objective "Suggest
+// activities" AI flow) can create activities of the same type rather than
+// duplicating this string — an activity created there needs to look
+// identical to one created through this modal.
+export const LOCAL_ACTIVITY_TYPE = 'strategic_action'
 
 function emptyKPI(): KPI {
   return { indicator: '', target: '', target_value: undefined }

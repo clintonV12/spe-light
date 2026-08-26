@@ -83,6 +83,11 @@ type DraftRequest struct {
 	// ignored for every other one. Zero value (uuid.Nil) means omitted,
 	// same convention as ActivityID above.
 	PillarID uuid.UUID `json:"pillar_id"`
+	// ObjectiveID grounds a "local_objective_activities" draft in one
+	// specific Strategic Objective (see LocalPlanBoard.tsx's ObjectiveRow,
+	// the only caller that sets this) — required for that activity_type,
+	// ignored for every other one. Same zero-value convention as PillarID.
+	ObjectiveID uuid.UUID `json:"objective_id"`
 }
 
 type DraftResponse struct {
@@ -151,6 +156,30 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 			req.PillarID, req.PlanID, orgID,
 		).Scan(&pillarTitle); err != nil {
 			return nil, fmt.Errorf("pillar not found")
+		}
+	}
+
+	// Same hard-fail reasoning as pillarTitle above: an activity drafted
+	// with nothing to attach it to isn't a degraded draft, it's pointless
+	// — "local_objective_activities" backs LocalPlanBoard.tsx's per-
+	// objective "Suggest activities" trigger, which only ever appears on
+	// an already-saved objective. Also pulls the objective's own pillar
+	// title in the same query, reusing pillarTitle above (the two
+	// activity_types are mutually exclusive per request, so there's no
+	// collision) so the model sees the full pillar → objective chain it's
+	// drafting activities under.
+	var objectiveTitle string
+	if req.ActivityType == "local_objective_activities" {
+		if req.ObjectiveID == uuid.Nil {
+			return nil, fmt.Errorf("objective_id is required for local_objective_activities")
+		}
+		if err := s.db.QueryRow(ctx,
+			`SELECT o.title, p.title FROM strategic_objectives o
+			 JOIN strategic_pillars p ON p.id = o.pillar_id
+			 WHERE o.id = $1 AND o.plan_id = $2 AND o.org_id = $3`,
+			req.ObjectiveID, req.PlanID, orgID,
+		).Scan(&objectiveTitle, &pillarTitle); err != nil {
+			return nil, fmt.Errorf("objective not found")
 		}
 	}
 
@@ -245,6 +274,9 @@ func (s *Service) Draft(ctx context.Context, orgID uuid.UUID, req DraftRequest) 
 	}
 	if pillarTitle != "" {
 		fmt.Fprintf(&sb, "Strategic Pillar: %s\n", pillarTitle)
+	}
+	if objectiveTitle != "" {
+		fmt.Fprintf(&sb, "Strategic Objective (KPA): %s\n", objectiveTitle)
 	}
 	if len(req.Keywords) > 0 {
 		fmt.Fprintf(&sb, "Keywords/focus areas to incorporate: %s\n", strings.Join(req.Keywords, ", "))
@@ -895,6 +927,23 @@ func draftSchemaFor(activityType string) (schema string, instructions string) {
 				"Pillar\" in the context). Each entry in \"objectives\" is a short, specific KPA title that " +
 				"clearly belongs under that one pillar specifically — not a generic objective that could sit " +
 				"under any pillar, and not an objective for a different pillar."
+
+	// Backs LocalPlanBoard.tsx's per-objective "Suggest activities"
+	// trigger (ObjectiveRow), which only appears on an already-saved
+	// objective — so, like local_pillar_objectives above, this always has
+	// a real objective (and its pillar) to ground against. ObjectiveID is
+	// required (see the objectiveTitle/pillarTitle lookup in Draft(),
+	// which hard-fails rather than drafting ungrounded activities if it's
+	// missing or doesn't resolve). Every activity created from this draft
+	// is an ordinary objective-nested activity (LOCAL_ACTIVITY_TYPE /
+	// "strategic_action" — see CreateActivityModal.tsx), so this only
+	// ever needs to produce titles, never a type.
+	case "local_objective_activities":
+		return `{"activities": ["...", "..."]}`,
+			"Draft 2-4 concrete activities (action steps) that would deliver the Strategic Objective (KPA) " +
+				"named above, under the Strategic Pillar named above. Each entry in \"activities\" is a short, " +
+				"specific, actionable activity title — something a team could actually be assigned to carry " +
+				"out — not a restatement of the objective itself, and not a duplicate of another entry."
 
 	case "local_core_values":
 		return `{"values": ["...", "..."]}`,
