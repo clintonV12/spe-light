@@ -32,18 +32,40 @@ export function useOnlineStatus() {
 // ─── useSyncEngine ──────────────────────────────────────────────────────────
 
 export function useSyncEngine() {
-  const { queue, dequeue, setSyncing, setLastSynced, addConflict, isOnline } =
+  const { dequeue, setSyncing, setLastSynced, addConflict, resolveTempId, isOnline } =
     useOfflineStore()
 
   const sync = useCallback(async () => {
-    if (!isOnline || queue.length === 0) return
+    // Snapshot which items to attempt (by id) — but each iteration below
+    // re-reads that item fresh from the store rather than trusting this
+    // snapshot's own copy. That matters once tempId resolution is in
+    // play: resolving item A's tempId (a "create plan" that just synced)
+    // rewrites item B's `resource` in place if B was a "create activity
+    // under plan {tempId}" queued before A had a real id yet (see
+    // resolveTempId in offline.ts) — B needs to pick up that rewrite
+    // before it's sent, not the stale pre-rewrite path this snapshot
+    // captured at the start of this pass.
+    const ids = useOfflineStore.getState().queue.map((q) => q.id)
+    if (!isOnline || ids.length === 0) return
 
     setSyncing(true)
-    for (const item of queue) {
+    for (const id of ids) {
+      const item = useOfflineStore.getState().queue.find((q) => q.id === id)
+      if (!item) continue // already dequeued by an earlier pass/retry
       try {
-        const { operation, resource, payload } = item
+        const { operation, resource, payload, tempId } = item
         if (operation === 'create') {
-          await apiClient.post(resource, payload)
+          const { data } = await apiClient.post<{ id?: string }>(resource, payload)
+          // Only meaningful for a create that originated from an
+          // offline-first flow (e.g. "new plan" while offline) — an
+          // ordinary online create never goes through the queue at all,
+          // so tempId is undefined there and this is a no-op. data?.id
+          // is defensive: every real create endpoint returns the new
+          // entity with an id, but nothing enforces that at the type
+          // level for this generic apiClient.post call.
+          if (tempId && data?.id) {
+            resolveTempId(tempId, data.id)
+          }
         } else if (operation === 'update') {
           await apiClient.put(resource, payload)
         } else if (operation === 'delete') {
@@ -56,7 +78,7 @@ export function useSyncEngine() {
     }
     setLastSynced(new Date().toISOString())
     setSyncing(false)
-  }, [queue, isOnline, dequeue, setSyncing, setLastSynced, addConflict])
+  }, [isOnline, dequeue, setSyncing, setLastSynced, addConflict, resolveTempId])
 
   // Auto-sync when coming back online
   useEffect(() => {

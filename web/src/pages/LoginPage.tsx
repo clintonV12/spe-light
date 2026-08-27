@@ -1,12 +1,17 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Eye, EyeOff, ArrowRight, AlertCircle, BookOpen } from 'lucide-react'
+import { Eye, EyeOff, ArrowRight, AlertCircle, BookOpen, LogOut } from 'lucide-react'
 import { authApi } from '../api/endpoints'
 import { useAuthStore } from '../store/auth'
 import AuthBrandPanel from '../components/auth/AuthBrandPanel'
 import AuthMobileHeader from '../components/auth/AuthMobileHeader'
 import LanguageSwitcher from '../components/ui/LanguageSwitcher'
+
+// Key set by api/client.ts's response interceptor right before it hard-
+// redirects here on a failed silent refresh (expired session, idle
+// timeout, revoked refresh token, ...). Read once below.
+const SESSION_EXPIRED_KEY = 'stratplan_session_expired'
 
 export default function LoginPage() {
   const { t } = useTranslation()
@@ -20,6 +25,25 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Read-once, on mount: whether this landing on /login was because the
+  // session timed out / was signed out from under the person, rather than
+  // a deliberate visit (typing the URL, clicking "Sign in" after a normal
+  // logout, etc.). Cleared immediately so it can never resurface on a
+  // later, unrelated visit — e.g. hitting back/forward, or logging out
+  // again normally in the same tab.
+  const [sessionExpiredMessage, setSessionExpiredMessage] = useState<string | null>(null)
+  useEffect(() => {
+    const raw = sessionStorage.getItem(SESSION_EXPIRED_KEY)
+    if (!raw) return
+    sessionStorage.removeItem(SESSION_EXPIRED_KEY)
+    // client.ts stores the literal string 'true' when the backend's
+    // response didn't carry a usable message — fall back to a generic
+    // explanation in that case rather than showing the sentinel value.
+    setSessionExpiredMessage(
+      raw === 'true' ? t('auth.sessionExpiredGeneric', 'You were signed out — please log in again.') : raw,
+    )
+  }, [t])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -97,6 +121,13 @@ export default function LoginPage() {
               <LanguageSwitcher />
             </div>
           </div>
+
+          {sessionExpiredMessage && (
+            <div role="alert" className="flex items-start gap-2.5 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 mb-6">
+              <LogOut className="size-4 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-800">{sessionExpiredMessage}</p>
+            </div>
+          )}
 
           <div className="mb-8">
             <h2 className="font-display text-2xl font-bold text-ink-900">{t('auth.signIn')}</h2>

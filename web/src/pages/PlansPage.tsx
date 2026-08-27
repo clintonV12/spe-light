@@ -11,6 +11,7 @@ import { plansApi } from '../api/endpoints'
 import { usePermission } from '../hooks'
 import { Badge, ProgressBar, EmptyState } from '../components/ui'
 import CreatePlanModal from '../components/plans/CreatePlanModal'
+import type { PendingPlan } from '../components/plans/CreatePlanModal'
 import { SHORTCUT_CREATE_EVENT } from '../components/layout/AppShell'
 import { fetchPlanKpiAchievement } from '../components/activities/TrackingModule'
 import type { Plan, PlanStatus } from '../types'
@@ -227,6 +228,23 @@ export default function PlansPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Called by CreatePlanModal with either a real, server-created Plan (in
+  // which case a full reload picks up its progress/kpi_achievement fields
+  // the same way every other plan gets them) or a PendingPlan created
+  // offline, which the server has never heard of — load() would silently
+  // fail to find it (it's not offline-aware itself), so it's prepended to
+  // local state directly instead. It stays there until useSyncEngine
+  // resolves the underlying queued create and something reloads the list
+  // — at which point the real plan (now indistinguishable from any other)
+  // simply replaces it on the next load().
+  const handlePlanCreated = (plan: Plan | PendingPlan) => {
+    if ('_pending' in plan && plan._pending) {
+      setPlans((prev) => [plan, ...prev])
+      return
+    }
+    load()
   }
 
   useEffect(() => { load() }, [])
@@ -514,6 +532,12 @@ export default function PlansPage() {
                         <div className="min-w-0">
                           <p className={`font-medium text-sm transition-colors ${isSelected ? 'text-accent' : 'text-ink-900 group-hover:text-accent'}`}>{plan.title}</p>
                           {plan.description && <p className="text-xs text-ink-400 mt-0.5 line-clamp-1">{plan.description}</p>}
+                          {(plan as PendingPlan)._pending && (
+                            <span className="inline-flex items-center gap-1 text-xs text-amber-600 mt-1">
+                              <span className="size-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                              {t('plansPage.pendingSync', { defaultValue: 'Not synced yet — will upload once you\u2019re back online' })}
+                            </span>
+                          )}
                           {overdue > 0 && (
                             <span className="inline-flex items-center gap-1 text-xs text-red-500 mt-1">
                               <AlertTriangle className="size-3" /> {t('plansPage.overdueCount', { count: overdue })}
@@ -632,7 +656,7 @@ export default function PlansPage() {
         </div>
       )}
 
-      {showCreate && <CreatePlanModal onCreated={load} onClose={() => setShowCreate(false)} />}
+      {showCreate && <CreatePlanModal onCreated={handlePlanCreated} onClose={() => setShowCreate(false)} />}
     </div>
   )
 }

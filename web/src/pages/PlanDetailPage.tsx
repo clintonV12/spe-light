@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import axios from 'axios'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
 import { plansApi, activitiesApi } from '../api/endpoints'
+import { useOfflineStore } from '../store/offline'
 import { usePermission } from '../hooks'
 import LocalPlanChapters from '../components/activities/LocalPlanChapters'
 import type { ChapterKey } from '../components/activities/LocalPlanChapters'
@@ -112,12 +114,46 @@ export default function PlanDetailPage() {
   const [plan, setPlan] = useState<Plan | null>(null)
   const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
+  // Set instead of `plan` when planId turns out to be a tempId whose
+  // create hasn't synced yet (see load() below) — deliberately NOT the
+  // same as `plan`/LocalPlanChapters, since every chapter (pillars,
+  // vision/mission, SWOT, ...) makes its own API calls keyed off plan.id,
+  // none of which are tempId-aware. Rendering the full editor against a
+  // ghost id would 404 on every single one of those the moment it
+  // mounted. A reduced placeholder is the honest scope for v1: the plan
+  // shell itself can be created offline, but populating its chapters
+  // still needs the real, server-assigned id first.
+  const [pendingTitle, setPendingTitle] = useState<string | null>(null)
 
   // ── Plan status ─────────────────────────────────────────────────────────
   const [planStatusLoading, setPlanStatusLoading] = useState(false)
 
   const load = async () => {
     if (!planId) return
+
+    // planId already resolved to a real id (its create synced at some
+    // point after this URL was first opened, e.g. this tab was left
+    // sitting on the pending placeholder while offline) — jump straight
+    // to it rather than ever attempting plansApi.get(planId), which would
+    // 404 against an id the server never issued.
+    const resolved = useOfflineStore.getState().idMap[planId]
+    if (resolved) {
+      navigate(`/plans/${resolved}`, { replace: true })
+      return
+    }
+
+    // planId is a tempId with a create still sitting in the queue —
+    // render the lightweight pending placeholder below instead of
+    // hitting the network at all.
+    const pendingCreate = useOfflineStore.getState().queue.find(
+      (op) => op.operation === 'create' && op.tempId === planId,
+    )
+    if (pendingCreate) {
+      setPendingTitle(typeof pendingCreate.payload.title === 'string' ? pendingCreate.payload.title : null)
+      setLoading(false)
+      return
+    }
+
     try {
       const [p, acts] = await Promise.all([plansApi.get(planId), activitiesApi.list(planId)])
       setPlan(p)
@@ -127,13 +163,47 @@ export default function PlanDetailPage() {
 
   useEffect(() => { load() }, [planId])
 
+  // If this tab is sitting on a pending plan's placeholder when its
+  // create finally syncs (useSyncEngine, running elsewhere — AppShell —
+  // resolves it independently of whether this page is even focused),
+  // jump to the real id automatically rather than leaving the person on
+  // a permanently-stale "syncing" screen with no way forward short of a
+  // manual reload.
+  const resolvedId = useOfflineStore((s) => (planId ? s.idMap[planId] : undefined))
+  useEffect(() => {
+    if (resolvedId) navigate(`/plans/${resolvedId}`, { replace: true })
+  }, [resolvedId, navigate])
+
   const handlePlanStatusChange = async (status: PlanStatus) => {
     if (!planId) return
     setPlanStatusLoading(true)
     try {
       const updated = await plansApi.update(planId, { status })
       setPlan(updated)
-    } catch { } finally { setPlanStatusLoading(false) }
+    } catch (err) {
+      // Genuine network failure (no response ever received) — queue the
+      // real write for useSyncEngine to replay once back online. Unlike
+      // ActivityEditorPage's autosave, there's no server response to
+      // adopt here (that's the whole problem), so the status change is
+      // applied to local state optimistically instead — the alternative
+      // is either silently discarding the person's click or leaving the
+      // dropdown reverted to the old status with no explanation, both of
+      // which are worse than assuming the queued write will eventually
+      // succeed (which, functionally, is the same trust the rest of the
+      // offline queue already relies on).
+      if (axios.isAxiosError(err) && !err.response) {
+        useOfflineStore.getState().enqueue({
+          operation: 'update',
+          resource: `/plans/${planId}`,
+          payload: { status },
+        })
+        setPlan((prev) => (prev ? { ...prev, status } : prev))
+      }
+      // A real error (validation/permission) is swallowed here exactly as
+      // before this change — PlanStatusPicker has no error-display affordance today.
+    } finally {
+      setPlanStatusLoading(false)
+    }
   }
 
   if (loading) {
@@ -144,6 +214,29 @@ export default function PlanDetailPage() {
           {[1,2,3].map((i) => <div key={i} className="h-24 bg-ink-100 rounded-2xl animate-pulse" />)}
         </div>
         <div className="h-64 bg-ink-100 rounded-2xl animate-pulse" />
+      </div>
+    )
+  }
+
+  if (pendingTitle !== null) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto space-y-6">
+        <button onClick={() => navigate('/plans')} className="flex items-center gap-1.5 text-sm text-ink-400 hover:text-ink-700 mb-3 transition-colors">
+          <ArrowLeft className="size-4" /> {t('planDetail.backToPlans')}
+        </button>
+        <div className="rounded-2xl border-2 border-dashed border-amber-200 bg-amber-50 p-8 text-center space-y-2">
+          <h1 className="font-display text-xl font-bold text-ink-900">{pendingTitle}</h1>
+          <p className="text-sm text-ink-600">
+            {t('planDetail.pendingSyncTitle', {
+              defaultValue: 'This plan hasn\u2019t synced yet — it was created while offline.',
+            })}
+          </p>
+          <p className="text-xs text-ink-400">
+            {t('planDetail.pendingSyncDesc', {
+              defaultValue: 'Once you\u2019re back online it\u2019ll upload automatically and this page will jump to it — Strategic Pillars and the other chapters open up from there.',
+            })}
+          </p>
+        </div>
       </div>
     )
   }

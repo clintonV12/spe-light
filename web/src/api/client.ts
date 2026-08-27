@@ -169,6 +169,32 @@ apiClient.interceptors.response.use(
     } catch (refreshError) {
       flushQueue(refreshError, null)
       tokenStore.clear()
+      // This catch only ever fires for a session that WAS authenticated —
+      // a 401 was received, a refresh was attempted, and that refresh
+      // itself failed (expired/revoked/idle-timed-out refresh token; see
+      // authsvc.Service.RefreshToken's SESSION_IDLE_TIMEOUT_MIN check).
+      // Previously this just hard-redirected straight to /login with zero
+      // explanation — from the person's point of view they were typing
+      // away and then, with no warning, landed back on the sign-in form.
+      //
+      // A toast won't survive what comes next: window.location.href does
+      // a full page reload, unmounting the entire React tree (including
+      // ToastContainer, which only renders inside AppShell anyway —
+      // LoginPage sits outside it). sessionStorage is the one thing that
+      // does survive. LoginPage reads this key once on mount and clears
+      // it immediately, so it never resurfaces on a later, unrelated
+      // visit to the login page.
+      //
+      // Prefer the backend's own message when the response carries one
+      // (e.g. "session expired due to inactivity — please log in again")
+      // since it's more specific than a generic fallback — checking both
+      // `error` and `message` keys since this file doesn't have
+      // internal/response's exact JSON shape in scope to be certain
+      // which one ErrorJSON uses.
+      const body = axios.isAxiosError(refreshError)
+        ? (refreshError.response?.data as { error?: string; message?: string } | undefined)
+        : undefined
+      sessionStorage.setItem('stratplan_session_expired', body?.error || body?.message || 'true')
       // Hard redirect — clears React state and forces re-auth.
       window.location.href = '/login'
       return Promise.reject(refreshError)

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import axios from 'axios'
 import {
   ArrowLeft, Sparkles, Clock, User, AlertTriangle, ChevronDown, Check, X, Trash2,
 } from 'lucide-react'
@@ -405,7 +406,37 @@ export default function ActivityEditorPage() {
 
   const doSave = useCallback(async (payload: { content: Record<string, unknown>; status: ActivityStatus }) => {
     if (!activityId || !activity || !initialised.current) return
-    await activitiesApi.update(activityId, payload)
+    try {
+      await activitiesApi.update(activityId, payload)
+    } catch (err) {
+      // A genuine network failure — the request never reached the server
+      // at all (axios sets `.response` only when a response actually came
+      // back, so its absence here means the connection itself dropped,
+      // not that the server rejected the request). Queue it for
+      // useSyncEngine (hooks/index.ts, mounted in AppShell) to replay
+      // automatically once back online, instead of surfacing a "Save
+      // failed" error the person would otherwise have to notice and
+      // manually retry via SaveIndicator. Swallowing the error here (not
+      // re-throwing) is what tells useAutoSave this counted as a success
+      // — the edit is safely captured, just not synced yet.
+      //
+      // A real validation/permission error (err.response present, e.g.
+      // 403 for a contributor editing an activity they're not assigned
+      // to) is deliberately NOT queued — replaying it later would just
+      // fail identically every time, silently, with no way for the
+      // person to ever find out something is actually wrong. Let that
+      // propagate to useAutoSave's normal 'error' state instead, where
+      // SaveIndicator's "Retry" gives them a chance to notice and fix it.
+      if (axios.isAxiosError(err) && !err.response) {
+        useOfflineStore.getState().enqueue({
+          operation: 'update',
+          resource: `/activities/${activityId}`,
+          payload,
+        })
+        return
+      }
+      throw err
+    }
   }, [activityId, activity])
 
   const { saveState, saveNow, markDirty } = useAutoSave({
