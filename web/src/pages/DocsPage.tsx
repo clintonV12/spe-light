@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
-import { Search, Hash, ExternalLink, Menu, X, FileText, ArrowRight, LayoutDashboard } from 'lucide-react'
+import { Search, Hash, ExternalLink, Menu, X, FileText, ArrowRight, LayoutDashboard, Download } from 'lucide-react'
 import { useAuthStore } from '../store/auth'
 
 // ── In-app documentation ────────────────────────────────────────────────────
@@ -75,6 +75,33 @@ const DOC_REGISTRY: DocEntry[] = [
   // Add future docs here, e.g.:
   // { id: 'user-guide', title: 'User Guide', description: '...',
   //   content: userGuideMd },
+]
+
+// ── Downloadable resources ──────────────────────────────────────────────
+//
+// Separate from DOC_REGISTRY on purpose: these are files meant to be saved
+// and read outside the app (offline, printed, shared with a Board), not
+// markdown rendered in-page. Each entry's `href` is a static asset — drop
+// the actual file in /public/guides/ (Vite serves anything under /public
+// at the site root) and point href at that same path; no import needed
+// since these never get parsed/rendered, just downloaded as-is.
+interface DownloadEntry {
+  id: string
+  title: string
+  description: string
+  href: string
+  /** Suggested filename for the browser's save dialog. */
+  filename: string
+}
+
+const DOWNLOAD_REGISTRY: DownloadEntry[] = [
+  {
+    id: 'strategic-plan-guide',
+    title: 'Strategic Planning Guide',
+    description: 'Complete guide to developing and establishing a strategic plan (PDF).',
+    href: '/guides/complete-guide-to-strategic-planning.pdf',
+    filename: 'Complete Guide to Developing and Establishing a Strategic Plan.pdf',
+  },
 ]
 
 // ── Slug + heading extraction ───────────────────────────────────────────
@@ -340,6 +367,30 @@ export default function DocsPage() {
               className="w-full rounded-lg border border-ink-200 bg-white pl-8 pr-3 py-2 text-sm outline-none focus:border-accent"
             />
           </div>
+
+          {DOWNLOAD_REGISTRY.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="px-1 text-[11px] font-semibold text-ink-300 uppercase tracking-wide">
+                {t('docs.downloads', 'Downloads')}
+              </p>
+              {DOWNLOAD_REGISTRY.map((res) => (
+                <a
+                  key={res.id}
+                  href={res.href}
+                  download={res.filename}
+                  className="flex items-start gap-2.5 rounded-lg border border-ink-100 bg-white px-3 py-2.5 text-left transition-colors hover:border-accent-300 hover:bg-accent-50/40 group"
+                >
+                  <Download className="size-4 shrink-0 mt-0.5 text-ink-400 group-hover:text-accent-600 transition-colors" />
+                  <span>
+                    <span className="block text-sm font-semibold text-ink-800 group-hover:text-accent-700 transition-colors">
+                      {res.title}
+                    </span>
+                    <span className="block text-xs text-ink-400">{res.description}</span>
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
 
           <nav className="max-h-[70vh] overflow-y-auto space-y-0.5 pr-1">
             {filteredHeadings.length === 0 && (
