@@ -52,16 +52,26 @@ export function computeAchievement(direction: KPIDirection | undefined, target?:
 // activity/kpiIndex pairing KpiRow adds is TrackingModule-specific
 // (editing, breadcrumbs), not needed by the math itself.
 export function periodCompletion(kpis: KPI[], period: KPIPeriod): number | null {
-  const values = kpis
-    .filter((k) => k.target_period === period)
-    .map((k) => computeAchievement(k.direction, k.target_value, k.actual_value))
-    .filter((v): v is number => v !== null)
+  const periodKpis = kpis.filter((k) => k.target_period === period)
+  // Null only when this period has no KPIs assigned to it at all — the
+  // gauge should read "—" (nothing to track), not 0%.
+  if (periodKpis.length === 0) return null
+  const values = periodKpis.map((k) => {
+    const pct = computeAchievement(k.direction, k.target_value, k.actual_value)
+    // A KPI with no target/actual yet counts as 0% progress, not a blank
+    // that gets excluded from the average. Excluding it previously meant
+    // a period with, say, 1 scored KPI out of 5 showed that single KPI's
+    // own percentage as if it were the whole period's status — the other
+    // 4 untouched KPIs vanished from the math entirely instead of pulling
+    // the average down. Every KPI assigned to this period must stay in
+    // the denominator, scored or not.
+    if (pct === null) return 0
     // Capped here, not at the source — an individual KPI's own display
     // still shows genuine overachievement (e.g. 150%), but one KPI running
     // hot shouldn't be able to drag a whole period's average above 100%
     // and mask other KPIs that are behind.
-    .map((v) => Math.min(100, v))
-  if (values.length === 0) return null
+    return Math.min(100, pct)
+  })
   return values.reduce((a, b) => a + b, 0) / values.length
 }
 

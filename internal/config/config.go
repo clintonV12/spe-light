@@ -113,24 +113,31 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid JWT_REFRESH_EXPIRY_DAYS: %w", err)
 	}
 
-	// Default 15 min — matches the "10-15 min idle logout" requirement out
-	// of the box. Must be positive; 0/negative would either mean "never
-	// enforced" or "always rejected" depending on how it's read downstream,
-	// neither of which is an intentional mode today, so it's rejected here
-	// rather than silently doing something surprising.
-	cfg.SessionIdleTimeoutMin, err = getEnvInt("SESSION_IDLE_TIMEOUT_MIN", 15)
+	// Default 45 min — 3x the default JWT_ACCESS_EXPIRY_MIN (15m), enough
+	// margin that a genuinely active user's refresh (which only happens
+	// reactively, once per access-token cycle — see client.ts) never lands
+	// past the idle budget purely from normal request latency. See the
+	// JWTAccessExpiryMin/SessionIdleTimeoutMin comparison below for what
+	// goes wrong with too little (or no) margin here.
+	cfg.SessionIdleTimeoutMin, err = getEnvInt("SESSION_IDLE_TIMEOUT_MIN", 45)
 	if err != nil {
 		return nil, fmt.Errorf("invalid SESSION_IDLE_TIMEOUT_MIN: %w", err)
 	}
 	if cfg.SessionIdleTimeoutMin <= 0 {
 		return nil, fmt.Errorf("SESSION_IDLE_TIMEOUT_MIN must be a positive number of minutes")
 	}
-	if cfg.JWTAccessExpiryMin > cfg.SessionIdleTimeoutMin {
+	if cfg.JWTAccessExpiryMin >= cfg.SessionIdleTimeoutMin {
 		fmt.Fprintf(os.Stderr,
-			"WARNING: JWT_ACCESS_EXPIRY_MIN (%dm) is greater than SESSION_IDLE_TIMEOUT_MIN (%dm) — "+
-				"idle sessions can only be caught once the access token itself expires, so the "+
-				"effective idle timeout is capped at %dm regardless of SESSION_IDLE_TIMEOUT_MIN\n",
-			cfg.JWTAccessExpiryMin, cfg.SessionIdleTimeoutMin, cfg.JWTAccessExpiryMin)
+			"WARNING: JWT_ACCESS_EXPIRY_MIN (%dm) is >= SESSION_IDLE_TIMEOUT_MIN (%dm) — "+
+				"idle sessions can only be caught once the access token itself expires, and "+
+				"authsvc.Service.RefreshToken's idle check runs at that exact moment. With no "+
+				"margin between the two values, idleFor is guaranteed to already exceed the idle "+
+				"budget on the very first refresh after login, logging every user out on a fixed "+
+				"schedule regardless of activity — not just truly-idle ones. Set "+
+				"SESSION_IDLE_TIMEOUT_MIN comfortably above JWT_ACCESS_EXPIRY_MIN (at least 2-3x, "+
+				"e.g. %dm here) to leave room for normal request latency and the client's own "+
+				"refresh timing\n",
+			cfg.JWTAccessExpiryMin, cfg.SessionIdleTimeoutMin, cfg.JWTAccessExpiryMin*3)
 	}
 
 	cfg.SMTPPort, err = getEnvInt("SMTP_PORT", 587)

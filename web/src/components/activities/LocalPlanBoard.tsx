@@ -511,19 +511,13 @@ export default function LocalPlanBoard({ plan, activities, canEdit, canDelete, o
         const objectiveList = o ?? []
         setPillars(pillarList)
         setObjectives(objectiveList)
-        // Default to the pillar we were asked to return to (see
-        // initialExpandedPillarId), falling back to the first pillar only
-        // so the board isn't empty-looking when there's no such request —
-        // e.g. landing here fresh from the plan list rather than coming
-        // back from an activity/KPI save.
-        if (pillarList.length > 0) {
-          setExpanded((prev) => {
-            if (prev.size > 0) return prev
-            const target = initialExpandedPillarId && pillarList.some((p) => p.id === initialExpandedPillarId)
-              ? initialExpandedPillarId
-              : pillarList[0].id
-            return new Set([target])
-          })
+        // Only expand a pillar automatically when we were asked to return
+        // to a specific one (see initialExpandedPillarId) — e.g. coming
+        // back from an activity/KPI save. Landing here fresh (from the
+        // plan list, or just opening the tab) should show every pillar
+        // collapsed rather than always snapping open pillar one.
+        if (pillarList.length > 0 && initialExpandedPillarId && pillarList.some((p) => p.id === initialExpandedPillarId)) {
+          setExpanded((prev) => (prev.size > 0 ? prev : new Set([initialExpandedPillarId])))
         }
       })
       .finally(() => setLoading(false))

@@ -61,11 +61,13 @@ export const tokenStore = {
   setTokens: (access: string, refresh: string): void => {
     sessionStorage.setItem(TOKEN_KEY,   access)
     sessionStorage.setItem(REFRESH_KEY, refresh)
+    scheduleProactiveRefresh(access)
   },
   clear: (): void => {
     sessionStorage.removeItem(TOKEN_KEY)
     sessionStorage.removeItem(REFRESH_KEY)
     sessionStorage.removeItem(ADVISOR_ORG_KEY)
+    clearProactiveRefresh()
   },
 }
 
@@ -80,6 +82,114 @@ export const advisorOrgStore = {
   get: (): string | null => sessionStorage.getItem(ADVISOR_ORG_KEY),
   set: (orgId: string): void => sessionStorage.setItem(ADVISOR_ORG_KEY, orgId),
   clear: (): void => sessionStorage.removeItem(ADVISOR_ORG_KEY),
+}
+
+// ── Proactive token refresh ──────────────────────────────────────────────
+//
+// The reactive 401-triggered refresh (further down this file) only fires
+// once the access token has ALREADY expired. That's the actual cause of
+// "logged out while still using the app": with SESSION_IDLE_TIMEOUT_MIN and
+// JWT_ACCESS_EXPIRY_MIN set to the same value (the documented default is
+// 15/15 — see config.go), the very first reactive refresh after login
+// always measures idleFor >= 15 minutes (access-token lifetime, plus
+// network latency getting the request there) against a 15-minute idle
+// budget with zero slack. authsvc.Service.RefreshToken rejects it as
+// "expired due to inactivity" on that fixed schedule — every time,
+// regardless of whether the person clicked something ten seconds earlier.
+//
+// Refreshing proactively, a little before the access token's own expiry,
+// keeps refresh_tokens.last_used_at current for someone who's actually
+// here, instead of only touching it once per full access-token cycle. This
+// deliberately only runs while the tab is visible/foregrounded (see the
+// visibilitychange listener below) — a backgrounded or abandoned tab is
+// NOT kept alive artificially, so walking away still hits the real idle
+// timeout as intended. This is a client-side mitigation; see config.go for
+// the matching server-side fix (real margin between the two timeouts) so
+// any client that doesn't refresh proactively — a future mobile app, a
+// third-party API consumer — isn't relying on this file to not get logged
+// out on schedule.
+
+const REFRESH_MARGIN_MS = 60_000 // refresh this long before actual expiry
+
+let refreshTimer: ReturnType<typeof setTimeout> | undefined
+
+/**
+ * Reads the `exp` claim (seconds since epoch) out of a JWT without
+ * verifying it — verification already happened server-side; this is only
+ * to know when to proactively refresh. Returns null if unparseable.
+ */
+function decodeJwtExpiryMs(token: string): number | null {
+  try {
+    const payload = token.split('.')[1]
+    const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))
+    return typeof json.exp === 'number' ? json.exp * 1000 : null
+  } catch {
+    return null
+  }
+}
+
+function clearProactiveRefresh(): void {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+    refreshTimer = undefined
+  }
+}
+
+function scheduleProactiveRefresh(accessToken: string): void {
+  clearProactiveRefresh()
+  if (typeof document === 'undefined') return // non-browser (SSR/tests)
+
+  const expiryMs = decodeJwtExpiryMs(accessToken)
+  if (expiryMs === null) return
+
+  const fire = () => {
+    if (document.visibilityState !== 'visible') {
+      // Nobody's looking at this tab right now — don't manufacture
+      // "activity" for a session no one is using. Recheck shortly; the
+      // visibilitychange listener below also re-arms immediately if the
+      // tab comes back to front sooner than that.
+      refreshTimer = setTimeout(fire, 30_000)
+      return
+    }
+    void proactiveRefresh()
+  }
+
+  const delay = Math.max(0, expiryMs - Date.now() - REFRESH_MARGIN_MS)
+  refreshTimer = setTimeout(fire, delay)
+}
+
+async function proactiveRefresh(): Promise<void> {
+  const refreshToken = tokenStore.getRefresh()
+  if (!refreshToken) return
+  try {
+    // Plain axios (not apiClient) — same reasoning as the reactive path
+    // below: avoids re-entering this file's own response interceptor.
+    const { data } = await axios.post<{ access_token: string; refresh_token: string }>(
+      '/auth/refresh',
+      { refresh_token: refreshToken },
+    )
+    tokenStore.setTokens(data.access_token, data.refresh_token)
+    apiClient.defaults.headers.common['Authorization'] = `Bearer ${data.access_token}`
+  } catch {
+    // Swallow it here — if the refresh token is genuinely dead (revoked,
+    // truly idle-timed-out, expired), the next real request will 401 and
+    // the reactive path below handles the expired-session redirect with
+    // the proper message. Retrying here would just duplicate that logic.
+  }
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      const access = tokenStore.getAccess()
+      if (access) scheduleProactiveRefresh(access)
+    }
+  })
+  // Page load / refresh with an existing session (tokens already in
+  // sessionStorage) — arm the timer immediately rather than waiting for
+  // the next login or reactive refresh to do it.
+  const existingAccess = tokenStore.getAccess()
+  if (existingAccess) scheduleProactiveRefresh(existingAccess)
 }
 
 // ── Axios instance ────────────────────────────────────────────────────────────
